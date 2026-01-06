@@ -24,13 +24,13 @@ enum Constants {
     // MARK: - Waveform Visualization
 
     /// Number of bars in the audio waveform visualization.
-    static let waveformBarCount = 40
+    static let waveformBarCount = 20
 
     /// Width of the waveform window in points.
-    static let waveformWindowWidth: CGFloat = 320.0
+    static let waveformWindowWidth: CGFloat = 180.0
 
     /// Height of the waveform window in points.
-    static let waveformWindowHeight: CGFloat = 60.0
+    static let waveformWindowHeight: CGFloat = 48.0
 
     // MARK: - Hotkey Behavior
 

@@ -29,6 +29,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let audioRecorder = AudioRecorder()
     let levelProcessor = AudioLevelProcessor()
     let textInserter = TextInserter()
+    let streamingInserter = StreamingTextInserter()
+    let voiceCommandProcessor = VoiceCommandProcessor()
+    let audioFeedbackManager = AudioFeedbackManager()
 
     // MARK: - Private Properties
 
@@ -81,7 +84,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
 
         if let button = statusItem?.button {
-            button.image = NSImage(systemSymbolName: "waveform", accessibilityDescription: "Yappy")
+            // Try to load custom menu bar icon, fall back to system symbol
+            if let iconPath = Bundle.main.path(forResource: "MenuBarIcon", ofType: "png"),
+               let iconImage = NSImage(contentsOfFile: iconPath) {
+                iconImage.size = NSSize(width: 18, height: 18)
+                iconImage.isTemplate = false  // Keep the orange color
+                button.image = iconImage
+            } else {
+                // Fallback to system waveform symbol
+                button.image = NSImage(systemSymbolName: "waveform", accessibilityDescription: "Yappy")
+            }
             button.action = #selector(togglePopover)
             button.target = self
         }
@@ -145,6 +157,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard settings.isConfigured else {
             handleError(YappyError.notConfigured)
             return
+        }
+
+        // Play recording started sound
+        if settings.audioFeedbackEnabled {
+            audioFeedbackManager.volume = settings.audioFeedbackVolume
+            audioFeedbackManager.play(.recordingStarted)
         }
 
         // Start recording
@@ -213,6 +231,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Recording Processing
 
     private func processRecording(url: URL) async {
+        // Play recording stopped sound
+        await MainActor.run {
+            if settings.audioFeedbackEnabled {
+                audioFeedbackManager.volume = settings.audioFeedbackVolume
+                audioFeedbackManager.play(.recordingStopped)
+            }
+        }
+
         do {
             // Load audio data
             let audioData = try Data(contentsOf: url)
@@ -221,8 +247,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let whisperService = WhisperService(apiKey: settings.openAIAPIKey)
             var transcription = try await whisperService.transcribe(audioData: audioData)
 
+            // Process voice commands if enabled
+            var detectedCommands: [VoiceCommand] = []
+            if settings.voiceCommandsEnabled {
+                voiceCommandProcessor.isEnabled = true
+                let commandResult = voiceCommandProcessor.process(transcription: transcription)
+                transcription = commandResult.cleanedText
+                detectedCommands = commandResult.commands
+            }
+
             // Cleanup with Grok if enabled
-            if settings.cleanupEnabled {
+            if settings.cleanupEnabled && !transcription.isEmpty {
                 let grokService = GrokService(apiKey: settings.xAIAPIKey)
                 transcription = try await grokService.cleanup(text: transcription)
             }
@@ -230,8 +265,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // Insert text on main thread
             await MainActor.run {
                 do {
-                    try textInserter.insert(text: transcription)
-                    appState.setTranscription(transcription)
+                    // Configure streaming inserter
+                    streamingInserter.streamingEnabled = settings.streamingTextEnabled
+
+                    // Insert text (streaming or all at once based on setting)
+                    if !transcription.isEmpty {
+                        Task {
+                            do {
+                                try await streamingInserter.insertStreaming(text: transcription)
+                                appState.setTranscription(transcription)
+
+                                // Play insert sound
+                                if settings.audioFeedbackEnabled {
+                                    audioFeedbackManager.play(.textInserted)
+                                }
+
+                                // Execute detected voice commands after text is inserted
+                                for command in detectedCommands {
+                                    try voiceCommandProcessor.execute(
+                                        command: command,
+                                        streamingInserter: streamingInserter
+                                    )
+                                    if settings.audioFeedbackEnabled {
+                                        audioFeedbackManager.play(.commandExecuted)
+                                    }
+                                }
+                            } catch {
+                                handleError(error)
+                            }
+                        }
+                    } else {
+                        // No text to insert (all commands, or empty transcription)
+                        appState.setTranscription("")
+                    }
                 } catch {
                     handleError(error)
                 }
@@ -239,6 +305,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         } catch {
             await MainActor.run {
+                if settings.audioFeedbackEnabled {
+                    audioFeedbackManager.play(.error)
+                }
                 handleError(error)
             }
         }
@@ -269,8 +338,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             button.image = NSImage(systemSymbolName: "ellipsis.circle", accessibilityDescription: "Processing")
             button.contentTintColor = .systemOrange
         } else {
-            button.image = NSImage(systemSymbolName: "waveform", accessibilityDescription: "Yappy")
-            button.contentTintColor = nil
+            // Use custom orange waveform icon in idle state
+            if let iconPath = Bundle.main.path(forResource: "MenuBarIcon", ofType: "png"),
+               let iconImage = NSImage(contentsOfFile: iconPath) {
+                iconImage.size = NSSize(width: 18, height: 18)
+                iconImage.isTemplate = false  // Keep the orange color
+                button.image = iconImage
+                button.contentTintColor = nil
+            } else {
+                button.image = NSImage(systemSymbolName: "waveform", accessibilityDescription: "Yappy")
+                button.contentTintColor = nil
+            }
         }
     }
 
