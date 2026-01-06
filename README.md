@@ -12,6 +12,7 @@ Yappy is a native macOS application that transcribes your voice in real-time usi
 
 ## ✨ Features
 
+### Core Features
 - **⚡ Ultra-Fast Transcription**: Optimized network layer and parallel processing for minimal latency
 - **🎯 Global Hotkey Activation**: Double-tap or hold Right Command/Option - works anywhere on macOS
 - **🎨 Beautiful Waveform Visualization**: Real-time animated audio level display during recording
@@ -21,6 +22,12 @@ Yappy is a native macOS application that transcribes your voice in real-time usi
 - **⚙️ Menu Bar Integration**: Unobtrusive, no dock icon, always accessible
 - **🎛️ Customizable Settings**: Configure API keys, hotkeys, and cleanup behavior
 
+### Premium Features (New!)
+- **🎙️ Voice Commands**: Say "delete that", "new line", "period", etc. for hands-free editing
+- **✍️ Streaming Text**: Watch your words appear one-by-one at your cursor
+- **🔊 Audio Feedback**: Subtle sounds for recording start/stop and actions
+- **🎨 Custom Orange Waveform Icon**: Beautiful branded menu bar icon
+
 ---
 
 ## 🚀 Quick Start
@@ -28,65 +35,93 @@ Yappy is a native macOS application that transcribes your voice in real-time usi
 ### Prerequisites
 
 - macOS 13.0 (Ventura) or later
-- Xcode 14.0+ (for building from source)
 - [OpenAI API key](https://platform.openai.com/api-keys)
 - [OpenRouter API key](https://openrouter.ai/keys) (for text cleanup feature)
 
 ### Installation
 
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/superluis0/Yappy.git
-   cd Yappy
-   ```
+#### From Pre-built App
+1. Download the latest release from the Releases page
+2. Drag Yappy.app to your Applications folder
+3. Launch Yappy from Applications or Spotlight
 
-2. **Open in Xcode:**
-   ```bash
-   open Yappy.xcodeproj
-   ```
+#### Building from Source
+```bash
+# Clone the repository
+git clone https://github.com/superluis0/Yappy.git
+cd Yappy/Yappy
 
-3. **Build and Run:**
-   - Select the "Yappy" scheme
-   - Press `⌘R` or click the Run button
+# Build
+xcodebuild -project ../Yappy.xcodeproj -scheme Yappy -configuration Release build
 
-4. **Grant Permissions:**
-   - **Microphone**: Required for audio recording (prompted automatically)
-   - **Accessibility**: Required for global hotkey detection
-     - System Settings → Privacy & Security → Accessibility → Add Yappy
+# Install to Applications
+cp -R ~/Library/Developer/Xcode/DerivedData/Yappy-*/Build/Products/Release/Yappy.app /Applications/
 
-5. **Configure API Keys:**
-   - Click the Yappy menu bar icon
-   - Click "Settings..."
-   - Enter your OpenAI API key
-   - Enter your OpenRouter API key
-   - Choose your preferred hotkey option
+# Launch
+open /Applications/Yappy.app
+```
+
+### Grant Permissions
+After launching Yappy, grant these permissions:
+
+1. **Microphone**: 
+   - Try to record (triggers the permission prompt)
+   - Or: System Settings → Privacy & Security → Microphone → Enable Yappy
+
+2. **Accessibility** (required for hotkey & text insertion):
+   - System Settings → Privacy & Security → Accessibility
+   - Click **+** → Select **Yappy.app** → Enable
+
+### Configure API Keys
+1. Click the Yappy menu bar icon (orange waveform)
+2. Click "Settings..."
+3. Go to "API Keys" tab
+4. Enter your OpenAI API key
+5. Enter your OpenRouter API key
+6. Click Save
 
 ---
 
 ## 🎯 Usage
 
-1. **Start Recording:**
-   - Double-tap Right ⌘ (default) or use your configured hotkey
-   - A beautiful waveform overlay appears at the bottom of your screen
+### Basic Recording
 
-2. **Speak Clearly:**
-   - Watch the waveform animate as you speak
-   - Audio is captured in high-quality 16kHz mono WAV format
+1. **Start Recording**: Hold Right ⌘ (or your configured hotkey)
+2. **Speak**: Watch the waveform animate as you speak
+3. **Stop Recording**: Release the key
+4. **Result**: Text appears at your cursor position
 
-3. **Finish Recording:**
-   - Double-tap Right ⌘ again (or release if using hold mode)
-   - Processing animation shows while transcription happens
+### Voice Commands (Optional)
 
-4. **Get Results:**
-   - Transcribed text appears at your cursor position
-   - Original clipboard is preserved
-   - Waveform disappears automatically
+Say these at the end of your dictation:
+- **"delete that"** - Removes the text you just inserted
+- **"new line"** - Inserts a line break
+- **"new paragraph"** - Inserts two line breaks
+- **"undo"** - Triggers Cmd+Z
+- **"period" / "comma" / "question mark"** - Inserts punctuation
 
 ### Hotkey Options
 
-- **Double-tap Right ⌘** (Recommended): Tap twice quickly to start, tap twice again to stop
-- **Hold Right ⌘**: Press and hold to record, release to finish
-- **Hold Right ⌥**: Alternative for Right Option key
+Configure in Settings → General:
+- **Hold Right ⌘** (Default): Press and hold to record, release to finish
+- **Double-tap Right ⌘**: Tap twice to start, tap twice to stop
+- **Hold Right ⌥**: Alternative using Right Option key
+
+---
+
+## ⚙️ Settings
+
+### General Tab
+- **Hotkey Selection**: Choose your preferred activation method
+- **Launch at Login**: Start Yappy automatically
+- **AI Transcription Cleanup**: Enable/disable Grok enhancement
+
+### API Keys Tab
+- **OpenAI API Key**: For Whisper speech-to-text
+- **OpenRouter API Key**: For Grok text cleanup
+
+### Permissions
+- Direct links to System Settings for Microphone and Accessibility
 
 ---
 
@@ -99,33 +134,30 @@ Yappy/
 ├── App/
 │   ├── YappyApp.swift              # SwiftUI app entry point
 │   ├── AppDelegate.swift           # Main coordinator & flow control
-│   └── TranscriptionService.swift  # Unified API service (Whisper + Grok)
+│   ├── SettingsView.swift          # Settings window UI
+│   └── TranscriptionService.swift  # Unified API service
 │
 ├── Core/
-│   ├── AppState.swift              # Observable app state management
+│   ├── AppState.swift              # Observable app state
 │   ├── Settings.swift              # UserDefaults-backed settings
 │   └── Constants.swift             # App-wide constants
 │
 ├── Services/
 │   ├── AudioRecorder.swift         # AVFoundation audio capture
-│   ├── HotkeyManager.swift         # Global hotkey detection
-│   ├── WhisperService.swift        # OpenAI Whisper API client
-│   ├── GrokService.swift           # Grok cleanup API client
-│   └── TextInserter.swift          # System-wide text insertion
+│   ├── AudioFeedbackManager.swift  # Sound effects (NEW)
+│   ├── StreamingTextInserter.swift # Word-by-word insertion (NEW)
+│   ├── VoiceCommandProcessor.swift # Voice commands (NEW)
+│   ├── WhisperService.swift        # OpenAI Whisper API
+│   ├── GrokService.swift           # Grok cleanup API
+│   └── TextInserter.swift          # Text insertion via paste
 │
 ├── UI/
-│   ├── MenuBarView.swift           # Menu bar popover interface
-│   ├── SettingsView.swift          # Settings window
-│   ├── WaveformWindow.swift        # Floating overlay window
-│   ├── WaveformView.swift          # Animated waveform visualization
-│   └── VisualEffectBackground.swift # macOS blur effects
-│
-├── Utilities/
-│   ├── AudioLevelProcessor.swift   # Audio level smoothing
-│   └── KeyCodes.swift              # macOS virtual key codes
+│   ├── WaveformView.swift          # Animated waveform
+│   └── WaveformWindowController.swift
 │
 └── Resources/
-    └── Assets.xcassets             # App icons & assets
+    ├── AppIcon.icns                # App icon
+    └── Sounds/                     # Audio feedback sounds
 ```
 
 ### Technology Stack
@@ -133,199 +165,42 @@ Yappy/
 - **Language**: Swift 5.9+
 - **UI Framework**: SwiftUI + AppKit
 - **Audio**: AVFoundation
-- **Hotkeys**: CoreGraphics (CGEvent tap)
 - **State Management**: Combine + ObservableObject
-- **Networking**: URLSession with optimized configuration
 - **APIs**: OpenAI Whisper, OpenRouter (Grok)
-
----
-
-## ⚙️ Configuration
-
-### Settings
-
-Access settings by clicking the menu bar icon → "Settings..."
-
-**API Keys:**
-- OpenAI API Key (required) - Used for Whisper speech-to-text
-- OpenRouter API Key (optional) - Used for Grok text cleanup
-
-**Hotkey Options:**
-- Right Command (Hold)
-- Right Command (Double Tap) - Default
-- Right Option (Hold)
-
-**General:**
-- Enable text cleanup - Toggle Grok-based enhancement
-- Launch at login - Auto-start with macOS
-
-**Permissions:**
-- Real-time microphone and accessibility permission status
-- Direct links to System Settings for easy configuration
-
-### Performance Optimizations
-
-Yappy is built for speed with:
-
-- **Optimized URLSession Configuration**:
-  - Ephemeral sessions for faster startup
-  - HTTP/2 pipelining enabled
-  - 6 concurrent connections per host
-  - Reduced timeouts (15s request, 30s resource)
-
-- **Efficient Audio Processing**:
-  - 16kHz sample rate (Whisper-optimized)
-  - Mono channel recording
-  - Minimal buffer overhead
-
-- **Smart Network Layer**:
-  - Connection pooling and reuse
-  - Automatic retry with backoff
-  - Early error detection
 
 ---
 
 ## 🔐 Privacy & Security
 
-- **No Data Storage**: Audio files are deleted immediately after transcription
-- **API-Only Processing**: Audio sent to OpenAI/OpenRouter via HTTPS, not stored by Yappy
-- **Local Settings**: API keys stored in UserDefaults (consider Keychain for production)
-- **Clipboard Preservation**: Original clipboard restored after text insertion
-- **Sandboxing Disabled**: Required for global hotkey and text insertion features
-
-### API Key Security
-
-⚠️ **Important**: Keep your API keys secure:
-- Never commit API keys to version control
-- Use environment variables or secure vaults in production
-- Monitor API usage on OpenAI and OpenRouter dashboards
-- Revoke and regenerate keys if compromised
-
----
-
-## 🧪 Development
-
-### Building from Source
-
-```bash
-# Clone the repository
-git clone https://github.com/superluis0/Yappy.git
-cd Yappy
-
-# Open in Xcode
-open Yappy.xcodeproj
-
-# Build
-# Press ⌘B in Xcode or:
-xcodebuild -project Yappy.xcodeproj -scheme Yappy -configuration Release
-
-# Run
-# Press ⌘R in Xcode
-```
-
-### Project Requirements
-
-- Xcode 14.0+
-- macOS 13.0+ deployment target
-- Swift 5.9+
-- No external dependencies (uses only native frameworks)
-
-### Code Quality
-
-- Comprehensive inline documentation
-- Error handling with typed errors
-- ObservableObject pattern for reactive state
-- Dependency injection for testability
-- Memory-safe with weak references
-
----
-
-## 📋 API Usage & Costs
-
-### OpenAI Whisper API
-
-- **Model**: `whisper-1`
-- **Pricing**: ~$0.006 per minute of audio
-- **Format**: WAV, 16kHz mono
-- **Response**: Plain text or JSON
-
-**Example 30-second recording**: ~$0.003
-
-### OpenRouter (Grok)
-
-- **Model**: `x-ai/grok-beta` (via OpenRouter)
-- **Pricing**: Variable based on OpenRouter rates
-- **Usage**: Optional text cleanup/enhancement
-- **Can be disabled**: Set "Enable text cleanup" to OFF
+- **No Data Storage**: Audio files deleted immediately after transcription
+- **API-Only Processing**: Audio sent via HTTPS, not stored by Yappy
+- **Local Settings**: Stored in UserDefaults
+- **Clipboard Preservation**: Original clipboard restored after insertion
 
 ---
 
 ## 🐛 Troubleshooting
 
-### Common Issues
-
-**App doesn't appear in menu bar**
-- Check that LSUIElement is set to true in Info.plist
-- Restart Yappy or log out and back in
-
-**Hotkey not working**
-- Grant Accessibility permission: System Settings → Privacy & Security → Accessibility
-- Ensure no other app is using the same hotkey
-- Try a different hotkey option in Settings
-
-**"Invalid API key" error**
-- Verify API keys are correct (no extra spaces)
-- Check API key has sufficient credits
-- Ensure API key has correct permissions
-
-**Transcription fails**
-- Check internet connection
-- Verify microphone is working
-- Ensure recording is at least 0.5 seconds
-- Check OpenAI API status
-
-**Text doesn't insert**
-- Try clicking in the target application first
-- Check Accessibility permissions
-- Some sandboxed apps may have restrictions
+| Issue | Solution |
+|-------|----------|
+| App not in menu bar | Check if running: `pgrep Yappy` |
+| Hotkey doesn't work | Enable Accessibility in System Settings |
+| No transcription | Check API keys and Microphone permission |
+| "Invalid API key" | Verify keys have no extra spaces |
+| Text doesn't insert | Click in target app first, check Accessibility |
 
 ---
 
-## 📚 Documentation
+## 📋 API Costs
 
-- [BUILD_SUMMARY.md](BUILD_SUMMARY.md) - Complete implementation details
-- [TESTING_GUIDE.md](TESTING_GUIDE.md) - Comprehensive testing checklist
-- [INTEGRATION_EXAMPLE.md](INTEGRATION_EXAMPLE.md) - Code usage examples
+- **OpenAI Whisper**: ~$0.006 per minute of audio
+- **OpenRouter (Grok)**: Variable, optional (can be disabled)
 
----
-
-## 🛣️ Roadmap
-
-### Planned Features
-
-- [ ] Local Whisper model support (offline mode)
-- [ ] Multiple language support
-- [ ] Recording history
-- [ ] Custom Grok prompts
-- [ ] Keyboard shortcut customization
-- [ ] App icon and branding
-- [ ] DMG installer
-- [ ] iOS companion app
-
-### Performance Improvements
-
-- [ ] Parallel Whisper+Grok execution
-- [ ] Streaming audio upload
-- [ ] Predictive API warming
-- [ ] Circular buffer for audio levels
+Example: 30-second recording ≈ $0.003
 
 ---
 
 ## 🤝 Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-### Development Guidelines
 
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/amazing-feature`)
@@ -337,23 +212,7 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
-
----
-
-## 🙏 Acknowledgments
-
-- **OpenAI** for the Whisper speech-to-text API
-- **xAI** for Grok AI model
-- **OpenRouter** for unified AI model access
-- **Apple** for excellent native macOS frameworks
-
----
-
-## 📬 Contact & Support
-
-- **GitHub Issues**: [Report bugs or request features](https://github.com/superluis0/Yappy/issues)
-- **Repository**: [github.com/superluis0/Yappy](https://github.com/superluis0/Yappy)
+MIT License - see LICENSE file for details.
 
 ---
 

@@ -342,11 +342,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func setupMenuBar() {
         // Create menu bar item
-        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
 
         if let button = statusItem?.button {
-            button.image = NSImage(systemSymbolName: "mic.fill", accessibilityDescription: "Yappy")
-            button.image?.isTemplate = true
+            // Create custom orange waveform icon programmatically
+            let iconImage = createWaveformIcon(size: NSSize(width: 18, height: 18))
+            button.image = iconImage
         }
 
         // Create menu
@@ -405,5 +406,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func quit() {
         NSApp.terminate(nil)
+    }
+    
+    // MARK: - Icon Drawing
+    
+    /// Creates a custom orange waveform icon for the menu bar
+    private func createWaveformIcon(size: NSSize) -> NSImage {
+        let image = NSImage(size: size, flipped: false) { rect in
+            // Orange gradient colors
+            let orange = NSColor(red: 1.0, green: 0.42, blue: 0.21, alpha: 1.0)  // #FF6B35
+            
+            // Draw 5 bars with varying heights
+            let barWidth: CGFloat = 2.5
+            let spacing: CGFloat = 1.0
+            let totalWidth = 5 * barWidth + 4 * spacing
+            let startX = (rect.width - totalWidth) / 2
+            
+            // Bar heights as percentages of total height
+            let heights: [CGFloat] = [0.4, 0.7, 1.0, 0.7, 0.4]
+            let maxHeight = rect.height * 0.8
+            let centerY = rect.height / 2
+            
+            orange.setFill()
+            
+            for (index, heightPercent) in heights.enumerated() {
+                let barHeight = maxHeight * heightPercent
+                let x = startX + CGFloat(index) * (barWidth + spacing)
+                let y = centerY - barHeight / 2
+                
+                let barRect = NSRect(x: x, y: y, width: barWidth, height: barHeight)
+                let path = NSBezierPath(roundedRect: barRect, xRadius: barWidth / 2, yRadius: barWidth / 2)
+                path.fill()
+            }
+            
+            return true
+        }
+        
+        image.isTemplate = false  // Keep the orange color
+        return image
     }
 }

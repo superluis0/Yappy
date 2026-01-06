@@ -81,10 +81,31 @@ struct GeneralSettingsView: View {
             Divider()
             
             Section {
-                Button("Check Accessibility Permissions") {
-                    checkAccessibilityPermissions()
+                // Microphone
+                HStack {
+                    Label("Microphone", systemImage: "mic.fill")
+                    Spacer()
+                    Button("Open Settings") {
+                        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone") {
+                            NSWorkspace.shared.open(url)
+                        }
+                    }
+                    .buttonStyle(.bordered)
                 }
-                Text("Grants permission to paste transcribed text")
+                
+                // Accessibility
+                HStack {
+                    Label("Accessibility", systemImage: "accessibility")
+                    Spacer()
+                    Button("Open Settings") {
+                        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
+                            NSWorkspace.shared.open(url)
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                }
+                
+                Text("Enable both permissions for Yappy to work properly")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } header: {

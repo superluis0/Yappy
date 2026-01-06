@@ -22,5 +22,7 @@
 	<true/>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Yappy needs access to your microphone to transcribe your voice recordings.</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
 </dict>
 </plist>
