@@ -13,6 +13,8 @@
 		5C348DE82F0B62EF00A48F26 /* TranscriptionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C348DE72F0B62EF00A48F26 /* TranscriptionService.swift */; };
 		5C348DEA2F0B65FA00A48F26 /* WaveformView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C348DE92F0B65FA00A48F26 /* WaveformView.swift */; };
 		5C348DEC2F0B660600A48F26 /* WaveformWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C348DEB2F0B660600A48F26 /* WaveformWindowController.swift */; };
+		5C348DED2F0B670000A48F26 /* TextInserter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C348DEE2F0B670000A48F26 /* TextInserter.swift */; };
+		5C348DEF2F0B670100A48F26 /* StreamingTextInserter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C348DF02F0B670100A48F26 /* StreamingTextInserter.swift */; };
 		A1000001000000000000001 /* YappyApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000002000000000000001 /* YappyApp.swift */; };
 		A1000003000000000000001 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000004000000000000001 /* AppState.swift */; };
 		A1000005000000000000001 /* Settings.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000006000000000000001 /* Settings.swift */; };
@@ -26,6 +28,8 @@
 		5C348DE72F0B62EF00A48F26 /* TranscriptionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionService.swift; sourceTree = "<group>"; };
 		5C348DE92F0B65FA00A48F26 /* WaveformView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WaveformView.swift; sourceTree = "<group>"; };
 		5C348DEB2F0B660600A48F26 /* WaveformWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WaveformWindowController.swift; sourceTree = "<group>"; };
+		5C348DEE2F0B670000A48F26 /* TextInserter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextInserter.swift; sourceTree = "<group>"; };
+		5C348DF02F0B670100A48F26 /* StreamingTextInserter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamingTextInserter.swift; sourceTree = "<group>"; };
 		A1000002000000000000001 /* YappyApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YappyApp.swift; sourceTree = "<group>"; };
 		A1000004000000000000001 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
 		A1000006000000000000001 /* Settings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Settings.swift; sourceTree = "<group>"; };
@@ -104,6 +108,8 @@
 		A1000012000000000000001 /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				5C348DEE2F0B670000A48F26 /* TextInserter.swift */,
+				5C348DF02F0B670100A48F26 /* StreamingTextInserter.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -207,6 +213,8 @@
 				A1000005000000000000001 /* Settings.swift in Sources */,
 				5C348DE82F0B62EF00A48F26 /* TranscriptionService.swift in Sources */,
 				A1000007000000000000001 /* Constants.swift in Sources */,
+				5C348DED2F0B670000A48F26 /* TextInserter.swift in Sources */,
+				5C348DEF2F0B670100A48F26 /* StreamingTextInserter.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

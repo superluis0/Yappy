@@ -20,28 +20,43 @@ final class WaveformWindowController {
     
     init(appState: AppState) {
         self.appState = appState
+        // Initialize window immediately to be persistent
+        setupWindow()
     }
     
     // MARK: - Public Methods
     
-    /// Shows the waveform window at the bottom center of the screen.
+    /// Ensures the waveform window is visible and correctly positioned.
     func show() {
-        guard window == nil else {
-            window?.orderFrontRegardless()
-            return
+        if window == nil {
+            setupWindow()
         }
+        window?.orderFrontRegardless()
+    }
+    
+    /// Hides the waveform window (optional, usually stays visible now).
+    func hide() {
+        // In the new persistent model, we might not want to hide it completely,
+        // but we'll leave it for now in case we need a full hide.
+        window?.orderOut(nil)
+    }
+    
+    // MARK: - Private Methods
+    
+    private func setupWindow() {
+        guard window == nil else { return }
         
         // Create the SwiftUI view
         let waveformView = WaveformView(appState: appState)
         let hostingView = NSHostingView(rootView: waveformView)
         
-        // Create the window
+        // Create the window (NSPanel for non-activating behavior)
         let panel = NSPanel(
             contentRect: NSRect(
                 x: 0,
                 y: 0,
-                width: Constants.waveformWindowWidth,
-                height: Constants.waveformWindowHeight
+                width: 250, // Slightly wider for safety
+                height: 100 // Taller to accommodate shadows and transitions
             ),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
@@ -53,31 +68,29 @@ final class WaveformWindowController {
         panel.backgroundColor = .clear
         panel.level = .floating
         panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
-        panel.hasShadow = true
+        panel.hasShadow = false // Handled by SwiftUI
         panel.contentView = hostingView
+        panel.ignoresMouseEvents = true // Don't block clicks to apps behind it
         
         // Position at bottom center of screen
-        if let screen = NSScreen.main {
-            let screenFrame = screen.visibleFrame
-            let windowWidth = Constants.waveformWindowWidth
-            _ = Constants.waveformWindowHeight
-            
-            let x = screenFrame.midX - (windowWidth / 2)
-            let y = screenFrame.minY + 20 // 20 points above the dock
-            
-            panel.setFrameOrigin(NSPoint(x: x, y: y))
-        }
+        updatePosition(for: panel)
         
         window = panel
         panel.orderFrontRegardless()
         
-        print("📊 Waveform window shown")
+        print("📊 Persistent Waveform window initialized")
     }
     
-    /// Hides and removes the waveform window.
-    func hide() {
-        window?.orderOut(nil)
-        window = nil
-        print("📊 Waveform window hidden")
+    private func updatePosition(for panel: NSWindow) {
+        if let screen = NSScreen.main {
+            let screenFrame = screen.visibleFrame
+            let windowWidth: CGFloat = 250
+            let windowHeight: CGFloat = 100
+            
+            let x = screenFrame.midX - (windowWidth / 2)
+            let y = screenFrame.minY + 10 // Just above the dock
+            
+            panel.setFrame(NSRect(x: x, y: y, width: windowWidth, height: windowHeight), display: true)
+        }
     }
 }

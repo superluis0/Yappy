@@ -14,6 +14,19 @@ struct YappyApp: App {
     // MARK: - App Delegate
 
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+    
+    init() {
+        // Log to tmp immediately
+        let logMessage = "\(Date()): 🚀 YappyApp.init() called\n"
+        let logURL = URL(fileURLWithPath: "/tmp/yappy_debug.txt")
+        if let handle = try? FileHandle(forWritingTo: logURL) {
+            handle.seekToEndOfFile()
+            handle.write(logMessage.data(using: .utf8)!)
+            handle.closeFile()
+        } else {
+            try? logMessage.write(to: logURL, atomically: true, encoding: .utf8)
+        }
+    }
 
     // MARK: - Body
 

@@ -104,7 +104,7 @@ final class Settings: ObservableObject {
     }
 
     /// Whether streaming text insertion is enabled (word-by-word typing effect).
-    @Published var streamingTextEnabled: Bool = true {
+    @Published var streamingTextEnabled: Bool = false {
         didSet {
             if isLoading { return }
             save()
