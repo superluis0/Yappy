@@ -18,6 +18,9 @@ final class AppState: ObservableObject {
 
     /// Indicates whether transcription/processing is in progress.
     @Published private(set) var isProcessing: Bool = false
+    
+    /// Indicates whether the app is in idle mode (showing persistent line).
+    @Published var isIdle: Bool = true
 
     /// Array of audio level values for waveform visualization.
     /// Contains 40 float values representing recent audio amplitude levels.
@@ -42,6 +45,7 @@ final class AppState: ObservableObject {
     func startRecording() {
         guard !isRecording else { return }
 
+        isIdle = false
         isRecording = true
         error = nil
         currentTranscription = ""
@@ -60,6 +64,7 @@ final class AppState: ObservableObject {
     /// Resets all state to initial values.
     /// Clears recording status, transcription, errors, and audio levels.
     func reset() {
+        isIdle = true
         isRecording = false
         isProcessing = false
         audioLevels = Array(repeating: 0.0, count: 40)
@@ -72,9 +77,11 @@ final class AppState: ObservableObject {
     ///
     /// - Parameter level: The new audio level value to add to the visualization.
     func updateAudioLevel(_ level: Float) {
-        // Shift array left by removing first element and appending new level
-        audioLevels.removeFirst()
-        audioLevels.append(level)
+        // Create a new array to trigger SwiftUI update
+        var newLevels = audioLevels
+        newLevels.removeFirst()
+        newLevels.append(level)
+        audioLevels = newLevels
     }
 
     // MARK: - Internal State Updates

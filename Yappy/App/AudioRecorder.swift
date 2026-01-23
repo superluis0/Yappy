@@ -44,24 +44,24 @@ final class AudioRecorder {
         // Check microphone permission (synchronously)
         let permissionStatus = AVCaptureDevice.authorizationStatus(for: .audio)
         
-        print("🔐 Microphone permission status: \(permissionStatus.rawValue)")
+        NSLog("🔐 Microphone permission status: \(permissionStatus.rawValue)")
         
         switch permissionStatus {
         case .authorized:
-            print("✅ Microphone permission granted")
+            NSLog("✅ Microphone permission granted")
         case .notDetermined:
-            print("⚠️ Microphone permission not determined - requesting...")
+            NSLog("⚠️ Microphone permission not determined - requesting...")
             // Note: This is async, so first recording attempt may fail
             AVCaptureDevice.requestAccess(for: .audio) { granted in
-                print(granted ? "✅ Microphone permission granted" : "❌ Microphone permission denied")
+                NSLog(granted ? "✅ Microphone permission granted" : "❌ Microphone permission denied")
             }
             return false
         case .denied, .restricted:
-            print("❌ Microphone permission denied or restricted")
-            print("❌ Please enable microphone access in System Settings > Privacy & Security > Microphone")
+            NSLog("❌ Microphone permission denied or restricted")
+            NSLog("❌ Please enable microphone access in System Settings > Privacy & Security > Microphone")
             return false
         @unknown default:
-            print("⚠️ Unknown microphone permission status")
+            NSLog("⚠️ Unknown microphone permission status")
             return false
         }
         

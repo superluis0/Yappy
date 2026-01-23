@@ -47,9 +47,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Transcription service for API calls
     private lazy var transcriptionService = TranscriptionService(settings: settings)
 
+    /// Text inserter for clipboard and paste operations
+    private let textInserter = TextInserter()
+
+    /// Streaming text inserter for word-by-word insertion
+    private lazy var streamingTextInserter = StreamingTextInserter(textInserter: textInserter)
+
     // MARK: - NSApplicationDelegate
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        logToTmp("🚀 App Launched: ApplicationDidFinishLaunching")
+        
         // Check for accessibility permissions (needed to simulate paste)
         checkAccessibilityPermissions()
         
@@ -63,6 +71,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         audioRecorder.onAudioLevelUpdate = { [weak self] level in
             self?.appState.updateAudioLevel(level)
         }
+        
+        // Force initialization of waveform window so it appears immediately
+        _ = waveformController
+        logToTmp("📊 Waveform controller initialized")
+    }
+    
+    // Simple file logger for debugging (writes to /tmp which is always writable)
+    private func logToTmp(_ message: String) {
+        let logMessage = "\(Date()): \(message)\n"
+        let logURL = URL(fileURLWithPath: "/tmp/yappy_debug.txt")
+        
+        if let handle = try? FileHandle(forWritingTo: logURL) {
+            handle.seekToEndOfFile()
+            handle.write(logMessage.data(using: .utf8)!)
+            handle.closeFile()
+        } else {
+            try? logMessage.write(to: logURL, atomically: true, encoding: .utf8)
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -73,6 +99,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let monitor = localEventMonitor {
             NSEvent.removeMonitor(monitor)
         }
+    }
+    
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        return false
     }
     
     // MARK: - Accessibility Permissions
@@ -86,13 +116,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let processName = ProcessInfo.processInfo.processName
         let bundleID = Bundle.main.bundleIdentifier ?? "Unknown"
         
-        print("🔍 Process Name: \(processName)")
-        print("🔍 Bundle ID: \(bundleID)")
+        logToTmp("🔍 Process Name: \(processName)")
+        logToTmp("🔍 Bundle ID: \(bundleID)")
         
         if !accessEnabled {
-            print("⚠️ Accessibility permissions not granted. Please enable in System Settings > Privacy & Security > Accessibility")
+            logToTmp("⚠️ Accessibility permissions not granted. Please enable in System Settings > Privacy & Security > Accessibility")
         } else {
-            print("✅ Accessibility permissions granted")
+            logToTmp("✅ Accessibility permissions granted")
         }
     }
     
@@ -107,6 +137,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         localEventMonitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
             self?.handleFlagsChanged(event)
             return event
+        }
+        
+        if globalEventMonitor != nil {
+            logToTmp("✅ Global hotkey monitor registered successfully")
+        } else {
+            logToTmp("❌ Failed to register global hotkey monitor (monitor is nil)")
         }
     }
     
@@ -133,25 +169,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 appState.startRecording()
                 recordingStartTime = Date()
                 waveformController.show()
-                print("🎤 Started recording (Right Command Hold)")
+                logToTmp("🎤 Started recording (Right Command Hold)")
             }
         } else if !flags.contains(.command) && appState.isRecording {
             // Check minimum recording duration (0.1 seconds)
             if let startTime = recordingStartTime, Date().timeIntervalSince(startTime) < 0.1 {
-                print("⚠️ Recording too short, ignoring...")
+                logToTmp("⚠️ Recording too short, ignoring...")
                 _ = audioRecorder.stopRecording()
                 audioRecorder.cleanup()
-                appState.stopRecording()
-                waveformController.hide()
+                appState.reset()
                 recordingStartTime = nil
                 return
             }
             
             // Stop recording
             appState.stopRecording()
-            waveformController.hide()
             recordingStartTime = nil
-            print("🛑 Stopped recording (Right Command Hold)")
+            logToTmp("🛑 Stopped recording (Right Command Hold)")
             processRecording()
         }
     }
@@ -171,26 +205,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 if appState.isRecording {
                     // Check minimum recording duration (0.1 seconds)
                     if let startTime = recordingStartTime, Date().timeIntervalSince(startTime) < 0.1 {
-                        print("⚠️ Recording too short, ignoring...")
+                        logToTmp("⚠️ Recording too short, ignoring...")
                         _ = audioRecorder.stopRecording()
                         audioRecorder.cleanup()
-                        appState.stopRecording()
-                        waveformController.hide()
+                        appState.reset()
                         recordingStartTime = nil
                         return
                     }
                     
                     appState.stopRecording()
-                    waveformController.hide()
                     recordingStartTime = nil
-                    print("🛑 Stopped recording (Right Command Double Tap)")
+                    logToTmp("🛑 Stopped recording (Right Command Double Tap)")
                     processRecording()
                 } else {
                     if audioRecorder.startRecording() {
                         appState.startRecording()
                         recordingStartTime = now
                         waveformController.show()
-                        print("🎤 Started recording (Right Command Double Tap)")
+                        logToTmp("🎤 Started recording (Right Command Double Tap)")
                     }
                 }
             }
@@ -209,25 +241,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 appState.startRecording()
                 recordingStartTime = Date()
                 waveformController.show()
-                print("🎤 Started recording (Right Option Hold)")
+                logToTmp("🎤 Started recording (Right Option Hold)")
             }
         } else if !flags.contains(.option) && appState.isRecording {
             // Check minimum recording duration (0.1 seconds)
             if let startTime = recordingStartTime, Date().timeIntervalSince(startTime) < 0.1 {
-                print("⚠️ Recording too short, ignoring...")
+                logToTmp("⚠️ Recording too short, ignoring...")
                 _ = audioRecorder.stopRecording()
                 audioRecorder.cleanup()
-                appState.stopRecording()
-                waveformController.hide()
+                appState.reset()
                 recordingStartTime = nil
                 return
             }
             
             // Stop recording
             appState.stopRecording()
-            waveformController.hide()
             recordingStartTime = nil
-            print("🛑 Stopped recording (Right Option Hold)")
+            logToTmp("🛑 Stopped recording (Right Option Hold)")
             processRecording()
         }
     }
@@ -238,36 +268,58 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func simulatePaste() {
         // Check accessibility permissions
         let trusted = AXIsProcessTrusted()
-        
+
         if !trusted {
             print("❌ Cannot simulate paste - Accessibility permissions not granted")
-            print("❌ Please enable in System Settings > Privacy & Security > Accessibility")
-            print("❌ Make sure to enable BOTH Xcode AND your app if running from Xcode")
-            print("❌ Then QUIT and restart the app completely")
+            print("⚠️  Please enable accessibility permissions in System Settings")
+            appState.setError(NSError(domain: "com.yappy", code: 3, userInfo: [
+                NSLocalizedDescriptionKey: "Accessibility permissions required. Please check System Settings."
+            ]))
             return
         }
-        
-        // Create and post Cmd+V key events immediately (no delay)
-        let source = CGEventSource(stateID: .hidSystemState)
-        
+
+        print("🔍 DEBUG: Simulating Cmd+V paste")
+
+        let vKeyCode: CGKeyCode = 0x09 // 'V' key
+
         // Key down event for 'V' with Command modifier
-        if let keyDownEvent = CGEvent(keyboardEventSource: source, virtualKey: 0x09, keyDown: true) {
-            keyDownEvent.flags = .maskCommand
-            keyDownEvent.post(tap: .cghidEventTap)
+        guard let keyDownEvent = CGEvent(keyboardEventSource: nil, virtualKey: vKeyCode, keyDown: true) else {
+            print("❌ Failed to create key down event")
+            return
         }
-        
-        // Minimal delay between key down and up (reduced from 0.01 to 0.005)
-        Thread.sleep(forTimeInterval: 0.005)
-        
+        keyDownEvent.flags = .maskCommand
+        keyDownEvent.post(tap: .cghidEventTap)
+
+        // Small delay between key down and up
+        usleep(5_000) // 5ms
+
         // Key up event for 'V' with Command modifier
-        if let keyUpEvent = CGEvent(keyboardEventSource: source, virtualKey: 0x09, keyDown: false) {
-            keyUpEvent.flags = .maskCommand
-            keyUpEvent.post(tap: .cghidEventTap)
+        guard let keyUpEvent = CGEvent(keyboardEventSource: nil, virtualKey: vKeyCode, keyDown: false) else {
+            print("❌ Failed to create key up event")
+            return
         }
-        
-        print("✅ Simulated paste keystroke (Cmd+V)")
+        keyUpEvent.flags = .maskCommand
+        keyUpEvent.post(tap: .cghidEventTap)
+
+        print("✅ Cmd+V events posted successfully")
     }
-    
+
+    /// Validates that a target application has focus and is ready to receive text
+    private func validateTargetAppFocus() -> Bool {
+        // Get the currently focused application
+        guard let frontmostApp = NSWorkspace.shared.frontmostApplication else {
+            return false
+        }
+
+        // Don't paste into ourselves
+        if frontmostApp.bundleIdentifier == Bundle.main.bundleIdentifier {
+            return false
+        }
+
+        // Basic check: Is there a focused app that's not us?
+        return true
+    }
+
     private func processRecording() {
         // Get the recorded audio file
         guard let audioURL = audioRecorder.stopRecording() else {
@@ -288,21 +340,70 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // Transcribe the audio
                 print("🔄 Transcribing audio...")
                 let transcription = try await self.transcriptionService.transcribe(audioURL: audioURL)
-                
-                // OPTIMIZATION: Paste immediately, don't wait for cleanup
+
+                print("🔍 DEBUG: Transcription complete: \(transcription)")
+                print("🔍 DEBUG: Streaming enabled: \(self.settings.streamingTextEnabled)")
+
+                // Insert text at cursor location
                 await MainActor.run {
-                    // Copy to clipboard immediately
-                    let pasteboard = NSPasteboard.general
-                    pasteboard.clearContents()
-                    pasteboard.setString(transcription, forType: .string)
-                    
-                    print("✅ Transcription copied to clipboard: \(transcription)")
-                    
-                    // Simulate Cmd+V to paste at cursor location (NOW with no delay!)
-                    self.simulatePaste()
-                    
-                    // Update app state
-                    self.appState.setTranscription(transcription)
+                    // Small delay to allow user to refocus text editor
+                    Task {
+                        try? await Task.sleep(nanoseconds: 200_000_000) // 200ms delay
+
+                        // Validate that target app has focus
+                        let hasValidFocus = self.validateTargetAppFocus()
+                        print("🔍 DEBUG: validateTargetAppFocus() = \(hasValidFocus)")
+
+                        guard hasValidFocus else {
+                            print("⚠️ Target app lost focus, aborting paste")
+                            self.appState.setError(NSError(domain: "com.yappy", code: 2, userInfo: [
+                                NSLocalizedDescriptionKey: "Target application lost focus"
+                            ]))
+                            return
+                        }
+
+                        // Check if streaming is enabled
+                        if self.settings.streamingTextEnabled {
+                            print("🔍 DEBUG: Using streaming text insertion")
+                            // Stream word-by-word
+                            Task {
+                                do {
+                                    try await self.streamingTextInserter.insertStreaming(text: transcription)
+                                    print("✅ Transcription streamed: \(transcription)")
+
+                                    // Update app state and reset to idle immediately after streaming
+                                    await MainActor.run {
+                                        self.appState.setTranscription(transcription)
+                                        self.appState.reset()
+                                    }
+                                } catch {
+                                    print("❌ Streaming insertion failed: \(error)")
+                                    // Fall back to regular paste on error
+                                    await MainActor.run {
+                                        let pasteboard = NSPasteboard.general
+                                        pasteboard.clearContents()
+                                        pasteboard.setString(transcription, forType: .string)
+                                        self.simulatePaste()
+                                        self.appState.setTranscription(transcription)
+                                        self.appState.reset()
+                                    }
+                                }
+                            }
+                        } else {
+                            print("🔍 DEBUG: Using regular paste (all at once)")
+                            // Copy to clipboard and paste all at once
+                            let pasteboard = NSPasteboard.general
+                            pasteboard.clearContents()
+                            pasteboard.setString(transcription, forType: .string)
+
+                            self.simulatePaste()
+                            print("✅ Transcription pasted: \(transcription)")
+
+                            // Update app state and reset to idle immediately
+                            self.appState.setTranscription(transcription)
+                            self.appState.reset()
+                        }
+                    }
                 }
                 
                 // Clean up with Grok AFTER pasting (if enabled)
@@ -325,11 +426,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 
                 // Clean up the audio file
                 self.audioRecorder.cleanup()
-                
+
             } catch {
                 print("❌ Transcription error: \(error.localizedDescription)")
                 await MainActor.run {
                     self.appState.setError(error)
+                }
+                
+                // Reset to idle after error
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    self.appState.reset()
                 }
                 
                 // Clean up even on error
@@ -337,8 +443,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
     }
-
-    // MARK: - Menu Bar Setup
 
     private func setupMenuBar() {
         // Create menu bar item
