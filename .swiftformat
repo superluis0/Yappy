@@ -1,0 +1,21 @@
+# SwiftFormat Configuration for Yappy
+
+version: 5.9
+
+# Indentation (4 spaces - matches existing code)
+indent: "    "
+
+# Argument wrapping
+wrapArguments: false
+
+# Comment placement
+wrapSingleCommentsToTop: false
+
+# Use standard indentation and line breaks
+indentCase: true
+indentParentheses: true
+
+# Other standard formatting
+spacesAroundOperators: infix
+spacesAroundRangeFormation: true
+wrapMultilineStatementBrackets: true

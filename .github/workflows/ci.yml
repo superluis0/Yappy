@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    runs-on: macos-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Cache DerivedData
+      uses: actions/cache@v4
+      with:
+        path: ~/Library/Developer/Xcode/DerivedData/Yappy-*
+        key: ${{ runner.os }}-deriveddata-${{ hashFiles('**/*.swift') }}
+        restore-keys: |
+          ${{ runner.os }}-deriveddata-
+
+    - name: Build
+      run: xcodebuild -project Yappy.xcodeproj -scheme Yappy -configuration Debug build
+
+    - name: Test
+      run: xcodebuild -project Yappy.xcodeproj -scheme Yappy test
+
+    - name: Lint
+      continue-on-error: true
+      run: swiftlint lint --reporter github-actions-logging
