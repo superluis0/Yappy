@@ -2,223 +2,222 @@
 //  AudioRecorder.swift
 //  Yappy
 //
-//  Created on 2026-01-04.
-//
 
 import AVFoundation
 import Foundation
 
-/// Handles audio recording using AVAudioEngine.
-/// Captures microphone input and saves to a temporary audio file.
+/// Captures microphone input with AVAudioEngine into an in-memory buffer of
+/// 16 kHz mono Float32 samples — the format Parakeet expects — so transcription
+/// can start the instant recording stops, with no temp files.
 final class AudioRecorder {
     // MARK: - Properties
-    
+
     private let audioEngine = AVAudioEngine()
-    private var audioFile: AVAudioFile?
-    private var recordingURL: URL?
-    private var isRecording = false
-    
-    /// Callback for audio level updates
+    private var converter: AVAudioConverter?
+    private var samples: [Float] = []
+    private let samplesLock = NSLock()
+    private(set) var isRecording = false
+
+    /// Throttled audio level callback for waveform visualization (called on main).
     var onAudioLevelUpdate: ((Float) -> Void)?
-    
-    // MARK: - Public Methods
-    
-    /// Starts recording audio from the default microphone.
-    /// - Returns: True if recording started successfully, false otherwise.
-    func startRecording() -> Bool {
-        // Prevent multiple simultaneous recordings
-        guard !isRecording else {
-            print("⚠️ Already recording")
+
+    /// Raw input buffer hook (native format) for the streaming transcription
+    /// path. Called on the audio thread — keep work minimal.
+    var onBuffer: ((AVAudioPCMBuffer) -> Void)?
+
+    private var lastLevelUpdate: TimeInterval = 0
+
+    private static let targetSampleRate: Double = 16000
+
+    private let targetFormat: AVAudioFormat? = AVAudioFormat(
+        commonFormat: .pcmFormatFloat32,
+        sampleRate: targetSampleRate,
+        channels: 1,
+        interleaved: false
+    )
+
+    init() {
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleConfigurationChange),
+            name: .AVAudioEngineConfigurationChange,
+            object: audioEngine
+        )
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+
+    // MARK: - Permission
+
+    /// Requests microphone access without blocking. Call once at launch so the
+    /// first hotkey press can start recording immediately.
+    static func requestPermission() async -> Bool {
+        switch AVCaptureDevice.authorizationStatus(for: .audio) {
+        case .authorized:
+            return true
+        case .notDetermined:
+            return await AVCaptureDevice.requestAccess(for: .audio)
+        default:
             return false
         }
-        
-        // Make sure engine is stopped before reconfiguring
+    }
+
+    static var hasPermission: Bool {
+        AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
+    }
+
+    // MARK: - Recording
+
+    /// Starts capturing. Returns false if permission is missing or the engine fails.
+    func startRecording() -> Bool {
+        guard !isRecording else { return false }
+        guard Self.hasPermission else { return false }
+        guard let targetFormat else { return false }
+
         if audioEngine.isRunning {
-            print("⚠️ Stopping previous audio engine session")
             audioEngine.stop()
         }
-        
-        // Reset the engine to clear any previous configuration
         audioEngine.reset()
-        
-        // Check microphone permission (synchronously)
-        let permissionStatus = AVCaptureDevice.authorizationStatus(for: .audio)
-        
-        NSLog("🔐 Microphone permission status: \(permissionStatus.rawValue)")
-        
-        switch permissionStatus {
-        case .authorized:
-            NSLog("✅ Microphone permission granted")
-        case .notDetermined:
-            NSLog("⚠️ Microphone permission not determined - requesting...")
-            // Note: This is async, so first recording attempt may fail
-            AVCaptureDevice.requestAccess(for: .audio) { granted in
-                NSLog(granted ? "✅ Microphone permission granted" : "❌ Microphone permission denied")
-            }
-            return false
-        case .denied, .restricted:
-            NSLog("❌ Microphone permission denied or restricted")
-            NSLog("❌ Please enable microphone access in System Settings > Privacy & Security > Microphone")
-            return false
-        @unknown default:
-            NSLog("⚠️ Unknown microphone permission status")
-            return false
-        }
-        
-        // Create a temporary file URL for the recording (use WAV for fast recording)
-        let tempDir = FileManager.default.temporaryDirectory
-        let fileName = "yappy_recording_\(Date().timeIntervalSince1970).wav"
-        recordingURL = tempDir.appendingPathComponent(fileName)
-        
-        guard let url = recordingURL else {
-            print("❌ Failed to create recording URL")
-            return false
-        }
-        
-        // Get the input node
+
         let inputNode = audioEngine.inputNode
-        
-        // IMPORTANT: Remove any existing tap before installing a new one
         inputNode.removeTap(onBus: 0)
-        
-        // Check if input is available
-        guard inputNode.inputFormat(forBus: 0).channelCount > 0 else {
-            print("❌ No input channels available - microphone may not be accessible")
+
+        let inputFormat = inputNode.outputFormat(forBus: 0)
+        guard inputFormat.sampleRate > 0, inputFormat.channelCount > 0 else {
             return false
         }
-        
-        let recordingFormat = inputNode.outputFormat(forBus: 0)
-        
-        print("📊 Recording format: \(recordingFormat)")
-        print("📊 Sample rate: \(recordingFormat.sampleRate) Hz")
-        print("📊 Channels: \(recordingFormat.channelCount)")
-        
-        // Verify we have a valid format
-        guard recordingFormat.sampleRate > 0 && recordingFormat.channelCount > 0 else {
-            print("❌ Invalid recording format")
+
+        guard let converter = AVAudioConverter(from: inputFormat, to: targetFormat) else {
             return false
         }
-        
-        // Use PCM format for fast recording, we'll convert to M4A later
-        guard let format = AVAudioFormat(
-            commonFormat: .pcmFormatFloat32,
-            sampleRate: recordingFormat.sampleRate,
-            channels: recordingFormat.channelCount,
-            interleaved: false
-        ) else {
-            print("❌ Failed to create recording format")
-            return false
-        }
-        
-        print("💾 Output format: \(format)")
-        
-        // Create the audio file
-        do {
-            audioFile = try AVAudioFile(
-                forWriting: url,
-                settings: format.settings
-            )
-        } catch {
-            print("❌ Failed to create audio file: \(error)")
-            return false
-        }
-        
-        // Install tap on the input node with smaller buffer for lower latency
-        inputNode.installTap(onBus: 0, bufferSize: 2048, format: recordingFormat) { [weak self] buffer, _ in
-            guard let self = self, let audioFile = self.audioFile else { return }
-            
-            do {
-                // Write directly to file (no conversion for now)
-                try audioFile.write(from: buffer)
-                
-                // Calculate audio level for visualization
-                let level = self.calculateAudioLevel(from: buffer)
-                
-                // Call the callback on the main thread
-                DispatchQueue.main.async {
-                    self.onAudioLevelUpdate?(level)
-                }
-            } catch {
-                print("❌ Failed to write audio buffer: \(error)")
+        self.converter = converter
+
+        samplesLock.lock()
+        samples.removeAll(keepingCapacity: true)
+        samples.reserveCapacity(Int(Self.targetSampleRate) * 60)
+        samplesLock.unlock()
+
+        inputNode.installTap(onBus: 0, bufferSize: 2048, format: inputFormat) { [weak self] buffer, _ in
+            guard let self else { return }
+            // The tap's buffer is only valid during this callback — the engine
+            // reuses its memory afterward. The streaming consumer reads buffers
+            // asynchronously, so it must get an owned copy. `process` runs here
+            // synchronously and can use the live buffer directly.
+            if let onBuffer = self.onBuffer, let copy = Self.copy(of: buffer) {
+                onBuffer(copy)
             }
+            self.process(buffer: buffer)
         }
-        
-        // Start the audio engine
+
         do {
             try audioEngine.start()
             isRecording = true
-            print("🎤 Audio engine started")
             return true
         } catch {
-            print("❌ Failed to start audio engine: \(error)")
-            isRecording = false
+            inputNode.removeTap(onBus: 0)
+            self.converter = nil
             return false
         }
     }
-    
-    /// Stops recording and returns the URL of the recorded audio file.
-    /// - Returns: URL of the recorded audio file, or nil if recording failed.
-    func stopRecording() -> URL? {
-        guard isRecording else {
-            print("⚠️ Not currently recording")
-            return recordingURL
-        }
-        
-        // Mark as not recording first to prevent race conditions
+
+    /// Stops capturing and returns the recorded 16 kHz mono samples.
+    @discardableResult
+    func stopRecording() -> [Float] {
+        guard isRecording else { return [] }
         isRecording = false
-        
-        guard audioEngine.isRunning else {
-            print("⚠️ Audio engine is not running")
-            return recordingURL
-        }
-        
-        // Close the audio file first (before stopping engine)
-        audioFile = nil
-        
-        // Stop the engine (this will implicitly stop all taps)
+
+        audioEngine.inputNode.removeTap(onBus: 0)
         audioEngine.stop()
-        
-        // Reset the engine to clear configuration
         audioEngine.reset()
-        
-        print("🛑 Audio engine stopped")
-        
-        return recordingURL
+        converter = nil
+
+        samplesLock.lock()
+        let recorded = samples
+        samples.removeAll(keepingCapacity: false)
+        samplesLock.unlock()
+
+        return recorded
     }
-    
-    /// Cleans up temporary recording files.
-    func cleanup() {
-        if let url = recordingURL {
-            try? FileManager.default.removeItem(at: url)
-            recordingURL = nil
+
+    // MARK: - Private
+
+    /// Deep-copies a tap buffer so it can be safely used after the tap callback
+    /// returns. Copies the raw audio buffer list, so it's format-agnostic.
+    private static func copy(of source: AVAudioPCMBuffer) -> AVAudioPCMBuffer? {
+        guard let copy = AVAudioPCMBuffer(pcmFormat: source.format, frameCapacity: source.frameLength) else {
+            return nil
+        }
+        copy.frameLength = source.frameLength
+
+        let srcBuffers = UnsafeMutableAudioBufferListPointer(source.mutableAudioBufferList)
+        let dstBuffers = UnsafeMutableAudioBufferListPointer(copy.mutableAudioBufferList)
+        for i in 0..<srcBuffers.count {
+            guard let src = srcBuffers[i].mData, let dst = dstBuffers[i].mData else { continue }
+            let byteCount = Int(srcBuffers[i].mDataByteSize)
+            memcpy(dst, src, byteCount)
+            dstBuffers[i].mDataByteSize = srcBuffers[i].mDataByteSize
+        }
+        return copy
+    }
+
+    @objc private func handleConfigurationChange() {
+        // Input device changed/unplugged mid-recording: stop cleanly.
+        // The recorded samples up to this point remain available via stopRecording().
+        if isRecording, !audioEngine.isRunning {
+            isRecording = false
         }
     }
-    
-    // MARK: - Private Methods
-    
-    /// Calculates the average audio level from a buffer.
-    /// - Parameter buffer: The audio buffer to analyze.
-    /// - Returns: A normalized audio level between 0.0 and 1.0.
-    private func calculateAudioLevel(from buffer: AVAudioPCMBuffer) -> Float {
-        guard let channelData = buffer.floatChannelData else { return 0.0 }
-        
-        let channelDataValue = channelData.pointee
-        let channelDataValueArray = stride(
-            from: 0,
-            to: Int(buffer.frameLength),
-            by: buffer.stride
-        ).map { channelDataValue[$0] }
-        
-        // Calculate RMS (root mean square)
-        let rms = sqrt(channelDataValueArray.map { $0 * $0 }.reduce(0, +) / Float(channelDataValueArray.count))
-        
-        // Convert to decibels and normalize
-        let avgPower = 20 * log10(rms)
-        let minDb: Float = -80.0
-        let maxDb: Float = 0.0
-        
-        // Normalize to 0.0 - 1.0 range
-        let normalized = (avgPower - minDb) / (maxDb - minDb)
-        return max(0.0, min(1.0, normalized))
+
+    private func process(buffer: AVAudioPCMBuffer) {
+        guard let converter, let targetFormat else { return }
+
+        let ratio = Self.targetSampleRate / buffer.format.sampleRate
+        let capacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio) + 16
+        guard let outputBuffer = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: capacity) else {
+            return
+        }
+
+        var consumed = false
+        var error: NSError?
+        converter.convert(to: outputBuffer, error: &error) { _, outStatus in
+            if consumed {
+                outStatus.pointee = .noDataNow
+                return nil
+            }
+            consumed = true
+            outStatus.pointee = .haveData
+            return buffer
+        }
+        guard error == nil, let channelData = outputBuffer.floatChannelData else { return }
+
+        let frameCount = Int(outputBuffer.frameLength)
+        if frameCount > 0 {
+            samplesLock.lock()
+            samples.append(contentsOf: UnsafeBufferPointer(start: channelData[0], count: frameCount))
+            samplesLock.unlock()
+        }
+
+        emitLevel(from: buffer)
+    }
+
+    /// RMS level in 0...1, throttled to ~30 Hz on the main queue.
+    private func emitLevel(from buffer: AVAudioPCMBuffer) {
+        let now = CACurrentMediaTime()
+        guard now - lastLevelUpdate > 1.0 / 30.0 else { return }
+        lastLevelUpdate = now
+
+        guard let channelData = buffer.floatChannelData, buffer.frameLength > 0 else { return }
+        let data = UnsafeBufferPointer(start: channelData[0], count: Int(buffer.frameLength))
+        let rms = sqrt(data.reduce(0) { $0 + $1 * $1 } / Float(data.count))
+
+        let avgPower = 20 * log10(max(rms, .leastNonzeroMagnitude))
+        let minDb: Float = -60.0
+        let normalized = max(0.0, min(1.0, (avgPower - minDb) / -minDb))
+
+        DispatchQueue.main.async { [weak self] in
+            self?.onAudioLevelUpdate?(normalized)
+        }
     }
 }

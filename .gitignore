@@ -1,0 +1,39 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+.Trashes
+.Spotlight-V100
+.DocumentRevisions-V100
+
+# Xcode
+DerivedData/
+*.xcuserstate
+xcuserdata/
+*.xcworkspace/xcuserdata
+
+# Build artifacts
+build/
+*.app
+*.ipa
+dSyms/
+
+# IDEs
+.idea/
+.vscode/
+.swiftpm/
+
+# Environment
+.env
+*.env.local
+
+# Temporary files
+*.swp
+*.swo
+
+# Coverage / tooling artifacts
+*.profraw
+.ruff_cache/
+
+# Local agent/editor state
+.claude/

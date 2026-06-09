@@ -1,0 +1,39 @@
+# SwiftLint Configuration for Yappy
+
+# Disable all rules by default, enable recommended ones
+disabled_rules: []
+opt_in_rules: []
+
+# Exclude common directories and files
+excluded:
+  - DerivedData/
+  - "*.xcodeproj/"
+  - Pods/
+  - Carthage/Build/
+
+# Rule Configurations
+line_length:
+  warning: 120
+  error: 200
+  ignores_function_declarations: true
+  ignores_comments: true
+  ignores_urls: true
+
+identifier_name:
+  min_length:
+    warning: 1
+  max_length:
+    warning: 50
+  excluded:
+    - id
+    - x
+    - y
+
+type_body_length:
+  warning: 300
+  error: 500
+
+# Allow standard comment format at file header
+file_header:
+  disabled_rules:
+    - trailing_whitespace

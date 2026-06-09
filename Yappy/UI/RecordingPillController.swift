@@ -1,0 +1,99 @@
+//
+//  RecordingPillController.swift
+//  Yappy
+//
+
+import AppKit
+import SwiftUI
+
+/// Owns the floating pill panel. The panel exists only while recording or
+/// processing — it never steals focus, never accepts mouse events, and is
+/// fully hidden (ordered out) when idle.
+final class RecordingPillController {
+    private var panel: NSPanel?
+    private let appState: AppState
+
+    init(appState: AppState) {
+        self.appState = appState
+    }
+
+    // MARK: - Visibility
+
+    func show() {
+        let panel = self.panel ?? makePanel()
+        self.panel = panel
+        position(panel)
+        panel.alphaValue = 0
+        panel.orderFrontRegardless()
+
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.18
+            panel.animator().alphaValue = 1
+        }
+    }
+
+    func hide() {
+        guard let panel else { return }
+        NSAnimationContext.runAnimationGroup({ context in
+            context.duration = 0.22
+            panel.animator().alphaValue = 0
+        }, completionHandler: { [weak self] in
+            // Only order out if nothing restarted in the meantime.
+            if let self, !self.appState.isRecording, !self.appState.isProcessing {
+                panel.orderOut(nil)
+            }
+        })
+    }
+
+    // MARK: - Panel Setup
+
+    /// The panel is larger than the visible capsule by `pillShadowMargin` on each
+    /// side, giving the drop shadow transparent space to fade into.
+    private static var panelSize: NSSize {
+        NSSize(
+            width: Constants.pillWidth + Constants.pillShadowMargin * 2,
+            height: Constants.pillHeight + Constants.pillShadowMargin * 2
+        )
+    }
+
+    private func makePanel() -> NSPanel {
+        let size = Self.panelSize
+        let panel = NSPanel(
+            contentRect: NSRect(origin: .zero, size: size),
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+        panel.level = .statusBar
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.hasShadow = false
+        panel.ignoresMouseEvents = true
+        panel.hidesOnDeactivate = false
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
+        panel.isReleasedWhenClosed = false
+
+        let hosting = NSHostingView(rootView: RecordingPillView(appState: appState))
+        hosting.frame = NSRect(origin: .zero, size: size)
+        hosting.autoresizingMask = [.width, .height]
+        panel.contentView = hosting
+
+        return panel
+    }
+
+    /// Bottom-center of the screen containing the mouse (where the user is working).
+    private func position(_ panel: NSPanel) {
+        let mouseLocation = NSEvent.mouseLocation
+        let screen = NSScreen.screens.first { NSMouseInRect(mouseLocation, $0.frame, false) }
+            ?? NSScreen.main
+        guard let screen else { return }
+
+        let size = Self.panelSize
+        let visible = screen.visibleFrame
+        let x = visible.midX - size.width / 2
+        // Offset by the shadow margin so the visible capsule — not the larger
+        // transparent panel — sits `pillBottomMargin` above the dock.
+        let y = visible.minY + Constants.pillBottomMargin - Constants.pillShadowMargin
+        panel.setFrameOrigin(NSPoint(x: x, y: y))
+    }
+}

@@ -2,8 +2,6 @@
 //  Settings.swift
 //  Yappy
 //
-//  Created on 2026-01-04.
-//
 
 import Foundation
 import Combine
@@ -21,101 +19,113 @@ enum HotkeyOption: String, CaseIterable, Codable {
 }
 
 /// Application settings with UserDefaults persistence.
-/// Manages API keys, hotkey preferences, and application behavior settings.
+/// Fully local — no API keys. The optional LLM cleanup talks to LM Studio on localhost.
 final class Settings: ObservableObject {
     // MARK: - UserDefaults Keys
 
     private enum Keys {
-        static let openAIAPIKey = "com.yappy.openAIAPIKey"
-        static let openRouterAPIKey = "com.yappy.openRouterAPIKey"
         static let hotkeyOption = "com.yappy.hotkeyOption"
         static let launchAtLogin = "com.yappy.launchAtLogin"
         static let cleanupEnabled = "com.yappy.cleanupEnabled"
-        static let voiceCommandsEnabled = "com.yappy.voiceCommandsEnabled"
         static let audioFeedbackEnabled = "com.yappy.audioFeedbackEnabled"
         static let audioFeedbackVolume = "com.yappy.audioFeedbackVolume"
-        static let streamingTextEnabled = "com.yappy.streamingTextEnabled"
+        static let lmStudioModelID = "com.yappy.lmStudioModelID"
+        static let lmStudioBaseURL = "com.yappy.lmStudioBaseURL"
+        static let commandModeEnabled = "com.yappy.commandModeEnabled"
+        static let commandHotkeyOption = "com.yappy.commandHotkeyOption"
+        static let contextAwareToneEnabled = "com.yappy.contextAwareToneEnabled"
+        static let toneOverrides = "com.yappy.toneOverrides"
+        static let customDictionaryEnabled = "com.yappy.customDictionaryEnabled"
+        static let onboardingComplete = "com.yappy.onboardingComplete"
+        static let legacyCleanupMigrated = "com.yappy.legacyCleanupMigrated"
+
+        /// Keys from the cloud-based versions of Yappy; removed on first launch.
+        static let staleKeys = [
+            "com.yappy.openAIAPIKey",
+            "com.yappy.openRouterAPIKey",
+            "com.yappy.streamingTextEnabled",
+            "com.yappy.voiceCommandsEnabled",
+            "com.yappy.keychainMigrationComplete",
+        ]
     }
 
     // MARK: - Published Properties
 
-    /// OpenAI API key for Whisper transcription service.
-    @Published var openAIAPIKey: String = "" {
-        didSet {
-            if isLoading { return }
-            save()
-        }
-    }
-
-    /// OpenRouter API key for Grok cleanup/enhancement service.
-    @Published var openRouterAPIKey: String = "" {
-        didSet {
-            if isLoading { return }
-            save()
-        }
-    }
-
     /// Selected hotkey activation method.
     @Published var hotkeyOption: HotkeyOption = .rightCommandHold {
-        didSet {
-            if isLoading { return }
-            save()
-        }
+        didSet { if !isLoading { save() } }
     }
 
     /// Whether the app should launch automatically at login.
     @Published var launchAtLogin: Bool = false {
-        didSet {
-            if isLoading { return }
-            save()
-        }
+        didSet { if !isLoading { save() } }
     }
 
-    /// Whether to enable AI-powered transcription cleanup.
-    @Published var cleanupEnabled: Bool = true {
-        didSet {
-            if isLoading { return }
-            save()
-        }
-    }
-
-    /// Whether voice commands are enabled (e.g., "delete that", "new line").
-    @Published var voiceCommandsEnabled: Bool = true {
-        didSet {
-            if isLoading { return }
-            save()
-        }
+    /// Whether to clean up transcripts with a local LM Studio model. Off by default.
+    @Published var cleanupEnabled: Bool = false {
+        didSet { if !isLoading { save() } }
     }
 
     /// Whether audio feedback sounds are enabled.
     @Published var audioFeedbackEnabled: Bool = true {
-        didSet {
-            if isLoading { return }
-            save()
-        }
+        didSet { if !isLoading { save() } }
     }
 
     /// Volume level for audio feedback (0.0 - 1.0).
     @Published var audioFeedbackVolume: Float = 0.5 {
-        didSet {
-            if isLoading { return }
-            save()
-        }
+        didSet { if !isLoading { save() } }
     }
 
-    /// Whether streaming text insertion is enabled (word-by-word typing effect).
-    @Published var streamingTextEnabled: Bool = false {
-        didSet {
-            if isLoading { return }
-            save()
-        }
+    /// Identifier of the LM Studio model used for cleanup (nil = first available).
+    @Published var lmStudioModelID: String? {
+        didSet { if !isLoading { save() } }
     }
 
-    // MARK: - Computed Properties
+    /// Base URL of LM Studio's OpenAI-compatible server.
+    @Published var lmStudioBaseURL: String = Constants.defaultLMStudioBaseURL {
+        didSet { if !isLoading { save() } }
+    }
 
-    /// Returns true if both API keys are configured.
-    var isConfigured: Bool {
-        return !openAIAPIKey.isEmpty && !openRouterAPIKey.isEmpty
+    /// Whether Command Mode (select text + speak an instruction) is active.
+    @Published var commandModeEnabled: Bool = true {
+        didSet { if !isLoading { save() } }
+    }
+
+    /// Hotkey that triggers Command Mode. Should differ from `hotkeyOption`.
+    @Published var commandHotkeyOption: HotkeyOption = .rightOptionHold {
+        didSet { if !isLoading { save() } }
+    }
+
+    /// Whether cleanup adapts tone to the frontmost app's category.
+    @Published var contextAwareToneEnabled: Bool = true {
+        didSet { if !isLoading { save() } }
+    }
+
+    /// Per-category tone overrides; absent category = use the category default.
+    @Published var toneOverrides: [AppCategory: ToneStyle] = [:] {
+        didSet { if !isLoading { save() } }
+    }
+
+    /// Whether the custom dictionary (vocabulary boosting) is enabled.
+    @Published var customDictionaryEnabled: Bool = false {
+        didSet { if !isLoading { save() } }
+    }
+
+    /// Whether the first-run onboarding flow has been completed.
+    @Published var onboardingComplete: Bool = false {
+        didSet { if !isLoading { save() } }
+    }
+
+    // MARK: - Tone Resolution
+
+    /// The effective tone for a category: the user override, or the category default.
+    func tone(for category: AppCategory) -> ToneStyle {
+        toneOverrides[category] ?? category.defaultTone
+    }
+
+    /// True if the command hotkey collides with the dictation hotkey.
+    var hotkeysCollide: Bool {
+        commandHotkeyOption == hotkeyOption
     }
 
     // MARK: - Private Properties
@@ -125,43 +135,38 @@ final class Settings: ObservableObject {
 
     // MARK: - Initialization
 
-    /// Initializes settings and loads persisted values.
-    ///
     /// - Parameter defaults: The UserDefaults instance to use. Defaults to .standard.
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
+        removeStaleKeys()
         load()
     }
 
     // MARK: - Persistence Methods
 
     /// Saves all settings to UserDefaults.
-    /// Called automatically when any published property changes.
     func save() {
-        defaults.set(openAIAPIKey, forKey: Keys.openAIAPIKey)
-        defaults.set(openRouterAPIKey, forKey: Keys.openRouterAPIKey)
         defaults.set(hotkeyOption.rawValue, forKey: Keys.hotkeyOption)
         defaults.set(launchAtLogin, forKey: Keys.launchAtLogin)
         defaults.set(cleanupEnabled, forKey: Keys.cleanupEnabled)
-        defaults.set(voiceCommandsEnabled, forKey: Keys.voiceCommandsEnabled)
         defaults.set(audioFeedbackEnabled, forKey: Keys.audioFeedbackEnabled)
         defaults.set(audioFeedbackVolume, forKey: Keys.audioFeedbackVolume)
-        defaults.set(streamingTextEnabled, forKey: Keys.streamingTextEnabled)
-        
-        // Force synchronize to ensure values are written to disk
-        defaults.synchronize()
-        
-        print("💾 Settings saved - OpenRouter key: \(openRouterAPIKey.isEmpty ? "empty" : "set (\(openRouterAPIKey.prefix(4))...)")")
+        defaults.set(lmStudioModelID, forKey: Keys.lmStudioModelID)
+        defaults.set(lmStudioBaseURL, forKey: Keys.lmStudioBaseURL)
+        defaults.set(commandModeEnabled, forKey: Keys.commandModeEnabled)
+        defaults.set(commandHotkeyOption.rawValue, forKey: Keys.commandHotkeyOption)
+        defaults.set(contextAwareToneEnabled, forKey: Keys.contextAwareToneEnabled)
+        defaults.set(customDictionaryEnabled, forKey: Keys.customDictionaryEnabled)
+        defaults.set(onboardingComplete, forKey: Keys.onboardingComplete)
+
+        let overrides = Dictionary(uniqueKeysWithValues: toneOverrides.map { ($0.key.rawValue, $0.value.rawValue) })
+        defaults.set(overrides, forKey: Keys.toneOverrides)
     }
 
     /// Loads all settings from UserDefaults.
-    /// Called during initialization to restore persisted state.
     func load() {
         isLoading = true
         defer { isLoading = false }
-        
-        openAIAPIKey = defaults.string(forKey: Keys.openAIAPIKey) ?? ""
-        openRouterAPIKey = defaults.string(forKey: Keys.openRouterAPIKey) ?? ""
 
         if let hotkeyRawValue = defaults.string(forKey: Keys.hotkeyOption),
            let loadedHotkey = HotkeyOption(rawValue: hotkeyRawValue) {
@@ -169,68 +174,97 @@ final class Settings: ObservableObject {
         }
 
         launchAtLogin = defaults.bool(forKey: Keys.launchAtLogin)
+        cleanupEnabled = defaults.bool(forKey: Keys.cleanupEnabled)
 
-        // Default to true if not set, otherwise use stored value
-        if defaults.object(forKey: Keys.cleanupEnabled) != nil {
-            cleanupEnabled = defaults.bool(forKey: Keys.cleanupEnabled)
-        } else {
-            cleanupEnabled = true
-        }
-
-        // Voice commands - default to true
-        if defaults.object(forKey: Keys.voiceCommandsEnabled) != nil {
-            voiceCommandsEnabled = defaults.bool(forKey: Keys.voiceCommandsEnabled)
-        } else {
-            voiceCommandsEnabled = true
-        }
-
-        // Audio feedback - default to true
         if defaults.object(forKey: Keys.audioFeedbackEnabled) != nil {
             audioFeedbackEnabled = defaults.bool(forKey: Keys.audioFeedbackEnabled)
         } else {
             audioFeedbackEnabled = true
         }
 
-        // Audio feedback volume - default to 0.5
         if defaults.object(forKey: Keys.audioFeedbackVolume) != nil {
             audioFeedbackVolume = defaults.float(forKey: Keys.audioFeedbackVolume)
         } else {
             audioFeedbackVolume = 0.5
         }
 
-        // Streaming text - default to true
-        if defaults.object(forKey: Keys.streamingTextEnabled) != nil {
-            streamingTextEnabled = defaults.bool(forKey: Keys.streamingTextEnabled)
+        lmStudioModelID = defaults.string(forKey: Keys.lmStudioModelID)
+
+        if let baseURL = defaults.string(forKey: Keys.lmStudioBaseURL), !baseURL.isEmpty {
+            lmStudioBaseURL = baseURL
         } else {
-            streamingTextEnabled = true
+            lmStudioBaseURL = Constants.defaultLMStudioBaseURL
         }
-        
-        print("📋 Settings loaded - OpenRouter key: \(openRouterAPIKey.isEmpty ? "empty" : "set (\(openRouterAPIKey.prefix(4))...)")")
+
+        if defaults.object(forKey: Keys.commandModeEnabled) != nil {
+            commandModeEnabled = defaults.bool(forKey: Keys.commandModeEnabled)
+        } else {
+            commandModeEnabled = true
+        }
+
+        if let raw = defaults.string(forKey: Keys.commandHotkeyOption),
+           let option = HotkeyOption(rawValue: raw) {
+            commandHotkeyOption = option
+        }
+
+        if defaults.object(forKey: Keys.contextAwareToneEnabled) != nil {
+            contextAwareToneEnabled = defaults.bool(forKey: Keys.contextAwareToneEnabled)
+        } else {
+            contextAwareToneEnabled = true
+        }
+
+        customDictionaryEnabled = defaults.bool(forKey: Keys.customDictionaryEnabled)
+        onboardingComplete = defaults.bool(forKey: Keys.onboardingComplete)
+
+        if let raw = defaults.dictionary(forKey: Keys.toneOverrides) as? [String: String] {
+            var parsed: [AppCategory: ToneStyle] = [:]
+            for (key, value) in raw {
+                if let category = AppCategory(rawValue: key), let tone = ToneStyle(rawValue: value) {
+                    parsed[category] = tone
+                }
+            }
+            toneOverrides = parsed
+        }
     }
 
     // MARK: - Utility Methods
 
     /// Resets all settings to default values.
     func reset() {
-        openAIAPIKey = ""
-        openRouterAPIKey = ""
         hotkeyOption = .rightCommandHold
         launchAtLogin = false
-        cleanupEnabled = true
-        voiceCommandsEnabled = true
+        cleanupEnabled = false
         audioFeedbackEnabled = true
         audioFeedbackVolume = 0.5
-        streamingTextEnabled = true
+        lmStudioModelID = nil
+        lmStudioBaseURL = Constants.defaultLMStudioBaseURL
+        commandModeEnabled = true
+        commandHotkeyOption = .rightOptionHold
+        contextAwareToneEnabled = true
+        toneOverrides = [:]
+        customDictionaryEnabled = false
+        // onboardingComplete intentionally not reset — it tracks lifetime state.
 
-        // Clear from UserDefaults
-        defaults.removeObject(forKey: Keys.openAIAPIKey)
-        defaults.removeObject(forKey: Keys.openRouterAPIKey)
-        defaults.removeObject(forKey: Keys.hotkeyOption)
-        defaults.removeObject(forKey: Keys.launchAtLogin)
-        defaults.removeObject(forKey: Keys.cleanupEnabled)
-        defaults.removeObject(forKey: Keys.voiceCommandsEnabled)
-        defaults.removeObject(forKey: Keys.audioFeedbackEnabled)
-        defaults.removeObject(forKey: Keys.audioFeedbackVolume)
-        defaults.removeObject(forKey: Keys.streamingTextEnabled)
+        for key in [
+            Keys.hotkeyOption, Keys.launchAtLogin, Keys.cleanupEnabled,
+            Keys.audioFeedbackEnabled, Keys.audioFeedbackVolume, Keys.lmStudioModelID,
+            Keys.lmStudioBaseURL, Keys.commandModeEnabled, Keys.commandHotkeyOption,
+            Keys.contextAwareToneEnabled, Keys.toneOverrides, Keys.customDictionaryEnabled,
+        ] {
+            defaults.removeObject(forKey: key)
+        }
+    }
+
+    /// Removes settings left over from the cloud-based versions of the app.
+    /// The old `cleanupEnabled` flag controlled cloud cleanup and defaulted to on,
+    /// so it is reset once rather than carried over to LM Studio cleanup.
+    private func removeStaleKeys() {
+        for key in Keys.staleKeys {
+            defaults.removeObject(forKey: key)
+        }
+        if !defaults.bool(forKey: Keys.legacyCleanupMigrated) {
+            defaults.removeObject(forKey: Keys.cleanupEnabled)
+            defaults.set(true, forKey: Keys.legacyCleanupMigrated)
+        }
     }
 }

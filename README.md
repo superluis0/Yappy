@@ -1,221 +1,122 @@
-# Yappy 🎤
+<div align="center">
 
-**A blazingly fast voice-to-text macOS menu bar app powered by AI**
+<img src="Documentation/assets/hero.png" alt="Yappy — talk, it types, everywhere on your Mac" width="820">
 
-Yappy is a native macOS application that transcribes your voice in real-time using OpenAI's Whisper API and enhances the output with Grok AI via OpenRouter. Trigger recording with a customizable hotkey, speak naturally, and watch as your words appear instantly in any application.
+<h3>Voice-to-text for macOS that runs entirely on your Mac.</h3>
 
-![macOS](https://img.shields.io/badge/macOS-13.0+-blue.svg)
-![Swift](https://img.shields.io/badge/Swift-5.9+-orange.svg)
-![License](https://img.shields.io/badge/license-MIT-green.svg)
+<p>Hold a key, speak, release — your words appear at the cursor in any app, usually in under a second.<br>
+No API keys. No cloud. No subscriptions. Your voice never leaves the device.</p>
 
----
+<p>
+<img src="https://img.shields.io/badge/macOS-14%2B-000000?style=flat-square&logo=apple&logoColor=white" alt="macOS 14+">
+<img src="https://img.shields.io/badge/Swift-5.9-FF6B35?style=flat-square&logo=swift&logoColor=white" alt="Swift 5.9">
+<img src="https://img.shields.io/badge/Engine-Parakeet%20on%20ANE-5b8cff?style=flat-square" alt="Parakeet on the Apple Neural Engine">
+<img src="https://img.shields.io/badge/Privacy-100%25%20on--device-37d39a?style=flat-square" alt="100% on-device">
+<img src="https://img.shields.io/badge/License-MIT-555?style=flat-square" alt="MIT License">
+</p>
 
-## ✨ Features
-
-### Core Features
-- **⚡ Ultra-Fast Transcription**: Optimized network layer and parallel processing for minimal latency
-- **🎯 Global Hotkey Activation**: Double-tap or hold Right Command/Option - works anywhere on macOS
-- **🎨 Beautiful Waveform Visualization**: Real-time animated audio level display during recording
-- **🤖 AI-Powered Cleanup**: Optional Grok-based text enhancement (grammar, punctuation, filler word removal)
-- **📝 Universal Text Insertion**: Works in any macOS app - TextEdit, Slack, browsers, terminals, etc.
-- **🔒 Privacy-Focused**: Audio processed via API, no permanent storage
-- **⚙️ Menu Bar Integration**: Unobtrusive, no dock icon, always accessible
-- **🎛️ Customizable Settings**: Configure API keys, hotkeys, and cleanup behavior
-
-### Premium Features (New!)
-- **🎙️ Voice Commands**: Say "delete that", "new line", "period", etc. for hands-free editing
-- **✍️ Streaming Text**: Watch your words appear one-by-one at your cursor
-- **🔊 Audio Feedback**: Subtle sounds for recording start/stop and actions
-- **🎨 Custom Orange Waveform Icon**: Beautiful branded menu bar icon
+</div>
 
 ---
 
-## 🚀 Quick Start
+## Why Yappy
 
-### Prerequisites
+Most dictation apps stream your microphone to a server. Yappy doesn't. It runs NVIDIA's **Parakeet** speech model directly on the **Apple Neural Engine** (via [FluidAudio](https://github.com/FluidInference/FluidAudio)) — so transcription is fast, private, and works on a plane with the Wi‑Fi off.
 
-- macOS 13.0 (Ventura) or later
-- [OpenAI API key](https://platform.openai.com/api-keys)
-- [OpenRouter API key](https://openrouter.ai/keys) (for text cleanup feature)
+It stays out of your way until you need it: a single global hotkey, a small recording pill that fades in only while you talk, and text that lands wherever your cursor already is — your editor, Slack, the browser, a terminal, anywhere.
 
-### Installation
+<div align="center">
+<img src="Documentation/assets/how-it-works.png" alt="Hold the hotkey, speak naturally, release — text lands at your cursor" width="820">
+</div>
 
-#### From Pre-built App
-1. Download the latest release from the Releases page
-2. Drag Yappy.app to your Applications folder
-3. Launch Yappy from Applications or Spotlight
+## A real app, not just a menu bar blip
 
-#### Building from Source
+Click Yappy open and you get a clean home with your dictation stats and searchable history, plus everything configurable in one place.
+
+<div align="center">
+<img src="Documentation/assets/home.png" alt="Yappy home window with stats and recent dictations" width="49%">
+<img src="Documentation/assets/settings.png" alt="Yappy settings — hotkeys, command mode, and more" width="49%">
+</div>
+
+## Features
+
+**Local transcription** — Parakeet TDT 0.6B (English) on the Apple Neural Engine, roughly 120× real-time on Apple Silicon. The model downloads once (~443 MB) and never phones home again.
+
+**Universal insertion** — pastes at the cursor in any app, including Electron apps, web views, and terminals where direct insertion fails. Your clipboard is snapshotted and restored, so nothing you copied gets clobbered.
+
+**Command Mode** — select text anywhere, hold the command hotkey, and speak an instruction: *"make this concise"*, *"translate to Spanish"*, *"turn this into a bulleted list."* The selection is rewritten in place. Powered by a local LM Studio model; if it isn't running, your text is left untouched.
+
+**Voice shortcuts** — say a cue and Yappy expands it to canned text: an email signature, a calendar link, a block of boilerplate.
+
+**Context-aware tone** — optional cleanup adapts to the app you're typing in: formal in Mail, casual in Messages, and strictly verbatim in code editors so nothing gets reworded.
+
+**Custom dictionary** — teach Yappy your names, jargon, and acronyms; on-device vocabulary boosting fixes the words it used to mishear.
+
+**Polished hotkeys** — hold Right ⌘, double-tap Right ⌘, or hold Right ⌥. A debounced state machine ignores key repeats and accidental taps, so it never fires when you don't mean it.
+
+**Private by design** — after the one-time model download, the only network traffic is to your own LM Studio on `localhost` (and only if you turn cleanup on).
+
+## Quick start
+
+Requires Xcode 15+ and macOS 14+ (Apple Silicon recommended).
+
 ```bash
-# Clone the repository
 git clone https://github.com/superluis0/Yappy.git
-cd Yappy/Yappy
-
-# Build
-xcodebuild -project ../Yappy.xcodeproj -scheme Yappy -configuration Release build
-
-# Install to Applications
+cd Yappy
+xcodebuild -project Yappy.xcodeproj -scheme Yappy -configuration Release build
 cp -R ~/Library/Developer/Xcode/DerivedData/Yappy-*/Build/Products/Release/Yappy.app /Applications/
-
-# Launch
 open /Applications/Yappy.app
 ```
 
-### Grant Permissions
-After launching Yappy, grant these permissions:
+A short first-run flow walks you through the two permissions Yappy needs:
 
-1. **Microphone**: 
-   - Try to record (triggers the permission prompt)
-   - Or: System Settings → Privacy & Security → Microphone → Enable Yappy
+- **Microphone** — to hear you.
+- **Accessibility** — to detect the hotkey and paste text.
 
-2. **Accessibility** (required for hotkey & text insertion):
-   - System Settings → Privacy & Security → Accessibility
-   - Click **+** → Select **Yappy.app** → Enable
+Then hold **Right ⌘** anywhere and start talking.
 
-### Configure API Keys
-1. Click the Yappy menu bar icon (orange waveform)
-2. Click "Settings..."
-3. Go to "API Keys" tab
-4. Enter your OpenAI API key
-5. Enter your OpenRouter API key
-6. Click Save
+> **Tip:** if another FluidAudio app (such as VoiceInk) has already downloaded Parakeet, Yappy reuses it from `~/Library/Application Support/FluidAudio/Models/` — no second download.
 
----
+## Optional: AI cleanup with LM Studio
 
-## 🎯 Usage
+Yappy can tidy up filler words and punctuation, and power Command Mode, using a model you run locally in [LM Studio](https://lmstudio.ai) — entirely offline, no API keys.
 
-### Basic Recording
+1. Open LM Studio, load a model, and start its local server (default `http://localhost:1234`).
+2. In Yappy → Settings, enable **AI Cleanup** and pick the model.
 
-1. **Start Recording**: Hold Right ⌘ (or your configured hotkey)
-2. **Speak**: Watch the waveform animate as you speak
-3. **Stop Recording**: Release the key
-4. **Result**: Text appears at your cursor position
+If LM Studio isn't reachable, dictation degrades gracefully: the raw transcript is inserted and nothing breaks.
 
-### Voice Commands (Optional)
+## Privacy
 
-Say these at the end of your dictation:
-- **"delete that"** - Removes the text you just inserted
-- **"new line"** - Inserts a line break
-- **"new paragraph"** - Inserts two line breaks
-- **"undo"** - Triggers Cmd+Z
-- **"period" / "comma" / "question mark"** - Inserts punctuation
+- Audio is transcribed on-device and held only in memory — never written to disk.
+- No telemetry, no analytics, no account.
+- The single one-time network request is the model download from Hugging Face. After that, Yappy runs fully offline (LM Studio calls, if enabled, stay on `localhost`).
 
-### Hotkey Options
+## Architecture
 
-Configure in Settings → General:
-- **Hold Right ⌘** (Default): Press and hold to record, release to finish
-- **Double-tap Right ⌘**: Tap twice to start, tap twice to stop
-- **Hold Right ⌥**: Alternative using Right Option key
+| Area | Files | Role |
+|------|-------|------|
+| Transcription | `Services/ParakeetTranscriptionService.swift` | Loads & pre-warms Parakeet; batch transcription on release |
+| Audio capture | `App/AudioRecorder.swift` | AVAudioEngine → in-memory 16 kHz mono Float32 |
+| Hotkeys | `Services/HotkeyManager.swift` | One CGEvent tap + a pure, unit-tested state machine |
+| Text insertion | `Services/TextInserter.swift` | Cmd+V paste with change-count-safe clipboard restore |
+| Command Mode / cleanup | `Services/LMStudioService.swift` | Local OpenAI-compatible calls; graceful fallback |
+| Custom dictionary | `Core/DictionaryStore.swift` | Terms fed to FluidAudio CTC vocabulary boosting |
+| Pill & windows | `UI/` | Floating pill, home window, settings, onboarding |
 
----
+## Tests
 
-## ⚙️ Settings
-
-### General Tab
-- **Hotkey Selection**: Choose your preferred activation method
-- **Launch at Login**: Start Yappy automatically
-- **AI Transcription Cleanup**: Enable/disable Grok enhancement
-
-### API Keys Tab
-- **OpenAI API Key**: For Whisper speech-to-text
-- **OpenRouter API Key**: For Grok text cleanup
-
-### Permissions
-- Direct links to System Settings for Microphone and Accessibility
-
----
-
-## 🏗️ Architecture
-
-### Project Structure
-
-```
-Yappy/
-├── App/
-│   ├── YappyApp.swift              # SwiftUI app entry point
-│   ├── AppDelegate.swift           # Main coordinator & flow control
-│   ├── SettingsView.swift          # Settings window UI
-│   └── TranscriptionService.swift  # Unified API service
-│
-├── Core/
-│   ├── AppState.swift              # Observable app state
-│   ├── Settings.swift              # UserDefaults-backed settings
-│   └── Constants.swift             # App-wide constants
-│
-├── Services/
-│   ├── AudioRecorder.swift         # AVFoundation audio capture
-│   ├── AudioFeedbackManager.swift  # Sound effects (NEW)
-│   ├── StreamingTextInserter.swift # Word-by-word insertion (NEW)
-│   ├── VoiceCommandProcessor.swift # Voice commands (NEW)
-│   ├── WhisperService.swift        # OpenAI Whisper API
-│   ├── GrokService.swift           # Grok cleanup API
-│   └── TextInserter.swift          # Text insertion via paste
-│
-├── UI/
-│   ├── WaveformView.swift          # Animated waveform
-│   └── WaveformWindowController.swift
-│
-└── Resources/
-    ├── AppIcon.icns                # App icon
-    └── Sounds/                     # Audio feedback sounds
+```bash
+xcodebuild -project Yappy.xcodeproj -scheme Yappy test
 ```
 
-### Technology Stack
+Covers the hotkey state machine, settings persistence and migration, dictation history and stats, voice-shortcut expansion, and app-context classification.
 
-- **Language**: Swift 5.9+
-- **UI Framework**: SwiftUI + AppKit
-- **Audio**: AVFoundation
-- **State Management**: Combine + ObservableObject
-- **APIs**: OpenAI Whisper, OpenRouter (Grok)
+## Built with
 
----
+- [FluidAudio](https://github.com/FluidInference/FluidAudio) — Parakeet, CoreML, and the Apple Neural Engine inference stack.
+- [LM Studio](https://lmstudio.ai) — optional, local LLM cleanup.
 
-## 🔐 Privacy & Security
+## License
 
-- **No Data Storage**: Audio files deleted immediately after transcription
-- **API-Only Processing**: Audio sent via HTTPS, not stored by Yappy
-- **Local Settings**: Stored in UserDefaults
-- **Clipboard Preservation**: Original clipboard restored after insertion
-
----
-
-## 🐛 Troubleshooting
-
-| Issue | Solution |
-|-------|----------|
-| App not in menu bar | Check if running: `pgrep Yappy` |
-| Hotkey doesn't work | Enable Accessibility in System Settings |
-| No transcription | Check API keys and Microphone permission |
-| "Invalid API key" | Verify keys have no extra spaces |
-| Text doesn't insert | Click in target app first, check Accessibility |
-
----
-
-## 📋 API Costs
-
-- **OpenAI Whisper**: ~$0.006 per minute of audio
-- **OpenRouter (Grok)**: Variable, optional (can be disabled)
-
-Example: 30-second recording ≈ $0.003
-
----
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
----
-
-## 📄 License
-
-MIT License - see LICENSE file for details.
-
----
-
-**Made with ❤️ using Swift and SwiftUI**
-
-*Yappy - Because typing is so 2023* 🎤✨
+MIT — see [LICENSE](LICENSE).

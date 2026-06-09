@@ -2,42 +2,21 @@
 //  YappyApp.swift
 //  Yappy
 //
-//  Created on 2026-01-04.
-//
 
 import SwiftUI
 
-/// Main application entry point for Yappy.
-/// This is a menu bar app that runs without a dock icon (LSUIElement = true).
+/// Main application entry point. Yappy is a menu bar app (LSUIElement);
+/// windows — the main window, recording pill, and first-run setup — are all
+/// managed by AppDelegate, so no SwiftUI window scenes are declared here.
 @main
 struct YappyApp: App {
-    // MARK: - App Delegate
-
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
-    
-    init() {
-        // Log to tmp immediately
-        let logMessage = "\(Date()): 🚀 YappyApp.init() called\n"
-        let logURL = URL(fileURLWithPath: "/tmp/yappy_debug.txt")
-        if let handle = try? FileHandle(forWritingTo: logURL) {
-            handle.seekToEndOfFile()
-            handle.write(logMessage.data(using: .utf8)!)
-            handle.closeFile()
-        } else {
-            try? logMessage.write(to: logURL, atomically: true, encoding: .utf8)
-        }
-    }
-
-    // MARK: - Body
 
     var body: some Scene {
-        WindowGroup {
+        // An empty SwiftUI Settings scene satisfies the Scene requirement
+        // without creating any visible window.
+        SwiftUI.Settings {
             EmptyView()
         }
-        .commands {
-            CommandGroup(replacing: .newItem) { }
-        }
-        .windowStyle(.hiddenTitleBar)
-        .defaultSize(width: 0, height: 0)
     }
 }

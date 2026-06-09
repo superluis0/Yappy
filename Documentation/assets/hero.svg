@@ -1,0 +1,62 @@
+<svg width="1200" height="360" viewBox="0 0 1200 360" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">
+  <defs>
+    <clipPath id="round"><rect width="1200" height="360" rx="20"/></clipPath>
+  </defs>
+  <g clip-path="url(#round)">
+    <rect width="1200" height="360" fill="#0c0c0f"/>
+    <rect width="1200" height="360" fill="#101014"/>
+
+    <!-- bubble glyph -->
+    <g transform="translate(120,150) scale(3.4)">
+      <path d="M2.5 6 h13 a2.8 2.8 0 0 1 2.8 2.8 v0 a2.8 2.8 0 0 1 -2.8 2.8 h-7 l-3.6 3.4 v-3.4 h-2.4 a2.8 2.8 0 0 1 -2.8 -2.8 v0 a2.8 2.8 0 0 1 2.8 -2.8 z" fill="#FF6B35"/>
+      <g fill="#101014">
+        <rect x="6.0" y="7.6" width="1.5" height="3.0" rx="0.75"/>
+        <rect x="8.6" y="6.4" width="1.5" height="5.4" rx="0.75"/>
+        <rect x="11.2" y="7.6" width="1.5" height="3.0" rx="0.75"/>
+      </g>
+    </g>
+
+    <text x="250" y="150" fill="#ffffff" font-size="86" font-weight="600" letter-spacing="-2">Yappy</text>
+    <text x="252" y="205" fill="#a8a8b0" font-size="27" font-weight="400">Talk. It types. Everywhere on your Mac.</text>
+
+    <!-- feature chips -->
+    <g font-size="18" font-weight="500">
+      <g transform="translate(252,250)">
+        <rect width="232" height="44" rx="22" fill="#1b1b22" stroke="#2a2a33" stroke-width="1"/>
+        <circle cx="28" cy="22" r="5" fill="#37d39a"/>
+        <text x="46" y="28" fill="#d6d6dd">100% on-device</text>
+      </g>
+      <g transform="translate(500,250)">
+        <rect width="210" height="44" rx="22" fill="#1b1b22" stroke="#2a2a33" stroke-width="1"/>
+        <circle cx="28" cy="22" r="5" fill="#FF6B35"/>
+        <text x="46" y="28" fill="#d6d6dd">No subscriptions</text>
+      </g>
+      <g transform="translate(726,250)">
+        <rect width="196" height="44" rx="22" fill="#1b1b22" stroke="#2a2a33" stroke-width="1"/>
+        <circle cx="28" cy="22" r="5" fill="#5b8cff"/>
+        <text x="46" y="28" fill="#d6d6dd">Works offline</text>
+      </g>
+    </g>
+
+    <!-- mini pill, top-right -->
+    <g transform="translate(905,118)">
+      <rect width="180" height="46" rx="23" fill="#000000" opacity="0.9"/>
+      <rect width="180" height="46" rx="23" fill="none" stroke="#ffffff" stroke-opacity="0.12"/>
+      <g fill="#ffffff" transform="translate(40,23)">
+        <rect x="0"  y="-5"  width="3" height="10" rx="1.5"/>
+        <rect x="8"  y="-9"  width="3" height="18" rx="1.5"/>
+        <rect x="16" y="-13" width="3" height="26" rx="1.5"/>
+        <rect x="24" y="-7"  width="3" height="14" rx="1.5"/>
+        <rect x="32" y="-11" width="3" height="22" rx="1.5"/>
+        <rect x="40" y="-4"  width="3" height="8"  rx="1.5"/>
+        <rect x="48" y="-9"  width="3" height="18" rx="1.5"/>
+        <rect x="56" y="-6"  width="3" height="12" rx="1.5"/>
+        <rect x="64" y="-10" width="3" height="20" rx="1.5"/>
+        <rect x="72" y="-5"  width="3" height="10" rx="1.5"/>
+        <rect x="80" y="-8"  width="3" height="16" rx="1.5"/>
+        <rect x="88" y="-4"  width="3" height="8"  rx="1.5"/>
+        <rect x="96" y="-7"  width="3" height="14" rx="1.5"/>
+      </g>
+    </g>
+  </g>
+</svg>

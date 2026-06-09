@@ -1,0 +1,44 @@
+<svg width="1200" height="260" viewBox="0 0 1200 260" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">
+  <defs><clipPath id="r"><rect width="1200" height="260" rx="20"/></clipPath></defs>
+  <g clip-path="url(#r)">
+    <rect width="1200" height="260" fill="#101014"/>
+
+    <!-- Step 1 -->
+    <g transform="translate(70,70)">
+      <rect width="300" height="120" rx="16" fill="#1b1b22" stroke="#2a2a33"/>
+      <circle cx="56" cy="60" r="30" fill="#26261f" stroke="#FF6B35" stroke-width="1.5"/>
+      <text x="56" y="71" text-anchor="middle" font-size="30">⌘</text>
+      <text x="104" y="52" fill="#ffffff" font-size="22" font-weight="600">Hold</text>
+      <text x="104" y="80" fill="#a8a8b0" font-size="17">the hotkey, anywhere</text>
+    </g>
+    <text x="392" y="138" fill="#4a4a55" font-size="34">→</text>
+
+    <!-- Step 2 -->
+    <g transform="translate(440,70)">
+      <rect width="300" height="120" rx="16" fill="#1b1b22" stroke="#2a2a33"/>
+      <g transform="translate(56,60)">
+        <circle r="30" fill="#1f2730" stroke="#5b8cff" stroke-width="1.5"/>
+        <g fill="#5b8cff">
+          <rect x="-13" y="-6" width="3.5" height="12" rx="1.75"/>
+          <rect x="-6" y="-12" width="3.5" height="24" rx="1.75"/>
+          <rect x="1" y="-9" width="3.5" height="18" rx="1.75"/>
+          <rect x="8" y="-5" width="3.5" height="10" rx="1.75"/>
+        </g>
+      </g>
+      <text x="104" y="52" fill="#ffffff" font-size="22" font-weight="600">Speak</text>
+      <text x="104" y="80" fill="#a8a8b0" font-size="17">naturally, at your pace</text>
+    </g>
+    <text x="762" y="138" fill="#4a4a55" font-size="34">→</text>
+
+    <!-- Step 3 -->
+    <g transform="translate(810,70)">
+      <rect width="320" height="120" rx="16" fill="#1b1b22" stroke="#2a2a33"/>
+      <g transform="translate(56,60)">
+        <circle r="30" fill="#1f2b24" stroke="#37d39a" stroke-width="1.5"/>
+        <path d="M-12 1 L-3 10 L13 -10" fill="none" stroke="#37d39a" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </g>
+      <text x="104" y="52" fill="#ffffff" font-size="22" font-weight="600">Release</text>
+      <text x="104" y="80" fill="#a8a8b0" font-size="17">text lands at your cursor</text>
+    </g>
+  </g>
+</svg>

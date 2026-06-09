@@ -1,0 +1,135 @@
+//
+//  HistoryStore.swift
+//  Yappy
+//
+
+import Foundation
+import Combine
+
+/// A single completed dictation.
+struct DictationEntry: Identifiable, Codable, Equatable {
+    let id: UUID
+    let date: Date
+    let text: String
+    let durationSeconds: Double
+    let appName: String?
+
+    var wordCount: Int {
+        text.split(whereSeparator: \.isWhitespace).count
+    }
+
+    init(id: UUID = UUID(), date: Date = Date(), text: String, durationSeconds: Double, appName: String? = nil) {
+        self.id = id
+        self.date = date
+        self.text = text
+        self.durationSeconds = durationSeconds
+        self.appName = appName
+    }
+}
+
+/// Local, on-disk store of past dictations, newest first.
+/// Persists as JSON in Application Support; capped at `Constants.historyLimit` entries.
+final class HistoryStore: ObservableObject {
+    @Published private(set) var entries: [DictationEntry] = []
+
+    private let fileURL: URL
+    private let ioQueue = DispatchQueue(label: "com.yappy.historystore", qos: .utility)
+
+    // MARK: - Initialization
+
+    /// - Parameter fileURL: Override for tests; defaults to Application Support/Yappy/history.json.
+    init(fileURL: URL? = nil) {
+        if let fileURL {
+            self.fileURL = fileURL
+        } else {
+            let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            let dir = appSupport.appendingPathComponent("Yappy", isDirectory: true)
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            self.fileURL = dir.appendingPathComponent("history.json")
+        }
+        loadFromDisk()
+    }
+
+    // MARK: - Mutations
+
+    func add(_ entry: DictationEntry) {
+        entries.insert(entry, at: 0)
+        if entries.count > Constants.historyLimit {
+            entries.removeLast(entries.count - Constants.historyLimit)
+        }
+        persist()
+    }
+
+    func delete(_ entry: DictationEntry) {
+        entries.removeAll { $0.id == entry.id }
+        persist()
+    }
+
+    func clearAll() {
+        entries.removeAll()
+        persist()
+    }
+
+    // MARK: - Stats
+
+    var totalWords: Int {
+        entries.reduce(0) { $0 + $1.wordCount }
+    }
+
+    var dictationsToday: Int {
+        entries.filter { Calendar.current.isDateInToday($0.date) }.count
+    }
+
+    var wordsToday: Int {
+        entries.filter { Calendar.current.isDateInToday($0.date) }
+            .reduce(0) { $0 + $1.wordCount }
+    }
+
+    /// Average speaking rate in words per minute across all dictations.
+    var averageWordsPerMinute: Int {
+        let totalSeconds = entries.reduce(0.0) { $0 + $1.durationSeconds }
+        guard totalSeconds > 1 else { return 0 }
+        return Int((Double(totalWords) / totalSeconds * 60.0).rounded())
+    }
+
+    /// Number of consecutive days (ending today or yesterday) with at least one dictation.
+    var streakDays: Int {
+        let calendar = Calendar.current
+        let days = Set(entries.map { calendar.startOfDay(for: $0.date) })
+        guard !days.isEmpty else { return 0 }
+
+        var cursor = calendar.startOfDay(for: Date())
+        if !days.contains(cursor) {
+            guard let yesterday = calendar.date(byAdding: .day, value: -1, to: cursor),
+                  days.contains(yesterday) else { return 0 }
+            cursor = yesterday
+        }
+
+        var streak = 0
+        while days.contains(cursor) {
+            streak += 1
+            guard let previous = calendar.date(byAdding: .day, value: -1, to: cursor) else { break }
+            cursor = previous
+        }
+        return streak
+    }
+
+    // MARK: - Persistence
+
+    private func loadFromDisk() {
+        guard let data = try? Data(contentsOf: fileURL),
+              let loaded = try? JSONDecoder().decode([DictationEntry].self, from: data) else {
+            return
+        }
+        entries = loaded
+    }
+
+    private func persist() {
+        let snapshot = entries
+        let url = fileURL
+        ioQueue.async {
+            guard let data = try? JSONEncoder().encode(snapshot) else { return }
+            try? data.write(to: url, options: .atomic)
+        }
+    }
+}

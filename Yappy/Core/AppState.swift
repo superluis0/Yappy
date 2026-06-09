@@ -2,8 +2,6 @@
 //  AppState.swift
 //  Yappy
 //
-//  Created on 2026-01-04.
-//
 
 import Foundation
 import Combine
@@ -11,20 +9,29 @@ import Combine
 /// Central state management for the Yappy application.
 /// Manages recording state, audio visualization, transcription results, and errors.
 final class AppState: ObservableObject {
+    /// What the current capture session is for.
+    enum Mode {
+        case dictation
+        case command
+    }
+
     // MARK: - Published Properties
+
+    /// What the active (or most recent) session is doing — dictation vs. an
+    /// AI command applied to the current selection.
+    @Published private(set) var mode: Mode = .dictation
 
     /// Indicates whether audio recording is currently active.
     @Published private(set) var isRecording: Bool = false
 
     /// Indicates whether transcription/processing is in progress.
     @Published private(set) var isProcessing: Bool = false
-    
-    /// Indicates whether the app is in idle mode (showing persistent line).
+
+    /// Indicates whether the app is idle (pill hidden).
     @Published var isIdle: Bool = true
 
-    /// Array of audio level values for waveform visualization.
-    /// Contains 40 float values representing recent audio amplitude levels.
-    @Published private(set) var audioLevels: [Float] = Array(repeating: 0.0, count: 40)
+    /// Recent audio amplitude levels driving the pill waveform.
+    @Published private(set) var audioLevels: [Float] = Array(repeating: 0.0, count: Constants.pillBarCount)
 
     /// The current transcription text result.
     @Published private(set) var currentTranscription: String = ""
@@ -32,28 +39,21 @@ final class AppState: ObservableObject {
     /// Current error state, if any.
     @Published private(set) var error: Error?
 
-    // MARK: - Initialization
-
-    init() {
-        // Initialize with default values
-    }
-
     // MARK: - Public Methods
 
     /// Starts the recording session.
-    /// Updates the recording state and resets any previous errors.
-    func startRecording() {
+    func startRecording(mode: Mode = .dictation) {
         guard !isRecording else { return }
 
+        self.mode = mode
         isIdle = false
         isRecording = true
         error = nil
         currentTranscription = ""
-        audioLevels = Array(repeating: 0.0, count: 40)
+        audioLevels = Array(repeating: 0.0, count: Constants.pillBarCount)
     }
 
-    /// Stops the recording session.
-    /// Marks the state as processing to indicate transcription is beginning.
+    /// Stops the recording session and marks the state as processing.
     func stopRecording() {
         guard isRecording else { return }
 
@@ -62,42 +62,31 @@ final class AppState: ObservableObject {
     }
 
     /// Resets all state to initial values.
-    /// Clears recording status, transcription, errors, and audio levels.
     func reset() {
         isIdle = true
         isRecording = false
         isProcessing = false
-        audioLevels = Array(repeating: 0.0, count: 40)
+        mode = .dictation
+        audioLevels = Array(repeating: 0.0, count: Constants.pillBarCount)
         currentTranscription = ""
         error = nil
     }
 
-    /// Updates the audio level visualization with a new sample.
-    /// The array is shifted left (removing the oldest value) and the new level is appended.
-    ///
-    /// - Parameter level: The new audio level value to add to the visualization.
+    /// Appends a new audio level sample, dropping the oldest.
     func updateAudioLevel(_ level: Float) {
-        // Create a new array to trigger SwiftUI update
         var newLevels = audioLevels
         newLevels.removeFirst()
         newLevels.append(level)
         audioLevels = newLevels
     }
 
-    // MARK: - Internal State Updates
-
-    /// Updates the transcription result.
-    /// Called when transcription is complete.
-    ///
-    /// - Parameter transcription: The transcribed text.
+    /// Updates the transcription result when transcription is complete.
     func setTranscription(_ transcription: String) {
         currentTranscription = transcription
         isProcessing = false
     }
 
     /// Sets an error state.
-    ///
-    /// - Parameter error: The error that occurred.
     func setError(_ error: Error) {
         self.error = error
         isProcessing = false
