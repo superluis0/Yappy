@@ -264,6 +264,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         Task { @MainActor [weak self] in
             guard let self else { return }
+
+            // Discard near-silent clips (e.g. an instant key tap) so the model
+            // can't hallucinate filler words from nothing.
+            guard AudioRecorder.containsSpeech(samples) else {
+                if wasDictionary { await self.transcriptionService.cancelStreamingSession() }
+                self.appState.reset()
+                self.pillController.hide()
+                return
+            }
+
             do {
                 // The dictionary path carries CTC boosting; fall back to batch if
                 // it produced nothing.
@@ -374,6 +384,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         Task { @MainActor [weak self] in
             guard let self else { return }
+
+            // No spoken instruction → leave the selection untouched.
+            guard AudioRecorder.containsSpeech(samples) else {
+                self.appState.reset()
+                self.pillController.hide()
+                return
+            }
+
             do {
                 let instruction = try await self.transcriptionService.transcribe(samples)
                 if let result = await self.lmStudio.runCommand(instruction: instruction, selection: selection),

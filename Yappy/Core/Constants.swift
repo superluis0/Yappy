@@ -34,6 +34,13 @@ enum Constants {
     /// Safety cap on a single recording.
     static let maxRecordingDuration: TimeInterval = 300.0
 
+    /// A clip must clear all of these to count as speech; below them it's
+    /// treated as silence and discarded, so a near-instant key tap (or a stray
+    /// click) can't make the model hallucinate filler words ("Mm-hmm", "Okay").
+    static let speechRMSFloor: Float = 0.005      // ≈ -46 dBFS average level
+    static let speechVoiceFloor: Float = 0.02     // per-sample amplitude counted as "voiced"
+    static let speechVoicedFraction: Float = 0.02 // ≥ 2% of the clip must be voiced (rejects transients)
+
     // MARK: - Hotkey Behavior
 
     /// Maximum duration of a key press for it to count as a "tap" (double-tap mode).

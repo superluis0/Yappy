@@ -70,6 +70,24 @@ final class AudioRecorder {
         AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
     }
 
+    /// True if the clip contains real speech energy rather than silence or room
+    /// tone. Guards against the brief near-silent recordings (a quick key tap)
+    /// that make the speech model emit phantom filler words.
+    static func containsSpeech(_ samples: [Float]) -> Bool {
+        guard samples.count >= 1600 else { return false } // < 0.1 s — nothing there
+        var sumSquares: Float = 0
+        var voiced = 0
+        for sample in samples {
+            sumSquares += sample * sample
+            if abs(sample) > Constants.speechVoiceFloor { voiced += 1 }
+        }
+        let rms = (sumSquares / Float(samples.count)).squareRoot()
+        let voicedFraction = Float(voiced) / Float(samples.count)
+        // Require both a real average level and *sustained* voiced content, so a
+        // brief loud transient (a click) — high RMS but tiny voiced span — fails.
+        return rms >= Constants.speechRMSFloor && voicedFraction >= Constants.speechVoicedFraction
+    }
+
     // MARK: - Recording
 
     /// Starts capturing. Returns false if permission is missing or the engine fails.
