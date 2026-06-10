@@ -498,8 +498,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem?.button?.image = image
     }
 
-    /// Brand orange used for the recording state.
-    private static let brandOrange = NSColor(red: 1.0, green: 0.42, blue: 0.21, alpha: 1.0)
+    /// Brand orange used for the recording state (the app's accent color).
+    private static let brandOrange = NSColor(named: "AccentColor")
+        ?? NSColor(red: 1.0, green: 0.42, blue: 0.21, alpha: 1.0)
 
     /// Draws the Yappy speech-bubble glyph for a given state.
     /// Ready/processing are template images (auto light/dark); recording is solid orange.
