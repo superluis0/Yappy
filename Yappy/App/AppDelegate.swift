@@ -50,6 +50,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var accessibilityPollTimer: Timer?
     private var setupWindow: NSWindow?
     private var onboardingWindow: NSWindow?
+    /// Live mic levels for the onboarding preview; nil once onboarding ends.
+    private var onboardingLevelModel: OnboardingLevelModel?
 
     /// Text selected in the frontmost app when Command Mode started.
     private var pendingCommandSelection: String?
@@ -73,7 +75,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         bindSettings()
 
         audioRecorder.onAudioLevelUpdate = { [weak self] level in
-            self?.appState.updateAudioLevel(level)
+            guard let self else { return }
+            self.appState.updateAudioLevel(level)
+            self.onboardingLevelModel?.push(level)
         }
 
         wireHotkeyCallbacks()
@@ -691,14 +695,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func showOnboarding() {
         if onboardingWindow == nil {
+            let levelModel = OnboardingLevelModel()
+            onboardingLevelModel = levelModel
+
             let view = OnboardingView(
                 transcriptionService: transcriptionService,
+                levelModel: levelModel,
                 requestMicrophone: { await AudioRecorder.requestPermission() },
+                startLevelPreview: { [weak self] in self?.audioRecorder.startLevelPreview() ?? false },
+                stopLevelPreview: { [weak self] in self?.audioRecorder.stopLevelPreview() },
                 onFinish: { [weak self] in
-                    self?.settings.onboardingComplete = true
-                    self?.onboardingWindow?.close()
-                    self?.onboardingWindow = nil
-                    self?.startTaps()
+                    guard let self else { return }
+                    self.audioRecorder.stopLevelPreview()
+                    self.onboardingLevelModel = nil
+                    self.settings.onboardingComplete = true
+                    self.onboardingWindow?.close()
+                    self.onboardingWindow = nil
+                    self.startTaps()
                 }
             )
             let window = NSWindow(contentViewController: NSHostingController(rootView: view))

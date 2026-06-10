@@ -17,6 +17,8 @@ final class AudioRecorder {
     private var samples: [Float] = []
     private let samplesLock = NSLock()
     private(set) var isRecording = false
+    /// Level-only monitoring for the onboarding mic test; no samples are kept.
+    private(set) var isPreviewing = false
 
     /// Throttled audio level callback for waveform visualization (called on main).
     var onAudioLevelUpdate: ((Float) -> Void)?
@@ -75,6 +77,11 @@ final class AudioRecorder {
         guard !isRecording else { return false }
         guard Self.hasPermission else { return false }
         guard let targetFormat else { return false }
+
+        // A real dictation always wins over the onboarding level preview.
+        if isPreviewing {
+            stopLevelPreview()
+        }
 
         if audioEngine.isRunning {
             audioEngine.stop()
@@ -139,6 +146,48 @@ final class AudioRecorder {
         samplesLock.unlock()
 
         return recorded
+    }
+
+    // MARK: - Level Preview (onboarding mic test)
+
+    /// Starts a level-only monitoring session: the tap feeds `onAudioLevelUpdate`
+    /// but no audio is converted or stored. Used by onboarding's "Yappy is
+    /// listening" waveform.
+    @discardableResult
+    func startLevelPreview() -> Bool {
+        guard !isRecording, !isPreviewing, Self.hasPermission else { return false }
+
+        if audioEngine.isRunning {
+            audioEngine.stop()
+        }
+        audioEngine.reset()
+
+        let inputNode = audioEngine.inputNode
+        inputNode.removeTap(onBus: 0)
+
+        let inputFormat = inputNode.outputFormat(forBus: 0)
+        guard inputFormat.sampleRate > 0, inputFormat.channelCount > 0 else { return false }
+
+        inputNode.installTap(onBus: 0, bufferSize: 2048, format: inputFormat) { [weak self] buffer, _ in
+            self?.emitLevel(from: buffer)
+        }
+
+        do {
+            try audioEngine.start()
+            isPreviewing = true
+            return true
+        } catch {
+            inputNode.removeTap(onBus: 0)
+            return false
+        }
+    }
+
+    func stopLevelPreview() {
+        guard isPreviewing else { return }
+        isPreviewing = false
+        audioEngine.inputNode.removeTap(onBus: 0)
+        audioEngine.stop()
+        audioEngine.reset()
     }
 
     // MARK: - Private
