@@ -18,6 +18,14 @@ struct HomeView: View {
             VStack(alignment: .leading, spacing: 20) {
                 header
                 statsGrid
+                if !history.entries.isEmpty {
+                    HStack(alignment: .top, spacing: 12) {
+                        HeatmapView(entries: history.entries)
+                        topAppsCard
+                            .frame(width: 240)
+                    }
+                    .fixedSize(horizontal: false, vertical: true)
+                }
                 historySection
             }
             .padding(24)

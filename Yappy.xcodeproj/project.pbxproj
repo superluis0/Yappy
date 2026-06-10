@@ -372,6 +372,8 @@
 				B100002900000000000000A1 /* DictionaryView.swift in Sources */,
 				B100002C00000000000000A1 /* EscapeInterceptor.swift in Sources */,
 				B100002F00000000000000A1 /* IconCache.swift in Sources */,
+				B100002D00000000000000A1 /* HeatmapModel.swift in Sources */,
+				B100002E00000000000000A1 /* HeatmapView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -387,6 +389,7 @@
 				B100002600000000000000A1 /* AppContextClassifierTests.swift in Sources */,
 				B100002700000000000000A1 /* ShortcutStoreTests.swift in Sources */,
 				B100002A00000000000000A1 /* DictionaryStoreTests.swift in Sources */,
+				B100003100000000000000A1 /* HeatmapModelTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
