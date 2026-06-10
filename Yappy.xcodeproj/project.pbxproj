@@ -374,6 +374,7 @@
 				B100002F00000000000000A1 /* IconCache.swift in Sources */,
 				B100002D00000000000000A1 /* HeatmapModel.swift in Sources */,
 				B100002E00000000000000A1 /* HeatmapView.swift in Sources */,
+				B100002B00000000000000A1 /* WaveformBarsView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
