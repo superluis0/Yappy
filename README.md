@@ -97,7 +97,8 @@ If LM Studio isn't reachable, dictation degrades gracefully: the raw transcript 
 
 ## Privacy
 
-- Audio is transcribed on-device and held only in memory — never written to disk.
+- Audio is transcribed on-device and held only in memory — the recording itself is never written to disk.
+- Your dictation history, shortcuts, and custom dictionary are stored locally in plain JSON under `~/Library/Application Support/Yappy/`, readable only by your macOS account. Clear your history anytime from the home window.
 - No telemetry, no analytics, no account.
 - The single one-time network request is the model download from Hugging Face. After that, Yappy runs fully offline (LM Studio calls, if enabled, stay on `localhost`).
 
