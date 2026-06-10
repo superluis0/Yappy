@@ -70,6 +70,23 @@ final class HistoryStoreTests: XCTestCase {
         XCTAssertTrue(store.entries.isEmpty)
     }
 
+    // MARK: - Time saved
+
+    func testTimeSavedMath() {
+        // 400 words typed at 40 wpm = 10 min; spoken in 120 s = 2 min → 8 saved.
+        XCTAssertEqual(HistoryStore.timeSavedMinutes(totalWords: 400, totalDurationSeconds: 120), 8)
+        // Slower than typing → floored at 0.
+        XCTAssertEqual(HistoryStore.timeSavedMinutes(totalWords: 10, totalDurationSeconds: 600), 0)
+        XCTAssertEqual(HistoryStore.timeSavedMinutes(totalWords: 0, totalDurationSeconds: 0), 0)
+    }
+
+    func testTimeSavedFormatting() {
+        XCTAssertEqual(HistoryStore.formatTimeSaved(minutes: 0), "0m")
+        XCTAssertEqual(HistoryStore.formatTimeSaved(minutes: 59), "59m")
+        XCTAssertEqual(HistoryStore.formatTimeSaved(minutes: 60), "1h 0m")
+        XCTAssertEqual(HistoryStore.formatTimeSaved(minutes: 192), "3h 12m")
+    }
+
     // MARK: - Backward compatibility
 
     func testDecodesLegacyEntriesWithoutBundleID() throws {

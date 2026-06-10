@@ -12,11 +12,14 @@ struct HomeView: View {
 
     @State private var searchText = ""
     @State private var copiedEntryID: UUID?
+    /// Flipped once on appear so the stat numerals roll up from zero.
+    @State private var statsAppeared = false
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 header
+                timeSavedCard
                 statsGrid
                 if !history.entries.isEmpty {
                     HStack(alignment: .top, spacing: 12) {
@@ -31,6 +34,19 @@ struct HomeView: View {
             .padding(24)
         }
         .background(Color(nsColor: .windowBackgroundColor))
+        .onAppear {
+            guard !statsAppeared else { return }
+            withAnimation(.spring(response: 0.7, dampingFraction: 0.9).delay(0.1)) {
+                statsAppeared = true
+            }
+        }
+    }
+
+    /// Renders the value as 0 until `statsAppeared` flips, so `.numericText`
+    /// rolls the digits up on open.
+    private func animatedValue(_ value: Int) -> some View {
+        Text("\(statsAppeared ? value : 0)")
+            .contentTransition(.numericText(value: Double(statsAppeared ? value : 0)))
     }
 
     // MARK: - Header
@@ -54,12 +70,37 @@ struct HomeView: View {
 
     // MARK: - Stats
 
+    /// Full-width hero: how much time talking has saved over typing.
+    @ViewBuilder
+    private var timeSavedCard: some View {
+        let minutes = history.timeSavedMinutes
+        if minutes > 0 {
+            HStack(spacing: 16) {
+                Image(systemName: "clock.arrow.circlepath")
+                    .font(.system(size: 28))
+                    .foregroundStyle(.tint)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(HistoryStore.formatTimeSaved(minutes: statsAppeared ? minutes : 0))
+                        .font(.system(size: 34, weight: .bold, design: .rounded))
+                        .contentTransition(.numericText(value: Double(statsAppeared ? minutes : 0)))
+                    Text("Saved vs typing it out")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+            }
+            .padding(20)
+            .background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+        }
+    }
+
     private var statsGrid: some View {
         LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 4), spacing: 12) {
-            statCard(value: "\(history.totalWords)", label: "Words dictated", icon: "text.word.spacing")
-            statCard(value: "\(history.dictationsToday)", label: "Dictations today", icon: "mic.fill")
-            statCard(value: "\(history.averageWordsPerMinute)", label: "Words / minute", icon: "speedometer")
-            statCard(value: "\(history.streakDays)", label: "Day streak", icon: "flame.fill")
+            statCard(value: history.totalWords, label: "Words dictated", icon: "text.word.spacing")
+            statCard(value: history.dictationsToday, label: "Dictations today", icon: "mic.fill")
+            statCard(value: history.averageWordsPerMinute, label: "Words / minute", icon: "speedometer")
+            statCard(value: history.streakDays, label: "Day streak", icon: "flame.fill",
+                     pulse: history.streakDays >= 2)
         }
     }
 
@@ -108,14 +149,14 @@ struct HomeView: View {
         }
     }
 
-    private func statCard(value: String, label: String, icon: String) -> some View {
+    private func statCard(value: Int, label: String, icon: String, pulse: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Image(systemName: icon)
                 .font(.title3)
                 .foregroundStyle(.tint)
-            Text(value)
+                .symbolEffect(.pulse, options: .repeating, isActive: pulse)
+            animatedValue(value)
                 .font(.system(size: 26, weight: .bold, design: .rounded))
-                .contentTransition(.numericText())
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
             // Single line so all four cards stay the same height and aligned,

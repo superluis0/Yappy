@@ -106,6 +106,29 @@ final class HistoryStore: ObservableObject {
         return Int((Double(totalWords) / totalSeconds * 60.0).rounded())
     }
 
+    // MARK: - Time Saved
+
+    /// Minutes saved versus typing the same words at `typingWPM`, floored at 0.
+    static func timeSavedMinutes(totalWords: Int, totalDurationSeconds: Double, typingWPM: Double = 40) -> Int {
+        let typingMinutes = Double(totalWords) / typingWPM
+        let speakingMinutes = totalDurationSeconds / 60.0
+        return max(0, Int((typingMinutes - speakingMinutes).rounded(.down)))
+    }
+
+    /// "0m", "45m", "3h 12m".
+    static func formatTimeSaved(minutes: Int) -> String {
+        guard minutes >= 60 else { return "\(minutes)m" }
+        return "\(minutes / 60)h \(minutes % 60)m"
+    }
+
+    /// Minutes saved across all stored dictations.
+    var timeSavedMinutes: Int {
+        Self.timeSavedMinutes(
+            totalWords: totalWords,
+            totalDurationSeconds: entries.reduce(0.0) { $0 + $1.durationSeconds }
+        )
+    }
+
     /// The most-dictated-into apps, ordered by dictation count.
     func topApps(limit: Int = 5) -> [AppUsage] {
         var grouped: [String: (appName: String, bundleID: String?, count: Int, words: Int)] = [:]
