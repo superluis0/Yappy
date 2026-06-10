@@ -41,6 +41,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - State
 
     private var statusItem: NSStatusItem?
+    private var menuBarAnimationTimer: Timer?
+    private var menuBarFrameIndex = 0
     private var cancellables = Set<AnyCancellable>()
     private var recordingStartTime: Date?
     private var maxDurationTimer: Timer?
@@ -110,6 +112,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         escapeInterceptor.stop()
         maxDurationTimer?.invalidate()
         accessibilityPollTimer?.invalidate()
+        menuBarAnimationTimer?.invalidate()
     }
 
     // MARK: - Hotkey
@@ -496,10 +499,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func updateMenuBarIcon() {
-        let image: NSImage
         if appState.isRecording {
-            image = Self.bubbleIcon(.recording)
-        } else if appState.isProcessing {
+            startMenuBarAnimation()
+            return
+        }
+        stopMenuBarAnimation()
+
+        let image: NSImage
+        if appState.isProcessing {
             image = Self.bubbleIcon(.processing)
         } else {
             switch transcriptionService.modelState {
@@ -518,17 +525,45 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem?.button?.image = image
     }
 
+    // MARK: - Menu Bar Recording Animation
+
+    /// Precomputed frames cycling the bubble's bar heights (cheap to swap).
+    private static let recordingFrames: [NSImage] = [
+        [3.0, 6.0, 3.0],
+        [5.0, 4.0, 6.0],
+        [6.5, 3.0, 4.5],
+        [4.0, 6.5, 5.5],
+        [3.0, 5.0, 6.5],
+    ].map { bubbleIcon(.recording, barHeights: $0) }
+
+    private func startMenuBarAnimation() {
+        guard menuBarAnimationTimer == nil else { return }
+        statusItem?.button?.image = Self.recordingFrames[0]
+        menuBarFrameIndex = 0
+        menuBarAnimationTimer = Timer.scheduledTimer(withTimeInterval: 0.125, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            self.menuBarFrameIndex = (self.menuBarFrameIndex + 1) % Self.recordingFrames.count
+            self.statusItem?.button?.image = Self.recordingFrames[self.menuBarFrameIndex]
+        }
+    }
+
+    private func stopMenuBarAnimation() {
+        menuBarAnimationTimer?.invalidate()
+        menuBarAnimationTimer = nil
+    }
+
     /// Brand orange used for the recording state (the app's accent color).
     private static let brandOrange = NSColor(named: "AccentColor")
         ?? NSColor(red: 1.0, green: 0.42, blue: 0.21, alpha: 1.0)
 
     /// Draws the Yappy speech-bubble glyph for a given state.
     /// Ready/processing are template images (auto light/dark); recording is solid orange.
-    private static func bubbleIcon(_ glyph: MenuBarGlyph) -> NSImage {
+    /// `barHeights` lets the recording animation vary the waveform.
+    private static func bubbleIcon(_ glyph: MenuBarGlyph, barHeights: [CGFloat]? = nil) -> NSImage {
         let size = NSSize(width: 18, height: 18)
         let image = NSImage(size: size, flipped: false) { _ in
             let bubble = bubblePath()
-            let bars = waveformBarPaths()
+            let bars = waveformBarPaths(heights: barHeights ?? [3.0, 6.0, 3.0])
 
             switch glyph {
             case .ready:
@@ -577,13 +612,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// Three rounded waveform bars centered inside the bubble body.
-    private static func waveformBarPaths() -> [NSBezierPath] {
+    private static func waveformBarPaths(heights: [CGFloat] = [3.0, 6.0, 3.0]) -> [NSBezierPath] {
         let centerY: CGFloat = 10.25
-        let specs: [(x: CGFloat, height: CGFloat)] = [
-            (5.6, 3.0), (8.2, 6.0), (10.8, 3.0),
-        ]
-        return specs.map { spec in
-            let rect = NSRect(x: spec.x, y: centerY - spec.height / 2, width: 1.6, height: spec.height)
+        let xs: [CGFloat] = [5.6, 8.2, 10.8]
+        return zip(xs, heights).map { x, height in
+            // Clamp so animated bars stay inside the bubble body (y 6.0–14.5).
+            let clamped = min(max(height, 2.0), 7.5)
+            let rect = NSRect(x: x, y: centerY - clamped / 2, width: 1.6, height: clamped)
             return NSBezierPath(roundedRect: rect, xRadius: 0.8, yRadius: 0.8)
         }
     }
