@@ -60,6 +60,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Launch
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Show the Dock icon for the whole time Yappy is running (alongside the
+        // menu bar item), not just while the main window is open.
+        NSApp.setActivationPolicy(.regular)
+
         setupMenuBar()
         bindStateToMenuBar()
         bindSettings()

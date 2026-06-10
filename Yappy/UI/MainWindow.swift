@@ -109,14 +109,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
 
     func present() {
-        NSApp.setActivationPolicy(.regular)
         showWindow(nil)
         window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
-    }
-
-    func windowWillClose(_ notification: Notification) {
-        // Back to menu-bar-only once the main window is gone.
-        NSApp.setActivationPolicy(.accessory)
     }
 }
