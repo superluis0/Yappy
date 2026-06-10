@@ -29,6 +29,14 @@ final class TextInserter {
         let items: [[NSPasteboard.PasteboardType: Data]]
     }
 
+    /// Last character we inserted, used to space consecutive dictations when the
+    /// destination app doesn't expose its text to the accessibility API.
+    private var lastInsertedTrailingCharacter: Character?
+    private var lastInsertionDate: Date?
+    /// The fallback is only trusted briefly; after this the cursor has likely
+    /// moved to a different field.
+    private let fallbackValidityWindow: TimeInterval = 45
+
     // MARK: - Public
 
     func insert(text: String) throws {
@@ -37,11 +45,18 @@ final class TextInserter {
             throw InsertionError.accessibilityPermissionDenied
         }
 
+        // Each transcript is trimmed, so a second dictation would otherwise land
+        // flush against the previous word ("box.that"). Add a separating space
+        // when the cursor sits right after a word.
+        let payload = needsLeadingSpace(before: text) ? " " + text : text
+        lastInsertedTrailingCharacter = payload.last
+        lastInsertionDate = Date()
+
         let pasteboard = NSPasteboard.general
         let snapshot = snapshotClipboard(pasteboard)
 
         pasteboard.clearContents()
-        pasteboard.setString(text, forType: .string)
+        pasteboard.setString(payload, forType: .string)
         let ourChangeCount = pasteboard.changeCount
 
         try postCommandV()
@@ -84,6 +99,74 @@ final class TextInserter {
         restoreClipboard(snapshot, to: pasteboard)
         let trimmed = captured?.trimmingCharacters(in: .whitespacesAndNewlines)
         return (trimmed?.isEmpty == false) ? captured : nil
+    }
+
+    // MARK: - Leading-space Decision
+
+    private enum PrecedingContext {
+        case startOfField          // caret at the very start — no space
+        case character(Character)  // the char immediately before the caret
+        case unknown               // app doesn't expose its text to AX
+    }
+
+    /// Whether to prepend a space so a new dictation doesn't abut the previous
+    /// word. Prefers the actual character before the caret (accessibility API);
+    /// falls back to the last character we inserted for apps that don't expose
+    /// their text (Electron, many web views).
+    private func needsLeadingSpace(before text: String) -> Bool {
+        guard let first = text.first, !first.isWhitespace else { return false }
+        // Never put a space before attaching punctuation.
+        if ".,!?;:)]}".contains(first) { return false }
+
+        switch precedingContext() {
+        case .startOfField:
+            return false
+        case .character(let previous):
+            return shouldSpace(after: previous)
+        case .unknown:
+            guard let previous = lastInsertedTrailingCharacter,
+                  let when = lastInsertionDate,
+                  Date().timeIntervalSince(when) < fallbackValidityWindow else {
+                return false
+            }
+            return shouldSpace(after: previous)
+        }
+    }
+
+    private func shouldSpace(after character: Character) -> Bool {
+        if character.isWhitespace || character.isNewline { return false }
+        // Don't add a space right after an opener or common joiner.
+        if "([{/@#-_".contains(character) { return false }
+        return true
+    }
+
+    private func precedingContext() -> PrecedingContext {
+        let system = AXUIElementCreateSystemWide()
+        var focusedObj: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(system, kAXFocusedUIElementAttribute as CFString, &focusedObj) == .success,
+              let focused = focusedObj else { return .unknown }
+        let element = focused as! AXUIElement
+
+        var rangeObj: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, &rangeObj) == .success,
+              let rangeValue = rangeObj, CFGetTypeID(rangeValue) == AXValueGetTypeID() else { return .unknown }
+        var caret = CFRange()
+        guard AXValueGetValue(rangeValue as! AXValue, .cfRange, &caret) else { return .unknown }
+        guard caret.location > 0 else { return .startOfField }
+
+        var charRange = CFRange(location: caret.location - 1, length: 1)
+        guard let axCharRange = AXValueCreate(.cfRange, &charRange) else { return .unknown }
+        var substringObj: CFTypeRef?
+        let status = AXUIElementCopyParameterizedAttributeValue(
+            element,
+            kAXStringForRangeParameterizedAttribute as CFString,
+            axCharRange,
+            &substringObj
+        )
+        guard status == .success, let string = substringObj as? String, let last = string.last else {
+            return .unknown
+        }
+        return .character(last)
     }
 
     // MARK: - Paste Keystroke
