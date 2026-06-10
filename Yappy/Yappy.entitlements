@@ -1,5 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
-<dict/>
+<dict>
+	<!-- Hardened Runtime: required for microphone access; without it TCC
+	     silently denies and the app never appears in Privacy > Microphone. -->
+	<key>com.apple.security.device.audio-input</key>
+	<true/>
+</dict>
 </plist>
