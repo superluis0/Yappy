@@ -5,37 +5,43 @@
 
 import SwiftUI
 
-/// Contribution-style grid of dictation activity for the trailing weeks.
+/// "When you dictate" — a day-of-week × hour-of-day heatmap of activity.
 struct HeatmapView: View {
-    private let days: [HeatmapDay]
-    private let todayStart: Date
+    private let rows: [HeatmapWeekday]
+    private let weekdaySymbols: [String]
 
-    init(entries: [DictationEntry], weeks: Int = 12) {
+    private let spacing: CGFloat = 3
+    private let cell: CGFloat = 16
+    private let labelWidth: CGFloat = 34
+
+    init(entries: [DictationEntry], calendar: Calendar = .current) {
         // Computed once per HomeView invalidation (entries change), not per frame.
-        self.days = HeatmapModel.days(entries: entries, weeks: weeks)
-        self.todayStart = Calendar.current.startOfDay(for: Date())
-    }
-
-    private var weekColumns: [[HeatmapDay]] {
-        stride(from: 0, to: days.count, by: 7).map {
-            Array(days[$0..<min($0 + 7, days.count)])
-        }
+        self.rows = HeatmapModel.hourlyRows(entries: entries, calendar: calendar)
+        self.weekdaySymbols = calendar.shortWeekdaySymbols
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Activity")
+            Text("When you dictate")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
 
-            HStack(alignment: .top, spacing: 3) {
-                ForEach(Array(weekColumns.enumerated()), id: \.offset) { _, week in
-                    VStack(spacing: 3) {
-                        ForEach(week) { day in
-                            cell(day)
+            VStack(alignment: .leading, spacing: spacing) {
+                ForEach(rows) { row in
+                    HStack(spacing: spacing) {
+                        Text(weekdayLabel(row.weekday))
+                            .font(.system(size: 10))
+                            .foregroundStyle(.tertiary)
+                            .frame(width: labelWidth, alignment: .leading)
+                        ForEach(0..<24, id: \.self) { hour in
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(color(forLevel: row.hours[hour].level))
+                                .frame(width: cell, height: cell)
+                                .help(tooltip(row: row, hour: hour))
                         }
                     }
                 }
+                hourAxis
             }
 
             legend
@@ -45,17 +51,21 @@ struct HeatmapView: View {
         .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 12))
     }
 
-    private func cell(_ day: HeatmapDay) -> some View {
-        RoundedRectangle(cornerRadius: 2.5)
-            .fill(color(forLevel: day.level))
-            .frame(width: 11, height: 11)
-            .overlay {
-                if day.date == todayStart {
-                    RoundedRectangle(cornerRadius: 2.5)
-                        .strokeBorder(Color.accentColor, lineWidth: 1.5)
+    private var hourAxis: some View {
+        HStack(spacing: spacing) {
+            Color.clear.frame(width: labelWidth, height: 12)
+            ForEach(0..<24, id: \.self) { hour in
+                if hour % 6 == 0 {
+                    Text(hourLabel(hour))
+                        .font(.system(size: 9))
+                        .foregroundStyle(.tertiary)
+                        .fixedSize()
+                        .frame(width: cell, alignment: .leading)
+                } else {
+                    Color.clear.frame(width: cell)
                 }
             }
-            .help("\(day.dictations) dictation\(day.dictations == 1 ? "" : "s") · \(day.words) words on \(day.date.formatted(date: .abbreviated, time: .omitted))")
+        }
     }
 
     private func color(forLevel level: Int) -> Color {
@@ -70,17 +80,38 @@ struct HeatmapView: View {
 
     private var legend: some View {
         HStack(spacing: 4) {
-            Text("Less")
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
+            Text("Less").font(.caption2).foregroundStyle(.tertiary)
             ForEach(0..<5, id: \.self) { level in
                 RoundedRectangle(cornerRadius: 2)
                     .fill(color(forLevel: level))
                     .frame(width: 9, height: 9)
             }
-            Text("More")
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
+            Text("More").font(.caption2).foregroundStyle(.tertiary)
         }
+    }
+
+    // MARK: - Labels
+
+    private func weekdayLabel(_ weekday: Int) -> String {
+        // shortWeekdaySymbols is 0-indexed by weekday-1 ("Sun"=0).
+        let symbol = weekdaySymbols[(weekday - 1) % weekdaySymbols.count]
+        return String(symbol.prefix(3))
+    }
+
+    private func hourLabel(_ hour: Int) -> String {
+        switch hour {
+        case 0: return "12a"
+        case 12: return "12p"
+        case 1..<12: return "\(hour)a"
+        default: return "\(hour - 12)p"
+        }
+    }
+
+    private func tooltip(row: HeatmapWeekday, hour: Int) -> String {
+        let cell = row.hours[hour]
+        let day = weekdayLabel(row.weekday)
+        let time = hourLabel(hour)
+        guard cell.count > 0 else { return "No dictations · \(day) \(time)" }
+        return "\(cell.count) dictation\(cell.count == 1 ? "" : "s") · \(cell.words) words · \(day) \(time)"
     }
 }

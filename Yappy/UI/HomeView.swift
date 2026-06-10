@@ -22,12 +22,8 @@ struct HomeView: View {
                 timeSavedCard
                 statsGrid
                 if !history.entries.isEmpty {
-                    HStack(alignment: .top, spacing: 12) {
-                        HeatmapView(entries: history.entries)
-                        topAppsCard
-                            .frame(width: 240)
-                    }
-                    .fixedSize(horizontal: false, vertical: true)
+                    HeatmapView(entries: history.entries)
+                    topAppsCard
                 }
                 historySection
             }
@@ -132,16 +128,21 @@ struct HomeView: View {
                             .font(.callout)
                             .lineLimit(1)
                             .truncationMode(.tail)
-                            .frame(width: 76, alignment: .leading)
-                        Capsule()
-                            .fill(.tint)
-                            .frame(width: max(8, 72 * CGFloat(app.count) / CGFloat(maxCount)), height: 5)
-                        Spacer(minLength: 4)
+                            .frame(width: 110, alignment: .leading)
+                        GeometryReader { geo in
+                            Capsule()
+                                .fill(.tint)
+                                .frame(width: max(8, geo.size.width * CGFloat(app.count) / CGFloat(maxCount)),
+                                       height: 6)
+                                .frame(maxHeight: .infinity, alignment: .center)
+                        }
+                        .frame(height: 16)
                         Text("\(app.count)")
                             .font(.caption.monospacedDigit())
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
                             .fixedSize()
+                            .frame(width: 36, alignment: .trailing)
                     }
                 }
                 Spacer(minLength: 0)

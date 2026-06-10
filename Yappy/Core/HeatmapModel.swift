@@ -5,69 +5,65 @@
 
 import Foundation
 
-/// One cell of the activity heatmap.
-struct HeatmapDay: Equatable, Identifiable {
-    let date: Date
-    let dictations: Int
+/// One day-of-week × hour cell of the activity heatmap.
+struct HeatmapHourCell: Equatable {
+    let count: Int
     let words: Int
-    /// Intensity bucket 0 (none) … 4 (most active).
+    /// Intensity bucket 0 (none) … 4 (busiest), relative to the busiest cell.
     let level: Int
-
-    var id: Date { date }
 }
 
-/// Pure day-bucketing for the contribution-style activity grid.
-/// `today` and `calendar` are injectable so tests are date-stable.
+/// A row of the heatmap: one weekday with its 24 hourly cells.
+struct HeatmapWeekday: Equatable, Identifiable {
+    /// Calendar weekday, 1 (Sunday) … 7 (Saturday).
+    let weekday: Int
+    /// 24 cells, midnight … 11 PM.
+    let hours: [HeatmapHourCell]
+
+    var id: Int { weekday }
+}
+
+/// Buckets dictations by when they happened (weekday + hour of day) so the
+/// heatmap shows the user's dictation rhythm. Pure and injectable for tests.
 enum HeatmapModel {
-    /// Days for the trailing `weeks` weeks: from the start of the week
-    /// `weeks - 1` weeks ago through today, in chronological order.
-    static func days(
+    /// Rows ordered by the calendar's first weekday. Intensity is scaled to the
+    /// busiest cell so the pattern reads regardless of total volume.
+    static func hourlyRows(
         entries: [DictationEntry],
-        weeks: Int = 12,
-        today: Date = Date(),
         calendar: Calendar = .current
-    ) -> [HeatmapDay] {
-        let todayStart = calendar.startOfDay(for: today)
-        guard let thisWeekStart = calendar.dateInterval(of: .weekOfYear, for: todayStart)?.start,
-              let rangeStart = calendar.date(byAdding: .weekOfYear, value: -(weeks - 1), to: thisWeekStart) else {
-            return []
-        }
+    ) -> [HeatmapWeekday] {
+        // counts[weekday(1...7)][hour(0...23)]
+        var counts = [[Int]](repeating: [Int](repeating: 0, count: 24), count: 8)
+        var words = [[Int]](repeating: [Int](repeating: 0, count: 24), count: 8)
 
-        // Single pass over entries → per-day totals.
-        var totals: [Date: (dictations: Int, words: Int)] = [:]
         for entry in entries {
-            let day = calendar.startOfDay(for: entry.date)
-            guard day >= rangeStart, day <= todayStart else { continue }
-            var bucket = totals[day] ?? (0, 0)
-            bucket.dictations += 1
-            bucket.words += entry.wordCount
-            totals[day] = bucket
+            let comps = calendar.dateComponents([.weekday, .hour], from: entry.date)
+            guard let weekday = comps.weekday, let hour = comps.hour else { continue }
+            counts[weekday][hour] += 1
+            words[weekday][hour] += entry.wordCount
         }
 
-        var days: [HeatmapDay] = []
-        var cursor = rangeStart
-        while cursor <= todayStart {
-            let bucket = totals[cursor] ?? (0, 0)
-            days.append(HeatmapDay(
-                date: cursor,
-                dictations: bucket.dictations,
-                words: bucket.words,
-                level: level(forDictations: bucket.dictations)
-            ))
-            guard let next = calendar.date(byAdding: .day, value: 1, to: cursor) else { break }
-            cursor = next
+        let maxCount = counts.flatMap { $0 }.max() ?? 0
+
+        // Display order starts at the locale's first weekday (e.g. Sun or Mon).
+        let order = (0..<7).map { (calendar.firstWeekday - 1 + $0) % 7 + 1 }
+        return order.map { weekday in
+            let hours = (0..<24).map { hour in
+                HeatmapHourCell(
+                    count: counts[weekday][hour],
+                    words: words[weekday][hour],
+                    level: level(count: counts[weekday][hour], maxCount: maxCount)
+                )
+            }
+            return HeatmapWeekday(weekday: weekday, hours: hours)
         }
-        return days
     }
 
-    /// Fixed, deterministic intensity buckets (count of dictations per day).
-    static func level(forDictations count: Int) -> Int {
-        switch count {
-        case ..<1: return 0
-        case 1: return 1
-        case 2...3: return 2
-        case 4...6: return 3
-        default: return 4
-        }
+    /// Intensity bucket (1…4) for a cell relative to the busiest cell, 0 if empty.
+    static func level(count: Int, maxCount: Int) -> Int {
+        guard count > 0 else { return 0 }
+        guard maxCount > 0 else { return 1 }
+        let scaled = Int((Double(count) * 4.0 / Double(maxCount)).rounded(.up))
+        return min(4, max(1, scaled))
     }
 }
