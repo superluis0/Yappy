@@ -35,6 +35,10 @@ struct SettingsView: View {
                             .frame(width: 160)
                     }
                 }
+
+                Toggle("Write spoken numbers as digits", isOn: $settings.numberFormattingEnabled)
+                Text("Turns \u{201c}eleven point six\u{201d} into \u{201c}11.6\u{201d} and \u{201c}twenty three\u{201d} into \u{201c}23.\u{201d}")
+                    .font(.caption).foregroundStyle(.secondary)
             }
 
             Section {

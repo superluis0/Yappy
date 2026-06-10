@@ -26,6 +26,7 @@
 		B100001100000000000000A1 /* ModelSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200001100000000000000A1 /* ModelSetupView.swift */; };
 		B100002000000000000000A1 /* ShortcutStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200002000000000000000A1 /* ShortcutStore.swift */; };
 		B100002100000000000000A1 /* ShortcutExpander.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200002100000000000000A1 /* ShortcutExpander.swift */; };
+		B100003600000000000000A1 /* SpokenNumberFormatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200003600000000000000A1 /* SpokenNumberFormatter.swift */; };
 		B100002200000000000000A1 /* AppContextClassifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200002200000000000000A1 /* AppContextClassifier.swift */; };
 		B100002300000000000000A1 /* ShortcutsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200002300000000000000A1 /* ShortcutsView.swift */; };
 		B100002400000000000000A1 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200002400000000000000A1 /* OnboardingView.swift */; };
@@ -40,6 +41,7 @@
 		B100003000000000000000A1 /* SoundPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200003000000000000000A1 /* SoundPlayer.swift */; };
 		B100003100000000000000A1 /* HeatmapModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200003100000000000000A1 /* HeatmapModelTests.swift */; };
 		B100003500000000000000A1 /* SpeechDetectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200003500000000000000A1 /* SpeechDetectionTests.swift */; };
+		B100003700000000000000A1 /* SpokenNumberFormatterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200003700000000000000A1 /* SpokenNumberFormatterTests.swift */; };
 		B100003200000000000000A1 /* record-start.wav in Resources */ = {isa = PBXBuildFile; fileRef = B200003200000000000000A1 /* record-start.wav */; };
 		B100003300000000000000A1 /* record-stop.wav in Resources */ = {isa = PBXBuildFile; fileRef = B200003300000000000000A1 /* record-stop.wav */; };
 		B100003400000000000000A1 /* success.wav in Resources */ = {isa = PBXBuildFile; fileRef = B200003400000000000000A1 /* success.wav */; };
@@ -84,6 +86,7 @@
 		B200001100000000000000A1 /* ModelSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelSetupView.swift; sourceTree = "<group>"; };
 		B200002000000000000000A1 /* ShortcutStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortcutStore.swift; sourceTree = "<group>"; };
 		B200002100000000000000A1 /* ShortcutExpander.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortcutExpander.swift; sourceTree = "<group>"; };
+		B200003600000000000000A1 /* SpokenNumberFormatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpokenNumberFormatter.swift; sourceTree = "<group>"; };
 		B200002200000000000000A1 /* AppContextClassifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppContextClassifier.swift; sourceTree = "<group>"; };
 		B200002300000000000000A1 /* ShortcutsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortcutsView.swift; sourceTree = "<group>"; };
 		B200002400000000000000A1 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
@@ -98,6 +101,7 @@
 		B200003000000000000000A1 /* SoundPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SoundPlayer.swift; sourceTree = "<group>"; };
 		B200003100000000000000A1 /* HeatmapModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeatmapModelTests.swift; sourceTree = "<group>"; };
 		B200003500000000000000A1 /* SpeechDetectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechDetectionTests.swift; sourceTree = "<group>"; };
+		B200003700000000000000A1 /* SpokenNumberFormatterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpokenNumberFormatterTests.swift; sourceTree = "<group>"; };
 		B200003200000000000000A1 /* record-start.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = "record-start.wav"; sourceTree = "<group>"; };
 		B200003300000000000000A1 /* record-stop.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = "record-stop.wav"; sourceTree = "<group>"; };
 		B200003400000000000000A1 /* success.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = "success.wav"; sourceTree = "<group>"; };
@@ -202,6 +206,7 @@
 				B200000A00000000000000A1 /* HotkeyManager.swift */,
 				B200000B00000000000000A1 /* TextInserter.swift */,
 				B200002100000000000000A1 /* ShortcutExpander.swift */,
+				B200003600000000000000A1 /* SpokenNumberFormatter.swift */,
 				B200002C00000000000000A1 /* EscapeInterceptor.swift */,
 				B200003000000000000000A1 /* SoundPlayer.swift */,
 			);
@@ -239,6 +244,7 @@
 				B200002A00000000000000A1 /* DictionaryStoreTests.swift */,
 				B200003100000000000000A1 /* HeatmapModelTests.swift */,
 				B200003500000000000000A1 /* SpeechDetectionTests.swift */,
+				B200003700000000000000A1 /* SpokenNumberFormatterTests.swift */,
 			);
 			path = YappyTests;
 			sourceTree = "<group>";
@@ -371,6 +377,7 @@
 				B100001100000000000000A1 /* ModelSetupView.swift in Sources */,
 				B100002000000000000000A1 /* ShortcutStore.swift in Sources */,
 				B100002100000000000000A1 /* ShortcutExpander.swift in Sources */,
+				B100003600000000000000A1 /* SpokenNumberFormatter.swift in Sources */,
 				B100002200000000000000A1 /* AppContextClassifier.swift in Sources */,
 				B100002300000000000000A1 /* ShortcutsView.swift in Sources */,
 				B100002400000000000000A1 /* OnboardingView.swift in Sources */,
@@ -399,6 +406,7 @@
 				B100002A00000000000000A1 /* DictionaryStoreTests.swift in Sources */,
 				B100003100000000000000A1 /* HeatmapModelTests.swift in Sources */,
 				B100003500000000000000A1 /* SpeechDetectionTests.swift in Sources */,
+				B100003700000000000000A1 /* SpokenNumberFormatterTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

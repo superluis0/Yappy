@@ -36,6 +36,7 @@ final class Settings: ObservableObject {
         static let contextAwareToneEnabled = "com.yappy.contextAwareToneEnabled"
         static let toneOverrides = "com.yappy.toneOverrides"
         static let customDictionaryEnabled = "com.yappy.customDictionaryEnabled"
+        static let numberFormattingEnabled = "com.yappy.numberFormattingEnabled"
         static let onboardingComplete = "com.yappy.onboardingComplete"
         static let legacyCleanupMigrated = "com.yappy.legacyCleanupMigrated"
 
@@ -111,6 +112,11 @@ final class Settings: ObservableObject {
         didSet { if !isLoading { save() } }
     }
 
+    /// Whether spoken numbers are written as digits ("eleven point six" -> "11.6").
+    @Published var numberFormattingEnabled: Bool = true {
+        didSet { if !isLoading { save() } }
+    }
+
     /// Whether the first-run onboarding flow has been completed.
     @Published var onboardingComplete: Bool = false {
         didSet { if !isLoading { save() } }
@@ -157,6 +163,7 @@ final class Settings: ObservableObject {
         defaults.set(commandHotkeyOption.rawValue, forKey: Keys.commandHotkeyOption)
         defaults.set(contextAwareToneEnabled, forKey: Keys.contextAwareToneEnabled)
         defaults.set(customDictionaryEnabled, forKey: Keys.customDictionaryEnabled)
+        defaults.set(numberFormattingEnabled, forKey: Keys.numberFormattingEnabled)
         defaults.set(onboardingComplete, forKey: Keys.onboardingComplete)
 
         let overrides = Dictionary(uniqueKeysWithValues: toneOverrides.map { ($0.key.rawValue, $0.value.rawValue) })
@@ -214,6 +221,13 @@ final class Settings: ObservableObject {
         }
 
         customDictionaryEnabled = defaults.bool(forKey: Keys.customDictionaryEnabled)
+
+        if defaults.object(forKey: Keys.numberFormattingEnabled) != nil {
+            numberFormattingEnabled = defaults.bool(forKey: Keys.numberFormattingEnabled)
+        } else {
+            numberFormattingEnabled = true
+        }
+
         onboardingComplete = defaults.bool(forKey: Keys.onboardingComplete)
 
         if let raw = defaults.dictionary(forKey: Keys.toneOverrides) as? [String: String] {
@@ -243,6 +257,7 @@ final class Settings: ObservableObject {
         contextAwareToneEnabled = true
         toneOverrides = [:]
         customDictionaryEnabled = false
+        numberFormattingEnabled = true
         // onboardingComplete intentionally not reset — it tracks lifetime state.
 
         for key in [
@@ -250,6 +265,7 @@ final class Settings: ObservableObject {
             Keys.audioFeedbackEnabled, Keys.audioFeedbackVolume, Keys.lmStudioModelID,
             Keys.lmStudioBaseURL, Keys.commandModeEnabled, Keys.commandHotkeyOption,
             Keys.contextAwareToneEnabled, Keys.toneOverrides, Keys.customDictionaryEnabled,
+            Keys.numberFormattingEnabled,
         ] {
             defaults.removeObject(forKey: key)
         }

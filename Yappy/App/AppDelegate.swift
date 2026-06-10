@@ -285,7 +285,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     raw = try await self.transcriptionService.transcribe(samples)
                 }
 
-                let expanded = ShortcutExpander(shortcuts: self.shortcutStore.shortcuts).expand(raw)
+                // Spoken numbers ("eleven point six") come out of Parakeet as
+                // words; rewrite them to digits before anything else. Done on the
+                // raw transcript so user-authored shortcut expansions stay verbatim.
+                let normalized = self.settings.numberFormattingEnabled
+                    ? SpokenNumberFormatter.format(raw)
+                    : raw
+                let expanded = ShortcutExpander(shortcuts: self.shortcutStore.shortcuts).expand(normalized)
                 let tone = self.resolvedTone(forBundleID: bundleID)
                 let text = await self.lmStudio.cleanup(expanded, tone: tone)
 
