@@ -27,6 +27,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var lmStudio = LMStudioService(settings: settings)
     private lazy var hotkeyManager = HotkeyManager(mode: settings.hotkeyOption)
     private lazy var commandHotkeyManager = HotkeyManager(mode: settings.commandHotkeyOption)
+    private lazy var escapeInterceptor = EscapeInterceptor()
     private lazy var pillController = RecordingPillController(appState: appState)
     private lazy var mainWindowController = MainWindowController(
         settings: settings,
@@ -105,6 +106,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         hotkeyManager.stop()
+        commandHotkeyManager.stop()
+        escapeInterceptor.stop()
         maxDurationTimer?.invalidate()
         accessibilityPollTimer?.invalidate()
     }
@@ -119,6 +122,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         commandHotkeyManager.onStart = { [weak self] in self?.startCommand() }
         commandHotkeyManager.onStop = { [weak self] in self?.finishCommand() }
         commandHotkeyManager.onCancel = { [weak self] in self?.cancelDictation() }
+
+        escapeInterceptor.onEscape = { [weak self] in self?.escapeCancel() }
+    }
+
+    /// Esc pressed mid-session: deactivate both hotkey state machines first so
+    /// the eventual modifier key-up doesn't fire a spurious stop, then cancel.
+    private func escapeCancel() {
+        guard appState.isRecording else { return }
+        hotkeyManager.deactivate()
+        commandHotkeyManager.deactivate()
+        cancelDictation()
     }
 
     /// Starts the CGEvent tap(s), prompting for accessibility permission and
@@ -174,6 +188,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         pillController.show()
         playFeedback(start: true)
         armMaxDurationTimer { [weak self] in self?.finishDictation() }
+        escapeInterceptor.start()
 
         beginDictionarySessionIfNeeded()
     }
@@ -223,6 +238,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func finishDictation() {
         guard appState.isRecording, appState.mode == .dictation else { return }
         maxDurationTimer?.invalidate()
+        escapeInterceptor.stop()
 
         let samples = audioRecorder.stopRecording()
         audioRecorder.onBuffer = nil
@@ -281,6 +297,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func cancelDictation() {
         maxDurationTimer?.invalidate()
+        escapeInterceptor.stop()
         recordingStartTime = nil
         pendingCommandSelection = nil
         audioRecorder.stopRecording()
@@ -329,11 +346,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         pillController.show()
         playFeedback(start: true)
         armMaxDurationTimer { [weak self] in self?.finishCommand() }
+        escapeInterceptor.start()
     }
 
     private func finishCommand() {
         guard appState.isRecording, appState.mode == .command else { return }
         maxDurationTimer?.invalidate()
+        escapeInterceptor.stop()
         recordingStartTime = nil
 
         let samples = audioRecorder.stopRecording()

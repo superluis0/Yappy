@@ -32,6 +32,16 @@
 		B100002800000000000000A1 /* DictionaryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200002800000000000000A1 /* DictionaryStore.swift */; };
 		B100002900000000000000A1 /* DictionaryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200002900000000000000A1 /* DictionaryView.swift */; };
 		B100002A00000000000000A1 /* DictionaryStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200002A00000000000000A1 /* DictionaryStoreTests.swift */; };
+		B100002B00000000000000A1 /* WaveformBarsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200002B00000000000000A1 /* WaveformBarsView.swift */; };
+		B100002C00000000000000A1 /* EscapeInterceptor.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200002C00000000000000A1 /* EscapeInterceptor.swift */; };
+		B100002D00000000000000A1 /* HeatmapModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200002D00000000000000A1 /* HeatmapModel.swift */; };
+		B100002E00000000000000A1 /* HeatmapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200002E00000000000000A1 /* HeatmapView.swift */; };
+		B100002F00000000000000A1 /* IconCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200002F00000000000000A1 /* IconCache.swift */; };
+		B100003000000000000000A1 /* SoundPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200003000000000000000A1 /* SoundPlayer.swift */; };
+		B100003100000000000000A1 /* HeatmapModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200003100000000000000A1 /* HeatmapModelTests.swift */; };
+		B100003200000000000000A1 /* record-start.wav in Resources */ = {isa = PBXBuildFile; fileRef = B200003200000000000000A1 /* record-start.wav */; };
+		B100003300000000000000A1 /* record-stop.wav in Resources */ = {isa = PBXBuildFile; fileRef = B200003300000000000000A1 /* record-stop.wav */; };
+		B100003400000000000000A1 /* success.wav in Resources */ = {isa = PBXBuildFile; fileRef = B200003400000000000000A1 /* success.wav */; };
 		B100002500000000000000A1 /* ShortcutExpanderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200002500000000000000A1 /* ShortcutExpanderTests.swift */; };
 		B100002600000000000000A1 /* AppContextClassifierTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200002600000000000000A1 /* AppContextClassifierTests.swift */; };
 		B100002700000000000000A1 /* ShortcutStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200002700000000000000A1 /* ShortcutStoreTests.swift */; };
@@ -79,6 +89,16 @@
 		B200002800000000000000A1 /* DictionaryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictionaryStore.swift; sourceTree = "<group>"; };
 		B200002900000000000000A1 /* DictionaryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictionaryView.swift; sourceTree = "<group>"; };
 		B200002A00000000000000A1 /* DictionaryStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictionaryStoreTests.swift; sourceTree = "<group>"; };
+		B200002B00000000000000A1 /* WaveformBarsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WaveformBarsView.swift; sourceTree = "<group>"; };
+		B200002C00000000000000A1 /* EscapeInterceptor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EscapeInterceptor.swift; sourceTree = "<group>"; };
+		B200002D00000000000000A1 /* HeatmapModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeatmapModel.swift; sourceTree = "<group>"; };
+		B200002E00000000000000A1 /* HeatmapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeatmapView.swift; sourceTree = "<group>"; };
+		B200002F00000000000000A1 /* IconCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IconCache.swift; sourceTree = "<group>"; };
+		B200003000000000000000A1 /* SoundPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SoundPlayer.swift; sourceTree = "<group>"; };
+		B200003100000000000000A1 /* HeatmapModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeatmapModelTests.swift; sourceTree = "<group>"; };
+		B200003200000000000000A1 /* record-start.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = "record-start.wav"; sourceTree = "<group>"; };
+		B200003300000000000000A1 /* record-stop.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = "record-stop.wav"; sourceTree = "<group>"; };
+		B200003400000000000000A1 /* success.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = "success.wav"; sourceTree = "<group>"; };
 		B200002500000000000000A1 /* ShortcutExpanderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortcutExpanderTests.swift; sourceTree = "<group>"; };
 		B200002600000000000000A1 /* AppContextClassifierTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppContextClassifierTests.swift; sourceTree = "<group>"; };
 		B200002700000000000000A1 /* ShortcutStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortcutStoreTests.swift; sourceTree = "<group>"; };
@@ -128,11 +148,22 @@
 				B800000400000000000000A1 /* Core */,
 				B800000500000000000000A1 /* Services */,
 				B800000600000000000000A1 /* UI */,
+				B800000900000000000000A1 /* Sounds */,
 				B200001200000000000000A1 /* Assets.xcassets */,
 				B200001900000000000000A1 /* Info.plist */,
 				B200001A00000000000000A1 /* Yappy.entitlements */,
 			);
 			path = Yappy;
+			sourceTree = "<group>";
+		};
+		B800000900000000000000A1 /* Sounds */ = {
+			isa = PBXGroup;
+			children = (
+				B200003200000000000000A1 /* record-start.wav */,
+				B200003300000000000000A1 /* record-stop.wav */,
+				B200003400000000000000A1 /* success.wav */,
+			);
+			path = "Resources/Sounds";
 			sourceTree = "<group>";
 		};
 		B800000300000000000000A1 /* App */ = {
@@ -155,6 +186,8 @@
 				B200002000000000000000A1 /* ShortcutStore.swift */,
 				B200002200000000000000A1 /* AppContextClassifier.swift */,
 				B200002800000000000000A1 /* DictionaryStore.swift */,
+				B200002D00000000000000A1 /* HeatmapModel.swift */,
+				B200002F00000000000000A1 /* IconCache.swift */,
 			);
 			path = Core;
 			sourceTree = "<group>";
@@ -167,6 +200,8 @@
 				B200000A00000000000000A1 /* HotkeyManager.swift */,
 				B200000B00000000000000A1 /* TextInserter.swift */,
 				B200002100000000000000A1 /* ShortcutExpander.swift */,
+				B200002C00000000000000A1 /* EscapeInterceptor.swift */,
+				B200003000000000000000A1 /* SoundPlayer.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -183,6 +218,8 @@
 				B200002300000000000000A1 /* ShortcutsView.swift */,
 				B200002400000000000000A1 /* OnboardingView.swift */,
 				B200002900000000000000A1 /* DictionaryView.swift */,
+				B200002B00000000000000A1 /* WaveformBarsView.swift */,
+				B200002E00000000000000A1 /* HeatmapView.swift */,
 			);
 			path = UI;
 			sourceTree = "<group>";
@@ -198,6 +235,7 @@
 				B200002600000000000000A1 /* AppContextClassifierTests.swift */,
 				B200002700000000000000A1 /* ShortcutStoreTests.swift */,
 				B200002A00000000000000A1 /* DictionaryStoreTests.swift */,
+				B200003100000000000000A1 /* HeatmapModelTests.swift */,
 			);
 			path = YappyTests;
 			sourceTree = "<group>";
@@ -332,6 +370,7 @@
 				B100002400000000000000A1 /* OnboardingView.swift in Sources */,
 				B100002800000000000000A1 /* DictionaryStore.swift in Sources */,
 				B100002900000000000000A1 /* DictionaryView.swift in Sources */,
+				B100002C00000000000000A1 /* EscapeInterceptor.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
