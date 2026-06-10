@@ -24,6 +24,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private let audioRecorder = AudioRecorder()
     private let textInserter = TextInserter()
+    private let soundPlayer = SoundPlayer()
     private lazy var lmStudio = LMStudioService(settings: settings)
     private lazy var hotkeyManager = HotkeyManager(mode: settings.hotkeyOption)
     private lazy var commandHotkeyManager = HotkeyManager(mode: settings.commandHotkeyOption)
@@ -276,6 +277,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
                 if !text.isEmpty {
                     try self.textInserter.insert(text: text)
+                    self.playSuccessFeedback()
                     self.history.add(DictationEntry(
                         text: text,
                         durationSeconds: duration,
@@ -373,6 +375,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 if let result = await self.lmStudio.runCommand(instruction: instruction, selection: selection),
                    !result.isEmpty {
                     try self.textInserter.insert(text: result)
+                    self.playSuccessFeedback()
                     self.appState.setTranscription(result)
                 } else {
                     // LM Studio unavailable or returned nothing — don't destroy
@@ -416,9 +419,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func playFeedback(start: Bool) {
         guard settings.audioFeedbackEnabled else { return }
-        guard let sound = NSSound(named: start ? "Tink" : "Pop") else { return }
-        sound.volume = settings.audioFeedbackVolume
-        sound.play()
+        soundPlayer.play(start ? .recordStart : .recordStop, volume: settings.audioFeedbackVolume)
+    }
+
+    /// Quieter confirmation after text lands at the cursor.
+    private func playSuccessFeedback() {
+        guard settings.audioFeedbackEnabled else { return }
+        soundPlayer.play(.success, volume: settings.audioFeedbackVolume * 0.7)
     }
 
     // MARK: - Model Setup Window

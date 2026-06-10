@@ -336,6 +336,9 @@
 			buildActionMask = 2147483647;
 			files = (
 				B100001200000000000000A1 /* Assets.xcassets in Resources */,
+				B100003200000000000000A1 /* record-start.wav in Resources */,
+				B100003300000000000000A1 /* record-stop.wav in Resources */,
+				B100003400000000000000A1 /* success.wav in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -375,6 +378,7 @@
 				B100002D00000000000000A1 /* HeatmapModel.swift in Sources */,
 				B100002E00000000000000A1 /* HeatmapView.swift in Sources */,
 				B100002B00000000000000A1 /* WaveformBarsView.swift in Sources */,
+				B100003000000000000000A1 /* SoundPlayer.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
