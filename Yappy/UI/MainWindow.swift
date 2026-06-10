@@ -98,7 +98,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             defer: false
         )
         window.titlebarAppearsTransparent = true
-        window.minSize = NSSize(width: 700, height: 440)
+        window.minSize = NSSize(width: 780, height: 480)
         window.contentViewController = NSHostingController(rootView: view)
         window.center()
         window.setFrameAutosaveName("YappyMainWindow")
