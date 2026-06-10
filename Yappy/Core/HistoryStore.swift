@@ -13,18 +13,32 @@ struct DictationEntry: Identifiable, Codable, Equatable {
     let text: String
     let durationSeconds: Double
     let appName: String?
+    /// Bundle identifier of the app dictated into (nil for legacy entries).
+    let bundleID: String?
 
     var wordCount: Int {
         text.split(whereSeparator: \.isWhitespace).count
     }
 
-    init(id: UUID = UUID(), date: Date = Date(), text: String, durationSeconds: Double, appName: String? = nil) {
+    init(id: UUID = UUID(), date: Date = Date(), text: String, durationSeconds: Double,
+         appName: String? = nil, bundleID: String? = nil) {
         self.id = id
         self.date = date
         self.text = text
         self.durationSeconds = durationSeconds
         self.appName = appName
+        self.bundleID = bundleID
     }
+}
+
+/// Aggregated per-app dictation usage, for the "top apps" card.
+struct AppUsage: Identifiable, Equatable {
+    let appName: String
+    let bundleID: String?
+    let count: Int
+    let words: Int
+
+    var id: String { bundleID ?? appName }
 }
 
 /// Local, on-disk store of past dictations, newest first.
@@ -90,6 +104,22 @@ final class HistoryStore: ObservableObject {
         let totalSeconds = entries.reduce(0.0) { $0 + $1.durationSeconds }
         guard totalSeconds > 1 else { return 0 }
         return Int((Double(totalWords) / totalSeconds * 60.0).rounded())
+    }
+
+    /// The most-dictated-into apps, ordered by dictation count.
+    func topApps(limit: Int = 5) -> [AppUsage] {
+        var grouped: [String: (appName: String, bundleID: String?, count: Int, words: Int)] = [:]
+        for entry in entries {
+            let key = entry.bundleID ?? entry.appName ?? "Unknown"
+            var bucket = grouped[key] ?? (entry.appName ?? "Unknown", entry.bundleID, 0, 0)
+            bucket.count += 1
+            bucket.words += entry.wordCount
+            grouped[key] = bucket
+        }
+        return grouped.values
+            .sorted { $0.count > $1.count }
+            .prefix(limit)
+            .map { AppUsage(appName: $0.appName, bundleID: $0.bundleID, count: $0.count, words: $0.words) }
     }
 
     /// Number of consecutive days (ending today or yesterday) with at least one dictation.

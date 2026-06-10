@@ -276,7 +276,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     self.history.add(DictationEntry(
                         text: text,
                         durationSeconds: duration,
-                        appName: targetAppName
+                        appName: targetAppName,
+                        bundleID: bundleID
                     ))
                 }
                 self.appState.setTranscription(text)

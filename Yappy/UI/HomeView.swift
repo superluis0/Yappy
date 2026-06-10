@@ -55,6 +55,51 @@ struct HomeView: View {
         }
     }
 
+    // MARK: - Top Apps
+
+    @ViewBuilder
+    private var topAppsCard: some View {
+        let apps = history.topApps(limit: 5)
+        if !apps.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Top apps")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+
+                let maxCount = apps.map(\.count).max() ?? 1
+                ForEach(apps) { app in
+                    HStack(spacing: 8) {
+                        if let icon = IconCache.shared.icon(forBundleID: app.bundleID) {
+                            Image(nsImage: icon)
+                                .resizable()
+                                .frame(width: 16, height: 16)
+                        } else {
+                            Image(systemName: "app.badge")
+                                .font(.system(size: 12))
+                                .frame(width: 16, height: 16)
+                                .foregroundStyle(.secondary)
+                        }
+                        Text(app.appName)
+                            .font(.callout)
+                            .lineLimit(1)
+                            .frame(width: 86, alignment: .leading)
+                        Capsule()
+                            .fill(.tint)
+                            .frame(width: max(8, 90 * CGFloat(app.count) / CGFloat(maxCount)), height: 5)
+                        Spacer(minLength: 0)
+                        Text("\(app.count)")
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(16)
+            .frame(maxHeight: .infinity, alignment: .topLeading)
+            .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 12))
+        }
+    }
+
     private func statCard(value: String, label: String, icon: String) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Image(systemName: icon)
@@ -143,8 +188,17 @@ struct HomeView: View {
                 Text(entry.date, format: .relative(presentation: .named))
                 Text("\(entry.wordCount) words")
                 if let appName = entry.appName {
-                    Label(appName, systemImage: "app.badge")
-                        .labelStyle(.titleAndIcon)
+                    if let icon = IconCache.shared.icon(forBundleID: entry.bundleID) {
+                        HStack(spacing: 4) {
+                            Image(nsImage: icon)
+                                .resizable()
+                                .frame(width: 14, height: 14)
+                            Text(appName)
+                        }
+                    } else {
+                        Label(appName, systemImage: "app.badge")
+                            .labelStyle(.titleAndIcon)
+                    }
                 }
                 Spacer()
 

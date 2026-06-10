@@ -371,6 +371,7 @@
 				B100002800000000000000A1 /* DictionaryStore.swift in Sources */,
 				B100002900000000000000A1 /* DictionaryView.swift in Sources */,
 				B100002C00000000000000A1 /* EscapeInterceptor.swift in Sources */,
+				B100002F00000000000000A1 /* IconCache.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
