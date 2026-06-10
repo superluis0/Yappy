@@ -92,14 +92,19 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         )
 
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 860, height: 560),
+            contentRect: NSRect(x: 0, y: 0, width: 880, height: 640),
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
         window.titlebarAppearsTransparent = true
         window.minSize = NSSize(width: 780, height: 480)
-        window.contentViewController = NSHostingController(rootView: view)
+        // Don't let the hosting controller shrink the window to its content's
+        // minimum; honor the size we set here.
+        let hosting = NSHostingController(rootView: view)
+        hosting.sizingOptions = []
+        window.contentViewController = hosting
+        window.setContentSize(NSSize(width: 880, height: 640))
         window.center()
         window.setFrameAutosaveName("YappyMainWindow")
         window.isReleasedWhenClosed = false
