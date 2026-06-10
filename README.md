@@ -31,11 +31,16 @@ It stays out of your way until you need it: a single global hotkey, a small reco
 
 ## A real app, not just a menu bar blip
 
-Click Yappy open and you get a clean home with your dictation stats and searchable history, plus everything configurable in one place.
+Open Yappy and you land on a home that actually tells you something: how much time dictation has saved you, your stats, a heatmap of *when* you dictate, the apps you use it in most, and your searchable history — all stored locally.
 
 <div align="center">
-<img src="Documentation/assets/home.png" alt="Yappy home window with stats and recent dictations" width="49%">
-<img src="Documentation/assets/settings.png" alt="Yappy settings — hotkeys, command mode, and more" width="49%">
+<img src="Documentation/assets/home.png" alt="Yappy home — time saved, stats, a when-you-dictate heatmap, top apps, and searchable history" width="640">
+</div>
+
+Everything is configurable in one place — hotkeys, Command Mode, optional AI cleanup, and permissions.
+
+<div align="center">
+<img src="Documentation/assets/settings.png" alt="Yappy settings — hotkeys, Command Mode, AI cleanup, and permissions" width="640">
 </div>
 
 ## Features
@@ -52,7 +57,11 @@ Click Yappy open and you get a clean home with your dictation stats and searchab
 
 **Custom dictionary** — teach Yappy your names, jargon, and acronyms; on-device vocabulary boosting fixes the words it used to mishear.
 
-**Polished hotkeys** — hold Right ⌘, double-tap Right ⌘, or hold Right ⌥. A debounced state machine ignores key repeats and accidental taps, so it never fires when you don't mean it.
+**Activity at a glance** — a "time saved versus typing" headline, words-per-minute and streaks, a day-by-hour heatmap of when you dictate, and which apps you use it in most.
+
+**Polished hotkeys** — hold Right ⌘, double-tap Right ⌘, or hold Right ⌥. A debounced state machine ignores key repeats and accidental taps, so it never fires when you don't mean it. Press **Esc** mid-dictation to cancel cleanly.
+
+**Considered details** — a molten-glass recording pill whose glow breathes with your voice, a menu bar icon that animates while recording, and subtle custom start/stop/done sounds.
 
 **Private by design** — after the one-time model download, the only network traffic is to your own LM Studio on `localhost` (and only if you turn cleanup on).
 
