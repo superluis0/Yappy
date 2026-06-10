@@ -27,6 +27,7 @@
 		B100002000000000000000A1 /* ShortcutStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200002000000000000000A1 /* ShortcutStore.swift */; };
 		B100002100000000000000A1 /* ShortcutExpander.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200002100000000000000A1 /* ShortcutExpander.swift */; };
 		B100003600000000000000A1 /* SpokenNumberFormatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200003600000000000000A1 /* SpokenNumberFormatter.swift */; };
+		B100003800000000000000A1 /* TranscriptTokenizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200003800000000000000A1 /* TranscriptTokenizer.swift */; };
 		B100002200000000000000A1 /* AppContextClassifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200002200000000000000A1 /* AppContextClassifier.swift */; };
 		B100002300000000000000A1 /* ShortcutsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200002300000000000000A1 /* ShortcutsView.swift */; };
 		B100002400000000000000A1 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200002400000000000000A1 /* OnboardingView.swift */; };
@@ -87,6 +88,7 @@
 		B200002000000000000000A1 /* ShortcutStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortcutStore.swift; sourceTree = "<group>"; };
 		B200002100000000000000A1 /* ShortcutExpander.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortcutExpander.swift; sourceTree = "<group>"; };
 		B200003600000000000000A1 /* SpokenNumberFormatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpokenNumberFormatter.swift; sourceTree = "<group>"; };
+		B200003800000000000000A1 /* TranscriptTokenizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptTokenizer.swift; sourceTree = "<group>"; };
 		B200002200000000000000A1 /* AppContextClassifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppContextClassifier.swift; sourceTree = "<group>"; };
 		B200002300000000000000A1 /* ShortcutsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortcutsView.swift; sourceTree = "<group>"; };
 		B200002400000000000000A1 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
@@ -207,6 +209,7 @@
 				B200000B00000000000000A1 /* TextInserter.swift */,
 				B200002100000000000000A1 /* ShortcutExpander.swift */,
 				B200003600000000000000A1 /* SpokenNumberFormatter.swift */,
+				B200003800000000000000A1 /* TranscriptTokenizer.swift */,
 				B200002C00000000000000A1 /* EscapeInterceptor.swift */,
 				B200003000000000000000A1 /* SoundPlayer.swift */,
 			);
@@ -378,6 +381,7 @@
 				B100002000000000000000A1 /* ShortcutStore.swift in Sources */,
 				B100002100000000000000A1 /* ShortcutExpander.swift in Sources */,
 				B100003600000000000000A1 /* SpokenNumberFormatter.swift in Sources */,
+				B100003800000000000000A1 /* TranscriptTokenizer.swift in Sources */,
 				B100002200000000000000A1 /* AppContextClassifier.swift in Sources */,
 				B100002300000000000000A1 /* ShortcutsView.swift in Sources */,
 				B100002400000000000000A1 /* OnboardingView.swift in Sources */,
