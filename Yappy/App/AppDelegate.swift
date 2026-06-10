@@ -285,13 +285,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     raw = try await self.transcriptionService.transcribe(samples)
                 }
 
-                // Spoken numbers ("eleven point six") come out of Parakeet as
-                // words; rewrite them to digits before anything else. Done on the
-                // raw transcript so user-authored shortcut expansions stay verbatim.
-                let normalized = self.settings.numberFormattingEnabled
-                    ? SpokenNumberFormatter.format(raw)
-                    : raw
-                let expanded = ShortcutExpander(shortcuts: self.shortcutStore.shortcuts).expand(normalized)
+                // Nothing usable (too short, or discarded as low confidence).
+                guard !raw.isEmpty else {
+                    self.appState.reset()
+                    self.pillController.hide()
+                    return
+                }
+
+                // Local cleanups run on the raw transcript, before shortcut
+                // expansion, so user-authored expansions stay verbatim.
+                let cleaned = TranscriptPipeline(
+                    removeFillers: self.settings.fillerRemovalEnabled,
+                    formatNumbers: self.settings.numberFormattingEnabled,
+                    applyCommands: self.settings.spokenCommandsEnabled
+                ).process(raw)
+                let expanded = ShortcutExpander(shortcuts: self.shortcutStore.shortcuts).expand(cleaned)
                 let tone = self.resolvedTone(forBundleID: bundleID)
                 let text = await self.lmStudio.cleanup(expanded, tone: tone)
 
@@ -399,7 +407,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
 
             do {
-                let instruction = try await self.transcriptionService.transcribe(samples)
+                let rawInstruction = try await self.transcriptionService.transcribe(samples)
+                // Only filler-stripping applies to a spoken instruction —
+                // numbers-as-words are fine for the LLM, and a literal line
+                // break would corrupt the prompt.
+                let instruction = self.settings.fillerRemovalEnabled
+                    ? FillerWordRemover.remove(rawInstruction)
+                    : rawInstruction
                 if let result = await self.lmStudio.runCommand(instruction: instruction, selection: selection),
                    !result.isEmpty {
                     try self.textInserter.insert(text: result)

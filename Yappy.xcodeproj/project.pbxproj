@@ -28,6 +28,12 @@
 		B100002100000000000000A1 /* ShortcutExpander.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200002100000000000000A1 /* ShortcutExpander.swift */; };
 		B100003600000000000000A1 /* SpokenNumberFormatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200003600000000000000A1 /* SpokenNumberFormatter.swift */; };
 		B100003800000000000000A1 /* TranscriptTokenizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200003800000000000000A1 /* TranscriptTokenizer.swift */; };
+		B100003900000000000000A1 /* FillerWordRemover.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200003900000000000000A1 /* FillerWordRemover.swift */; };
+		B100003A00000000000000A1 /* SpokenCommandFormatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200003A00000000000000A1 /* SpokenCommandFormatter.swift */; };
+		B100003B00000000000000A1 /* TranscriptPipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200003B00000000000000A1 /* TranscriptPipeline.swift */; };
+		B100003C00000000000000A1 /* FillerWordRemoverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200003C00000000000000A1 /* FillerWordRemoverTests.swift */; };
+		B100003D00000000000000A1 /* SpokenCommandFormatterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200003D00000000000000A1 /* SpokenCommandFormatterTests.swift */; };
+		B100003E00000000000000A1 /* TranscriptPipelineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200003E00000000000000A1 /* TranscriptPipelineTests.swift */; };
 		B100002200000000000000A1 /* AppContextClassifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200002200000000000000A1 /* AppContextClassifier.swift */; };
 		B100002300000000000000A1 /* ShortcutsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200002300000000000000A1 /* ShortcutsView.swift */; };
 		B100002400000000000000A1 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200002400000000000000A1 /* OnboardingView.swift */; };
@@ -89,6 +95,12 @@
 		B200002100000000000000A1 /* ShortcutExpander.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortcutExpander.swift; sourceTree = "<group>"; };
 		B200003600000000000000A1 /* SpokenNumberFormatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpokenNumberFormatter.swift; sourceTree = "<group>"; };
 		B200003800000000000000A1 /* TranscriptTokenizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptTokenizer.swift; sourceTree = "<group>"; };
+		B200003900000000000000A1 /* FillerWordRemover.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FillerWordRemover.swift; sourceTree = "<group>"; };
+		B200003A00000000000000A1 /* SpokenCommandFormatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpokenCommandFormatter.swift; sourceTree = "<group>"; };
+		B200003B00000000000000A1 /* TranscriptPipeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptPipeline.swift; sourceTree = "<group>"; };
+		B200003C00000000000000A1 /* FillerWordRemoverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FillerWordRemoverTests.swift; sourceTree = "<group>"; };
+		B200003D00000000000000A1 /* SpokenCommandFormatterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpokenCommandFormatterTests.swift; sourceTree = "<group>"; };
+		B200003E00000000000000A1 /* TranscriptPipelineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptPipelineTests.swift; sourceTree = "<group>"; };
 		B200002200000000000000A1 /* AppContextClassifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppContextClassifier.swift; sourceTree = "<group>"; };
 		B200002300000000000000A1 /* ShortcutsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortcutsView.swift; sourceTree = "<group>"; };
 		B200002400000000000000A1 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
@@ -210,6 +222,9 @@
 				B200002100000000000000A1 /* ShortcutExpander.swift */,
 				B200003600000000000000A1 /* SpokenNumberFormatter.swift */,
 				B200003800000000000000A1 /* TranscriptTokenizer.swift */,
+				B200003900000000000000A1 /* FillerWordRemover.swift */,
+				B200003A00000000000000A1 /* SpokenCommandFormatter.swift */,
+				B200003B00000000000000A1 /* TranscriptPipeline.swift */,
 				B200002C00000000000000A1 /* EscapeInterceptor.swift */,
 				B200003000000000000000A1 /* SoundPlayer.swift */,
 			);
@@ -248,6 +263,9 @@
 				B200003100000000000000A1 /* HeatmapModelTests.swift */,
 				B200003500000000000000A1 /* SpeechDetectionTests.swift */,
 				B200003700000000000000A1 /* SpokenNumberFormatterTests.swift */,
+				B200003C00000000000000A1 /* FillerWordRemoverTests.swift */,
+				B200003D00000000000000A1 /* SpokenCommandFormatterTests.swift */,
+				B200003E00000000000000A1 /* TranscriptPipelineTests.swift */,
 			);
 			path = YappyTests;
 			sourceTree = "<group>";
@@ -382,6 +400,9 @@
 				B100002100000000000000A1 /* ShortcutExpander.swift in Sources */,
 				B100003600000000000000A1 /* SpokenNumberFormatter.swift in Sources */,
 				B100003800000000000000A1 /* TranscriptTokenizer.swift in Sources */,
+				B100003900000000000000A1 /* FillerWordRemover.swift in Sources */,
+				B100003A00000000000000A1 /* SpokenCommandFormatter.swift in Sources */,
+				B100003B00000000000000A1 /* TranscriptPipeline.swift in Sources */,
 				B100002200000000000000A1 /* AppContextClassifier.swift in Sources */,
 				B100002300000000000000A1 /* ShortcutsView.swift in Sources */,
 				B100002400000000000000A1 /* OnboardingView.swift in Sources */,
@@ -411,6 +432,9 @@
 				B100003100000000000000A1 /* HeatmapModelTests.swift in Sources */,
 				B100003500000000000000A1 /* SpeechDetectionTests.swift in Sources */,
 				B100003700000000000000A1 /* SpokenNumberFormatterTests.swift in Sources */,
+				B100003C00000000000000A1 /* FillerWordRemoverTests.swift in Sources */,
+				B100003D00000000000000A1 /* SpokenCommandFormatterTests.swift in Sources */,
+				B100003E00000000000000A1 /* TranscriptPipelineTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

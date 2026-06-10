@@ -36,4 +36,12 @@ final class SpeechDetectionTests: XCTestCase {
     func testNormalSpeechIsAccepted() {
         XCTAssertTrue(AudioRecorder.containsSpeech(sine(amplitude: 0.15, seconds: 0.5)))
     }
+
+    // MARK: - Confidence floor
+
+    func testConfidenceFloorBoundary() {
+        XCTAssertFalse(ParakeetTranscriptionService.acceptsTranscript(confidence: 0.29))
+        XCTAssertTrue(ParakeetTranscriptionService.acceptsTranscript(confidence: 0.30))
+        XCTAssertTrue(ParakeetTranscriptionService.acceptsTranscript(confidence: 0.95))
+    }
 }

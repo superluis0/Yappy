@@ -128,7 +128,20 @@ final class ParakeetTranscriptionService: ObservableObject {
         var state = TdtDecoderState.make(decoderLayers: decoderLayers)
         let result = try await asrManager.transcribe(samples, decoderState: &state)
         Self.logger.info("Transcribed \(samples.count) samples in \(result.processingTime, format: .fixed(precision: 2))s")
-        return result.text.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let text = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard text.isEmpty || Self.acceptsTranscript(confidence: result.confidence) else {
+            Self.logger.warning(
+                "Discarding low-confidence transcript (\(result.confidence, format: .fixed(precision: 2))): \(text.count) chars")
+            return ""
+        }
+        return text
+    }
+
+    /// Whether a batch result clears the confidence floor. Low-confidence
+    /// output is usually the model decoding noise into filler text.
+    nonisolated static func acceptsTranscript(confidence: Float) -> Bool {
+        confidence >= Constants.transcriptionConfidenceFloor
     }
 
     // MARK: - Streaming + Custom Dictionary

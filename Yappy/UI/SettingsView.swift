@@ -37,7 +37,15 @@ struct SettingsView: View {
                 }
 
                 Toggle("Write spoken numbers as digits", isOn: $settings.numberFormattingEnabled)
-                Text("Turns \u{201c}eleven point six\u{201d} into \u{201c}11.6\u{201d} and \u{201c}twenty three\u{201d} into \u{201c}23.\u{201d}")
+                Text("Turns \u{201c}eleven point six\u{201d} into \u{201c}11.6\u{201d}, \u{201c}twenty dollars\u{201d} into \u{201c}$20\u{201d}, and \u{201c}three thirty PM\u{201d} into \u{201c}3:30 PM.\u{201d}")
+                    .font(.caption).foregroundStyle(.secondary)
+
+                Toggle("Remove filler words", isOn: $settings.fillerRemovalEnabled)
+                Text("Strips standalone \u{201c}um\u{201d}, \u{201c}uh\u{201d}, \u{201c}erm\u{201d}, and \u{201c}hmm\u{201d} from transcripts.")
+                    .font(.caption).foregroundStyle(.secondary)
+
+                Toggle("Spoken formatting commands", isOn: $settings.spokenCommandsEnabled)
+                Text("Say \u{201c}new line\u{201d} or \u{201c}new paragraph\u{201d} to insert line breaks.")
                     .font(.caption).foregroundStyle(.secondary)
             }
 

@@ -41,6 +41,13 @@ enum Constants {
     static let speechVoiceFloor: Float = 0.02     // per-sample amplitude counted as "voiced"
     static let speechVoicedFraction: Float = 0.02 // ≥ 2% of the clip must be voiced (rejects transients)
 
+    /// ASR results below this confidence are discarded as probable noise
+    /// decodes. Clean speech typically scores well above 0.7, and the energy
+    /// gate above already drops silence, so this floor only catches the
+    /// in-between: breath/rustle that decoded into garbage. Erring low —
+    /// silently dropping real speech is worse than rare garbage text.
+    static let transcriptionConfidenceFloor: Float = 0.3
+
     // MARK: - Hotkey Behavior
 
     /// Maximum duration of a key press for it to count as a "tap" (double-tap mode).

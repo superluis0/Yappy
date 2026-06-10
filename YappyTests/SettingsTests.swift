@@ -98,6 +98,31 @@ final class SettingsTests: XCTestCase {
         }
     }
 
+    func testTranscriptCleanupDefaultsAreOn() {
+        XCTAssertTrue(settings.numberFormattingEnabled)
+        XCTAssertTrue(settings.fillerRemovalEnabled)
+        XCTAssertTrue(settings.spokenCommandsEnabled)
+    }
+
+    func testTranscriptCleanupTogglesPersist() {
+        settings.fillerRemovalEnabled = false
+        settings.spokenCommandsEnabled = false
+
+        let reloaded = Settings(defaults: defaults)
+        XCTAssertFalse(reloaded.fillerRemovalEnabled)
+        XCTAssertFalse(reloaded.spokenCommandsEnabled)
+    }
+
+    func testTranscriptCleanupTogglesReset() {
+        settings.fillerRemovalEnabled = false
+        settings.spokenCommandsEnabled = false
+
+        settings.reset()
+
+        XCTAssertTrue(settings.fillerRemovalEnabled)
+        XCTAssertTrue(settings.spokenCommandsEnabled)
+    }
+
     // MARK: - Reset
 
     func testReset() {

@@ -49,6 +49,10 @@ Everything is configurable in one place — hotkeys, Command Mode, optional AI c
 
 **Universal insertion** — pastes at the cursor in any app, including Electron apps, web views, and terminals where direct insertion fails. Your clipboard is snapshotted and restored, so nothing you copied gets clobbered.
 
+**Numbers written the way you'd type them** — *"three thirty pm"* becomes `3:30 PM`, *"twenty dollars and fifty cents"* becomes `$20.50`, *"twenty twenty six"* becomes `2026`, *"twenty third"* becomes `23rd`, *"version eleven point six point zero"* becomes `11.6.0`. All local and deterministic — no LLM involved — and deliberately conservative, so *"wait a second"* and *"one in a million"* stay exactly as you said them.
+
+**Clean transcripts** — standalone fillers (*"um"*, *"uh"*) are stripped and the punctuation around them healed; say *"new line"* or *"new paragraph"* to insert real line breaks while you dictate. Both are toggles, and low-confidence noise decodes are discarded instead of inserted as garbage.
+
 **Command Mode** — select text anywhere, hold the command hotkey, and speak an instruction: *"make this concise"*, *"translate to Spanish"*, *"turn this into a bulleted list."* The selection is rewritten in place. Powered by a local LM Studio model; if it isn't running, your text is left untouched.
 
 **Voice shortcuts** — say a cue and Yappy expands it to canned text: an email signature, a calendar link, a block of boilerplate.

@@ -37,6 +37,8 @@ final class Settings: ObservableObject {
         static let toneOverrides = "com.yappy.toneOverrides"
         static let customDictionaryEnabled = "com.yappy.customDictionaryEnabled"
         static let numberFormattingEnabled = "com.yappy.numberFormattingEnabled"
+        static let fillerRemovalEnabled = "com.yappy.fillerRemovalEnabled"
+        static let spokenCommandsEnabled = "com.yappy.spokenCommandsEnabled"
         static let onboardingComplete = "com.yappy.onboardingComplete"
         static let legacyCleanupMigrated = "com.yappy.legacyCleanupMigrated"
 
@@ -117,6 +119,16 @@ final class Settings: ObservableObject {
         didSet { if !isLoading { save() } }
     }
 
+    /// Whether hesitation fillers ("um", "uh") are stripped from transcripts.
+    @Published var fillerRemovalEnabled: Bool = true {
+        didSet { if !isLoading { save() } }
+    }
+
+    /// Whether "new line" / "new paragraph" insert real line breaks.
+    @Published var spokenCommandsEnabled: Bool = true {
+        didSet { if !isLoading { save() } }
+    }
+
     /// Whether the first-run onboarding flow has been completed.
     @Published var onboardingComplete: Bool = false {
         didSet { if !isLoading { save() } }
@@ -164,6 +176,8 @@ final class Settings: ObservableObject {
         defaults.set(contextAwareToneEnabled, forKey: Keys.contextAwareToneEnabled)
         defaults.set(customDictionaryEnabled, forKey: Keys.customDictionaryEnabled)
         defaults.set(numberFormattingEnabled, forKey: Keys.numberFormattingEnabled)
+        defaults.set(fillerRemovalEnabled, forKey: Keys.fillerRemovalEnabled)
+        defaults.set(spokenCommandsEnabled, forKey: Keys.spokenCommandsEnabled)
         defaults.set(onboardingComplete, forKey: Keys.onboardingComplete)
 
         let overrides = Dictionary(uniqueKeysWithValues: toneOverrides.map { ($0.key.rawValue, $0.value.rawValue) })
@@ -228,6 +242,18 @@ final class Settings: ObservableObject {
             numberFormattingEnabled = true
         }
 
+        if defaults.object(forKey: Keys.fillerRemovalEnabled) != nil {
+            fillerRemovalEnabled = defaults.bool(forKey: Keys.fillerRemovalEnabled)
+        } else {
+            fillerRemovalEnabled = true
+        }
+
+        if defaults.object(forKey: Keys.spokenCommandsEnabled) != nil {
+            spokenCommandsEnabled = defaults.bool(forKey: Keys.spokenCommandsEnabled)
+        } else {
+            spokenCommandsEnabled = true
+        }
+
         onboardingComplete = defaults.bool(forKey: Keys.onboardingComplete)
 
         if let raw = defaults.dictionary(forKey: Keys.toneOverrides) as? [String: String] {
@@ -258,6 +284,8 @@ final class Settings: ObservableObject {
         toneOverrides = [:]
         customDictionaryEnabled = false
         numberFormattingEnabled = true
+        fillerRemovalEnabled = true
+        spokenCommandsEnabled = true
         // onboardingComplete intentionally not reset — it tracks lifetime state.
 
         for key in [
@@ -265,7 +293,7 @@ final class Settings: ObservableObject {
             Keys.audioFeedbackEnabled, Keys.audioFeedbackVolume, Keys.lmStudioModelID,
             Keys.lmStudioBaseURL, Keys.commandModeEnabled, Keys.commandHotkeyOption,
             Keys.contextAwareToneEnabled, Keys.toneOverrides, Keys.customDictionaryEnabled,
-            Keys.numberFormattingEnabled,
+            Keys.numberFormattingEnabled, Keys.fillerRemovalEnabled, Keys.spokenCommandsEnabled,
         ] {
             defaults.removeObject(forKey: key)
         }
