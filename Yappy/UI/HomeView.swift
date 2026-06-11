@@ -14,22 +14,28 @@ struct HomeView: View {
     @State private var copiedEntryID: UUID?
     /// Flipped once on appear so the stat numerals roll up from zero.
     @State private var statsAppeared = false
+    @State private var showRecap = false
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 header
                 timeSavedCard
+                milestoneLine
                 statsGrid
                 if !history.entries.isEmpty {
                     HeatmapView(entries: history.entries)
                     topAppsCard
+                    recordsCard
+                    recapButton
                 }
+                privacyCard
                 historySection
             }
             .padding(24)
         }
         .background(Color(nsColor: .windowBackgroundColor))
+        .sheet(isPresented: $showRecap) { RecapView(history: history) }
         .onAppear {
             guard !statsAppeared else { return }
             withAnimation(.spring(response: 0.7, dampingFraction: 0.9).delay(0.1)) {
@@ -97,6 +103,80 @@ struct HomeView: View {
             statCard(value: history.averageWordsPerMinute, label: "Words / minute", icon: "speedometer")
             statCard(value: history.streakDays, label: "Day streak", icon: "flame.fill",
                      pulse: history.streakDays >= 2)
+        }
+    }
+
+    /// One quiet line that frames the total at human scale (nil below ~1k words).
+    @ViewBuilder
+    private var milestoneLine: some View {
+        if let milestone = StatFraming.wordsMilestone(history.totalWords) {
+            Text("That's \(milestone).")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    // MARK: - Personal Records
+
+    @ViewBuilder
+    private var recordsCard: some View {
+        let r = history.personalRecords
+        if r.hasAny {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Personal records")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                HStack(spacing: 20) {
+                    if r.fastestWPM > 0 { recordItem("speedometer", "\(r.fastestWPM)", "Top WPM") }
+                    if r.longestStreakDays > 0 { recordItem("flame.fill", "\(r.longestStreakDays)d", "Best streak") }
+                    if r.biggestDayWords > 0 { recordItem("calendar", "\(r.biggestDayWords)", "Biggest day") }
+                    if r.longestDictationWords > 0 { recordItem("text.alignleft", "\(r.longestDictationWords)", "Longest") }
+                    Spacer(minLength: 0)
+                }
+            }
+            .padding(16)
+            .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 12))
+        }
+    }
+
+    private func recordItem(_ icon: String, _ value: String, _ label: String) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Image(systemName: icon).font(.callout).foregroundStyle(.tint)
+            Text(value).font(.system(size: 18, weight: .bold, design: .rounded))
+            Text(label).font(.caption2).foregroundStyle(.secondary)
+        }
+    }
+
+    private var recapButton: some View {
+        Button { showRecap = true } label: {
+            Label("Your Year in Voice", systemImage: "sparkles")
+        }
+        .buttonStyle(.borderless)
+    }
+
+    // MARK: - Privacy
+
+    private var privacyCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("Private by design", systemImage: "lock.shield")
+                .font(.callout.weight(.semibold))
+            privacyLine("Audio is transcribed on this Mac and never written to disk.")
+            privacyLine("No telemetry, no account, no analytics.")
+            privacyLine(settings.cleanupEnabled
+                ? "AI cleanup talks only to LM Studio on this Mac (localhost)."
+                : "Nothing you say leaves this Mac.")
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .background(Color.green.opacity(0.07), in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private func privacyLine(_ text: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "checkmark.seal.fill")
+                .font(.caption)
+                .foregroundStyle(.green)
+            Text(text).font(.caption).foregroundStyle(.secondary)
         }
     }
 

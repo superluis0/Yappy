@@ -92,4 +92,19 @@ final class HeatmapModelTests: XCTestCase {
         XCTAssertEqual(HeatmapModel.level(count: 10, maxCount: 10), 4)  // 100%
         XCTAssertEqual(HeatmapModel.level(count: 1, maxCount: 0), 1)    // degenerate
     }
+
+    // MARK: - Busiest hour / weekday
+
+    func testBusiestHourAndWeekday() {
+        let entries =
+            Array(repeating: entry(weekday: 3, hour: 14), count: 3) +
+            [entry(weekday: 5, hour: 9)]
+        XCTAssertEqual(HeatmapModel.busiestHour(entries: entries, calendar: calendar), 14)
+        XCTAssertEqual(HeatmapModel.busiestWeekday(entries: entries, calendar: calendar), 3)
+    }
+
+    func testBusiestIsNilWhenEmpty() {
+        XCTAssertNil(HeatmapModel.busiestHour(entries: [], calendar: calendar))
+        XCTAssertNil(HeatmapModel.busiestWeekday(entries: [], calendar: calendar))
+    }
 }

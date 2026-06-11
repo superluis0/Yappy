@@ -38,6 +38,8 @@
 		B100004100000000000000A1 /* VoiceEditCommandParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200004100000000000000A1 /* VoiceEditCommandParserTests.swift */; };
 		B100004500000000000000A1 /* ModeStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200004500000000000000A1 /* ModeStoreTests.swift */; };
 		B100004800000000000000A1 /* AliasMinerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200004800000000000000A1 /* AliasMinerTests.swift */; };
+		B100004C00000000000000A1 /* StatFramingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200004C00000000000000A1 /* StatFramingTests.swift */; };
+		B100004D00000000000000A1 /* PersonalRecordsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200004D00000000000000A1 /* PersonalRecordsTests.swift */; };
 		B100003E00000000000000A1 /* TranscriptPipelineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200003E00000000000000A1 /* TranscriptPipelineTests.swift */; };
 		B100002200000000000000A1 /* AppContextClassifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200002200000000000000A1 /* AppContextClassifier.swift */; };
 		B100002300000000000000A1 /* ShortcutsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200002300000000000000A1 /* ShortcutsView.swift */; };
@@ -45,10 +47,13 @@
 		B100002800000000000000A1 /* DictionaryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200002800000000000000A1 /* DictionaryStore.swift */; };
 		B100003F00000000000000A1 /* DictionaryTerm.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200003F00000000000000A1 /* DictionaryTerm.swift */; };
 		B100004200000000000000A1 /* Mode.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200004200000000000000A1 /* Mode.swift */; };
+		B100004900000000000000A1 /* StatFraming.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200004900000000000000A1 /* StatFraming.swift */; };
+		B100004A00000000000000A1 /* PersonalRecords.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200004A00000000000000A1 /* PersonalRecords.swift */; };
 		B100004300000000000000A1 /* ModeStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200004300000000000000A1 /* ModeStore.swift */; };
 		B100002900000000000000A1 /* DictionaryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200002900000000000000A1 /* DictionaryView.swift */; };
 		B100004400000000000000A1 /* ModesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200004400000000000000A1 /* ModesView.swift */; };
 		B100004700000000000000A1 /* DictionaryTrainingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200004700000000000000A1 /* DictionaryTrainingView.swift */; };
+		B100004B00000000000000A1 /* RecapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200004B00000000000000A1 /* RecapView.swift */; };
 		B100002A00000000000000A1 /* DictionaryStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200002A00000000000000A1 /* DictionaryStoreTests.swift */; };
 		B100002B00000000000000A1 /* WaveformBarsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200002B00000000000000A1 /* WaveformBarsView.swift */; };
 		B100002C00000000000000A1 /* EscapeInterceptor.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200002C00000000000000A1 /* EscapeInterceptor.swift */; };
@@ -115,6 +120,8 @@
 		B200004100000000000000A1 /* VoiceEditCommandParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceEditCommandParserTests.swift; sourceTree = "<group>"; };
 		B200004500000000000000A1 /* ModeStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModeStoreTests.swift; sourceTree = "<group>"; };
 		B200004800000000000000A1 /* AliasMinerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AliasMinerTests.swift; sourceTree = "<group>"; };
+		B200004C00000000000000A1 /* StatFramingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatFramingTests.swift; sourceTree = "<group>"; };
+		B200004D00000000000000A1 /* PersonalRecordsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonalRecordsTests.swift; sourceTree = "<group>"; };
 		B200003E00000000000000A1 /* TranscriptPipelineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptPipelineTests.swift; sourceTree = "<group>"; };
 		B200002200000000000000A1 /* AppContextClassifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppContextClassifier.swift; sourceTree = "<group>"; };
 		B200002300000000000000A1 /* ShortcutsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortcutsView.swift; sourceTree = "<group>"; };
@@ -122,10 +129,13 @@
 		B200002800000000000000A1 /* DictionaryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictionaryStore.swift; sourceTree = "<group>"; };
 		B200003F00000000000000A1 /* DictionaryTerm.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictionaryTerm.swift; sourceTree = "<group>"; };
 		B200004200000000000000A1 /* Mode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Mode.swift; sourceTree = "<group>"; };
+		B200004900000000000000A1 /* StatFraming.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatFraming.swift; sourceTree = "<group>"; };
+		B200004A00000000000000A1 /* PersonalRecords.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonalRecords.swift; sourceTree = "<group>"; };
 		B200004300000000000000A1 /* ModeStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModeStore.swift; sourceTree = "<group>"; };
 		B200002900000000000000A1 /* DictionaryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictionaryView.swift; sourceTree = "<group>"; };
 		B200004400000000000000A1 /* ModesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModesView.swift; sourceTree = "<group>"; };
 		B200004700000000000000A1 /* DictionaryTrainingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictionaryTrainingView.swift; sourceTree = "<group>"; };
+		B200004B00000000000000A1 /* RecapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecapView.swift; sourceTree = "<group>"; };
 		B200002A00000000000000A1 /* DictionaryStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictionaryStoreTests.swift; sourceTree = "<group>"; };
 		B200002B00000000000000A1 /* WaveformBarsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WaveformBarsView.swift; sourceTree = "<group>"; };
 		B200002C00000000000000A1 /* EscapeInterceptor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EscapeInterceptor.swift; sourceTree = "<group>"; };
@@ -228,6 +238,8 @@
 				B200002800000000000000A1 /* DictionaryStore.swift */,
 				B200003F00000000000000A1 /* DictionaryTerm.swift */,
 				B200004200000000000000A1 /* Mode.swift */,
+				B200004900000000000000A1 /* StatFraming.swift */,
+				B200004A00000000000000A1 /* PersonalRecords.swift */,
 				B200004300000000000000A1 /* ModeStore.swift */,
 				B200002D00000000000000A1 /* HeatmapModel.swift */,
 				B200002F00000000000000A1 /* IconCache.swift */,
@@ -270,6 +282,7 @@
 				B200002900000000000000A1 /* DictionaryView.swift */,
 				B200004400000000000000A1 /* ModesView.swift */,
 				B200004700000000000000A1 /* DictionaryTrainingView.swift */,
+				B200004B00000000000000A1 /* RecapView.swift */,
 				B200002B00000000000000A1 /* WaveformBarsView.swift */,
 				B200002E00000000000000A1 /* HeatmapView.swift */,
 			);
@@ -295,6 +308,8 @@
 				B200004100000000000000A1 /* VoiceEditCommandParserTests.swift */,
 				B200004500000000000000A1 /* ModeStoreTests.swift */,
 				B200004800000000000000A1 /* AliasMinerTests.swift */,
+				B200004C00000000000000A1 /* StatFramingTests.swift */,
+				B200004D00000000000000A1 /* PersonalRecordsTests.swift */,
 				B200003E00000000000000A1 /* TranscriptPipelineTests.swift */,
 			);
 			path = YappyTests;
@@ -441,10 +456,13 @@
 				B100002800000000000000A1 /* DictionaryStore.swift in Sources */,
 				B100003F00000000000000A1 /* DictionaryTerm.swift in Sources */,
 				B100004200000000000000A1 /* Mode.swift in Sources */,
+				B100004900000000000000A1 /* StatFraming.swift in Sources */,
+				B100004A00000000000000A1 /* PersonalRecords.swift in Sources */,
 				B100004300000000000000A1 /* ModeStore.swift in Sources */,
 				B100002900000000000000A1 /* DictionaryView.swift in Sources */,
 				B100004400000000000000A1 /* ModesView.swift in Sources */,
 				B100004700000000000000A1 /* DictionaryTrainingView.swift in Sources */,
+				B100004B00000000000000A1 /* RecapView.swift in Sources */,
 				B100002C00000000000000A1 /* EscapeInterceptor.swift in Sources */,
 				B100002F00000000000000A1 /* IconCache.swift in Sources */,
 				B100002D00000000000000A1 /* HeatmapModel.swift in Sources */,
@@ -474,6 +492,8 @@
 				B100004100000000000000A1 /* VoiceEditCommandParserTests.swift in Sources */,
 				B100004500000000000000A1 /* ModeStoreTests.swift in Sources */,
 				B100004800000000000000A1 /* AliasMinerTests.swift in Sources */,
+				B100004C00000000000000A1 /* StatFramingTests.swift in Sources */,
+				B100004D00000000000000A1 /* PersonalRecordsTests.swift in Sources */,
 				B100003E00000000000000A1 /* TranscriptPipelineTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

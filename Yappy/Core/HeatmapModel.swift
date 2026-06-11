@@ -59,6 +59,30 @@ enum HeatmapModel {
         }
     }
 
+    /// The hour of day (0…23) with the most dictations, or nil if there are none.
+    static func busiestHour(entries: [DictationEntry], calendar: Calendar = .current) -> Int? {
+        var counts = [Int](repeating: 0, count: 24)
+        for entry in entries {
+            if let hour = calendar.dateComponents([.hour], from: entry.date).hour {
+                counts[hour] += 1
+            }
+        }
+        guard let maxCount = counts.max(), maxCount > 0 else { return nil }
+        return counts.firstIndex(of: maxCount)
+    }
+
+    /// The weekday (1=Sunday…7=Saturday) with the most dictations, or nil.
+    static func busiestWeekday(entries: [DictationEntry], calendar: Calendar = .current) -> Int? {
+        var counts = [Int](repeating: 0, count: 8)
+        for entry in entries {
+            if let weekday = calendar.dateComponents([.weekday], from: entry.date).weekday {
+                counts[weekday] += 1
+            }
+        }
+        guard let maxCount = counts.max(), maxCount > 0 else { return nil }
+        return counts.firstIndex(of: maxCount)
+    }
+
     /// Intensity bucket (1…4) for a cell relative to the busiest cell, 0 if empty.
     static func level(count: Int, maxCount: Int) -> Int {
         guard count > 0 else { return 0 }
