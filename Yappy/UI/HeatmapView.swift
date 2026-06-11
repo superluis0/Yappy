@@ -16,6 +16,7 @@ struct HeatmapView: View {
 
     @State private var hoveredWeekday: Int? = nil
     @State private var hoveredHour: Int? = nil
+    @State private var cellsAppeared = false
 
     init(entries: [DictationEntry], calendar: Calendar = .current) {
         // Computed once per HomeView invalidation (entries change), not per frame.
@@ -46,7 +47,7 @@ struct HeatmapView: View {
             .animation(.easeOut(duration: 0.12), value: hoveredCellLabel)
 
             VStack(alignment: .leading, spacing: spacing) {
-                ForEach(rows) { row in
+                ForEach(Array(rows.enumerated()), id: \.element.id) { offset, row in
                     HStack(spacing: spacing) {
                         Text(weekdayLabel(row.weekday))
                             .font(.system(size: 10))
@@ -57,6 +58,8 @@ struct HeatmapView: View {
                                 .fill(color(forLevel: row.hours[hour].level))
                                 .frame(width: cell, height: cell)
                                 .overlay {
+                                    RoundedRectangle(cornerRadius: 2)
+                                        .strokeBorder(.primary.opacity(0.08), lineWidth: 0.5)
                                     if hoveredWeekday == row.weekday && hoveredHour == hour {
                                         RoundedRectangle(cornerRadius: 2)
                                             .strokeBorder(.primary.opacity(0.45), lineWidth: 1)
@@ -76,9 +79,14 @@ struct HeatmapView: View {
                                 .help(tooltip(row: row, hour: hour))
                         }
                     }
+                    .opacity(cellsAppeared ? 1 : 0)
+                    .offset(y: cellsAppeared ? 0 : 5)
+                    .animation(.spring(response: 0.4, dampingFraction: 0.85).delay(Double(offset) * 0.04),
+                               value: cellsAppeared)
                 }
                 hourAxis
             }
+            .onAppear { cellsAppeared = true }
 
             legend
         }
@@ -106,11 +114,11 @@ struct HeatmapView: View {
 
     private func color(forLevel level: Int) -> Color {
         switch level {
-        case 1: return .accentColor.opacity(0.25)
-        case 2: return .accentColor.opacity(0.45)
-        case 3: return .accentColor.opacity(0.7)
+        case 1: return .accentColor.opacity(0.3)
+        case 2: return .accentColor.opacity(0.52)
+        case 3: return .accentColor.opacity(0.75)
         case 4: return .accentColor
-        default: return Color.primary.opacity(0.06)
+        default: return Color.primary.opacity(0.09)
         }
     }
 

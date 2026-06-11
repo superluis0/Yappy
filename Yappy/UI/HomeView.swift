@@ -18,6 +18,7 @@ struct HomeView: View {
     @State private var recapHover = false
     @State private var pendingDeleteEntry: DictationEntry?
     @State private var deleteTimer: Timer?
+    @State private var hoveredEntryID: UUID?
 
     var body: some View {
         ScrollView {
@@ -113,11 +114,13 @@ struct HomeView: View {
 
     private var statsGrid: some View {
         LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 4), spacing: 12) {
-            statCard(value: history.totalWords, label: "Words dictated", icon: "text.word.spacing")
+            statCard(value: history.totalWords, label: "Words dictated", icon: "text.word.spacing",
+                     accent: .blue)
             statCard(
                 value: history.dictationsToday,
                 label: "Dictations today",
                 icon: "mic.fill",
+                accent: .orange,
                 trend: (history.dictationsYesterday > 0 || history.dictationsToday > 0)
                     ? history.dictationsToday - history.dictationsYesterday : nil
             )
@@ -125,11 +128,12 @@ struct HomeView: View {
                 value: history.averageWordsPerMinute,
                 label: "Words / minute",
                 icon: "speedometer",
+                accent: .green,
                 trend: history.averageWPMLastWeek > 0
                     ? history.averageWPMThisWeek - history.averageWPMLastWeek : nil
             )
             statCard(value: history.streakDays, label: "Day streak", icon: "flame.fill",
-                     pulse: history.streakDays >= 2)
+                     accent: .red, pulse: history.streakDays >= 2)
         }
     }
 
@@ -280,11 +284,11 @@ struct HomeView: View {
     }
 
     private func statCard(value: Int, label: String, icon: String,
-                          pulse: Bool = false, trend: Int? = nil) -> some View {
+                          accent: Color = .accentColor, pulse: Bool = false, trend: Int? = nil) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Image(systemName: icon)
                 .font(.title3)
-                .foregroundStyle(.tint)
+                .foregroundStyle(accent)
                 .symbolEffect(.pulse, options: .repeating, isActive: pulse)
             animatedValue(value)
                 .font(.system(size: 26, weight: .bold, design: .rounded))
@@ -309,14 +313,23 @@ struct HomeView: View {
         }
         .frame(maxWidth: .infinity, minHeight: 96, alignment: .topLeading)
         .padding(16)
-        .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 12))
+        .background {
+            RoundedRectangle(cornerRadius: 12)
+                .fill(.quaternary.opacity(0.5))
+        }
+        .overlay(alignment: .leading) {
+            Rectangle()
+                .fill(accent)
+                .frame(width: 3)
+                .clipShape(.rect(topLeadingRadius: 12, bottomLeadingRadius: 12,
+                                 bottomTrailingRadius: 0, topTrailingRadius: 0))
+        }
     }
 
     // MARK: - History
 
-    /// Entries minus any pending-delete item (so it vanishes immediately on delete).
     private var visibleEntries: [DictationEntry] {
-        history.entries.filter { pendingDeleteEntry?.id != $0.id }
+        history.entries
     }
 
     private var filteredEntries: [DictationEntry] {
@@ -328,15 +341,17 @@ struct HomeView: View {
 
     private func scheduleDeletion(_ entry: DictationEntry) {
         // Commit any already-pending delete before starting a new one.
-        if let pending = pendingDeleteEntry { history.delete(pending) }
-        deleteTimer?.invalidate()
         withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+            if let pending = pendingDeleteEntry { history.delete(pending) }
+        }
+        deleteTimer?.invalidate()
+        withAnimation(.easeOut(duration: 0.15)) {
             pendingDeleteEntry = entry
         }
         deleteTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: false) { _ in
             DispatchQueue.main.async {
-                if let e = self.pendingDeleteEntry { self.history.delete(e) }
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                    if let e = self.pendingDeleteEntry { self.history.delete(e) }
                     self.pendingDeleteEntry = nil
                 }
             }
@@ -433,6 +448,9 @@ struct HomeView: View {
                 }
                 .buttonStyle(.borderless)
                 .help("Copy")
+                .opacity(hoveredEntryID == entry.id ? 1 : 0)
+                .allowsHitTesting(hoveredEntryID == entry.id)
+                .animation(.easeOut(duration: 0.12), value: hoveredEntryID == entry.id)
 
                 Button {
                     scheduleDeletion(entry)
@@ -441,6 +459,9 @@ struct HomeView: View {
                 }
                 .buttonStyle(.borderless)
                 .help("Delete")
+                .opacity(hoveredEntryID == entry.id ? 1 : 0)
+                .allowsHitTesting(hoveredEntryID == entry.id)
+                .animation(.easeOut(duration: 0.12), value: hoveredEntryID == entry.id)
             }
             .font(.caption)
             .foregroundStyle(.secondary)
@@ -448,5 +469,11 @@ struct HomeView: View {
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 10))
+        .opacity(pendingDeleteEntry?.id == entry.id ? 0.4 : 1)
+        .grayscale(pendingDeleteEntry?.id == entry.id ? 0.4 : 0)
+        .animation(.easeOut(duration: 0.2), value: pendingDeleteEntry?.id == entry.id)
+        .onHover { hovering in
+            hoveredEntryID = hovering ? entry.id : nil
+        }
     }
 }

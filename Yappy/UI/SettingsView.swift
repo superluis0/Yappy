@@ -89,12 +89,24 @@ struct SettingsView: View {
                             Label("Connected", systemImage: "circle.fill")
                                 .foregroundStyle(.green)
                         case .some(false):
-                            Label("LM Studio not running", systemImage: "circle.fill")
+                            Label("Not running", systemImage: "circle.fill")
                                 .foregroundStyle(.orange)
                         case .none:
-                            ProgressView().controlSize(.small)
+                            HStack(spacing: 6) {
+                                ProgressView().controlSize(.small)
+                                Text("Checking…").foregroundStyle(.secondary)
+                            }
                         }
                     }
+                    .listRowBackground(
+                        Group {
+                            switch lmStudioReachable {
+                            case .some(true): Color.green.opacity(0.07)
+                            case .some(false): Color.orange.opacity(0.09)
+                            case .none: Color.clear
+                            }
+                        }
+                    )
 
                     Picker("Model", selection: modelBinding) {
                         Text("First available").tag("")
@@ -102,11 +114,14 @@ struct SettingsView: View {
                             Text(model).tag(model)
                         }
                     }
+                    .listRowBackground(Color.accentColor.opacity(0.04))
 
                     TextField("Server URL", text: $settings.lmStudioBaseURL)
                         .textFieldStyle(.roundedBorder)
+                        .listRowBackground(Color.accentColor.opacity(0.04))
 
                     Toggle("Adapt tone to the app I'm typing in", isOn: $settings.contextAwareToneEnabled)
+                        .listRowBackground(Color.accentColor.opacity(0.04))
 
                     if settings.contextAwareToneEnabled {
                         ForEach(AppCategory.allCases, id: \.self) { category in
@@ -116,6 +131,7 @@ struct SettingsView: View {
                                     Text(tone.displayName).tag(Optional(tone))
                                 }
                             }
+                            .listRowBackground(Color.accentColor.opacity(0.04))
                         }
                     }
                 }
