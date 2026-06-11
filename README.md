@@ -55,19 +55,23 @@ Everything is configurable in one place — hotkeys, Command Mode, optional AI c
 
 **Command Mode** — select text anywhere, hold the command hotkey, and speak an instruction: *"make this concise"*, *"translate to Spanish"*, *"turn this into a bulleted list."* The selection is rewritten in place. Powered by a local LM Studio model; if it isn't running, your text is left untouched.
 
+**Voice editing** — fix what you just said, hands-free: *"scratch that"* undoes the last insertion, *"delete the last word"* trims it, *"all caps that"* / *"capitalize that"* recases it. It only fires on a whole-utterance command (so *"scratch that idea"* stays prose) and won't delete the wrong thing if your cursor has moved on.
+
+**Dictation modes** — named profiles (Email, Code, Journal…) that bundle tone, AI-cleanup, formatting, and an extra vocabulary. Switch from the menu bar, or let a mode activate itself automatically for a kind of app. The built-in *Auto* mode just follows your global settings.
+
 **Voice shortcuts** — say a cue and Yappy expands it to canned text: an email signature, a calendar link, a block of boilerplate.
 
 **Context-aware tone** — optional cleanup adapts to the app you're typing in: formal in Mail, casual in Messages, and strictly verbatim in code editors so nothing gets reworded.
 
-**Custom dictionary** — teach Yappy your names, jargon, and acronyms; on-device vocabulary boosting fixes the words it used to mishear.
+**Custom dictionary** — teach Yappy your names, jargon, and acronyms. Type the spellings it tends to mishear, or **train them by voice** — say a word a few times and Yappy learns how *it* hears you, then corrects those mishearings back to your spelling automatically. Deterministic and fully on-device; recordings are analyzed in memory and never saved.
 
-**Activity at a glance** — a "time saved versus typing" headline, words-per-minute and streaks, a day-by-hour heatmap of when you dictate, and which apps you use it in most.
+**Activity at a glance** — a "time saved versus typing" headline, words-per-minute, streaks and personal records, a day-by-hour heatmap of when you dictate, the apps you use it in most, and a shareable *"Year in Voice"* recap.
 
 **Polished hotkeys** — hold Right ⌘, double-tap Right ⌘, or hold Right ⌥. A debounced state machine ignores key repeats and accidental taps, so it never fires when you don't mean it. Press **Esc** mid-dictation to cancel cleanly.
 
 **Considered details** — a molten-glass recording pill whose glow breathes with your voice, a menu bar icon that animates while recording, and subtle custom start/stop/done sounds.
 
-**Private by design** — after the one-time model download, the only network traffic is to your own LM Studio on `localhost` (and only if you turn cleanup on).
+**Private by design** — audio is transcribed on-device and never written to disk; no telemetry, no account. After the one-time model download, the only network traffic is to your own LM Studio on `localhost` (and only if you turn cleanup on). A privacy panel on the home screen reflects this state at a glance.
 
 ## Quick start
 
