@@ -1,0 +1,56 @@
+name: Release
+
+# Cut a release by pushing a version tag, e.g.:
+#   git tag v1.0.0 && git push origin v1.0.0
+# This builds a Release .app, ad-hoc signs it, zips it, and attaches the
+# zip to a new GitHub Release named after the tag.
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write   # required for `gh release create`
+
+jobs:
+  build-release:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      # The Release config hardcodes a local signing identity ("Yappy Local
+      # Signing") that only exists on the maintainer's Mac. On CI we override
+      # it with ad-hoc signing ("-"), which still produces a hardened-runtime
+      # binary with the microphone entitlement intact — just not notarized.
+      - name: Build (Release, ad-hoc signed)
+        run: |
+          xcodebuild \
+            -project Yappy.xcodeproj \
+            -scheme Yappy \
+            -configuration Release \
+            -derivedDataPath build \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGNING_REQUIRED=YES \
+            CODE_SIGNING_ALLOWED=YES \
+            DEVELOPMENT_TEAM="" \
+            build
+
+      # `ditto` (not `zip`) preserves the bundle's symlinks and resource forks,
+      # which is required for the unzipped .app to stay launchable.
+      - name: Package
+        run: |
+          APP="build/Build/Products/Release/Yappy.app"
+          ditto -c -k --keepParent "$APP" "Yappy.zip"
+
+      - name: Publish Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            "Yappy.zip" \
+            --title "Yappy ${GITHUB_REF_NAME}" \
+            --generate-notes

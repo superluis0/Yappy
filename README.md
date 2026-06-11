@@ -85,9 +85,31 @@ Everything is configurable in one place — hotkey, sounds, number formatting, f
 
 **Private by design** — audio is transcribed on-device and never written to disk; no telemetry, no account. After the one-time model download, the only network traffic is to your own LM Studio on `localhost` (and only if you turn cleanup on). A privacy panel on the home screen reflects this state at a glance.
 
-## Quick start
+## Download
 
-Requires Xcode 15+ and macOS 14+ (Apple Silicon recommended).
+The easiest way to run Yappy — no Xcode required. macOS 14+ (Apple Silicon recommended).
+
+1. Grab the latest **`Yappy.zip`** from the [**Releases**](https://github.com/superluis0/Yappy/releases/latest) page.
+2. Unzip it and drag **Yappy.app** into your **Applications** folder.
+3. The build is ad-hoc signed (not notarized), so on first launch macOS will say *"Apple cannot check it for malicious software."* Clear the download quarantine, then open it:
+
+   ```bash
+   xattr -dr com.apple.quarantine /Applications/Yappy.app
+   open /Applications/Yappy.app
+   ```
+
+   *(Prefer not to use the terminal? Open **System Settings → Privacy & Security**, scroll to the blocked-app notice, and click **Open Anyway**.)*
+
+A short first-run flow walks you through the two permissions Yappy needs:
+
+- **Microphone** — to hear you.
+- **Accessibility** — to detect the hotkey and paste text.
+
+Then hold **Right ⌘** anywhere and start talking.
+
+## Build from source
+
+Prefer to build it yourself? Requires Xcode 15+ and macOS 14+.
 
 ```bash
 git clone https://github.com/superluis0/Yappy.git
@@ -96,13 +118,6 @@ xcodebuild -project Yappy.xcodeproj -scheme Yappy -configuration Release build
 cp -R ~/Library/Developer/Xcode/DerivedData/Yappy-*/Build/Products/Release/Yappy.app /Applications/
 open /Applications/Yappy.app
 ```
-
-A short first-run flow walks you through the two permissions Yappy needs:
-
-- **Microphone** — to hear you.
-- **Accessibility** — to detect the hotkey and paste text.
-
-Then hold **Right ⌘** anywhere and start talking.
 
 > **Tip:** if another FluidAudio app (such as VoiceInk) has already downloaded Parakeet, Yappy reuses it from `~/Library/Application Support/FluidAudio/Models/` — no second download.
 
