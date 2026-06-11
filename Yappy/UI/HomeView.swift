@@ -15,6 +15,7 @@ struct HomeView: View {
     /// Flipped once on appear so the stat numerals roll up from zero.
     @State private var statsAppeared = false
     @State private var showRecap = false
+    @State private var recapHover = false
 
     var body: some View {
         ScrollView {
@@ -150,8 +151,27 @@ struct HomeView: View {
     private var recapButton: some View {
         Button { showRecap = true } label: {
             Label("Your Year in Voice", systemImage: "sparkles")
+                .font(.callout.weight(.medium))
+                .foregroundStyle(recapHover ? Color.accentColor : .secondary)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(
+                    Capsule().fill(Color.accentColor.opacity(recapHover ? 0.12 : 0))
+                )
+                .overlay(
+                    Capsule().strokeBorder(
+                        Color.accentColor.opacity(recapHover ? 0.45 : 0.18), lineWidth: 1)
+                )
+                // The transient glow that signals it's clickable.
+                .shadow(color: Color.accentColor.opacity(recapHover ? 0.45 : 0),
+                        radius: recapHover ? 8 : 0)
+                .contentShape(Capsule())
         }
-        .buttonStyle(.borderless)
+        .buttonStyle(.plain)
+        .onHover { hovering in
+            withAnimation(.easeOut(duration: 0.18)) { recapHover = hovering }
+            if hovering { NSCursor.pointingHand.push() } else { NSCursor.pop() }
+        }
     }
 
     // MARK: - Privacy
