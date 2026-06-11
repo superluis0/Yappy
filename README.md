@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="Documentation/assets/icon.png" alt="Yappy" width="128">
+
 <img src="Documentation/assets/hero.png" alt="Yappy — talk, it types, everywhere on your Mac" width="820">
 
 <h3>Voice-to-text for macOS that runs entirely on your Mac.</h3>
@@ -31,16 +33,26 @@ It stays out of your way until you need it: a single global hotkey, a small reco
 
 ## A real app, not just a menu bar blip
 
-Open Yappy and you land on a home that actually tells you something: how much time dictation has saved you, your stats, a heatmap of *when* you dictate, the apps you use it in most, and your searchable history — all stored locally.
+Open Yappy and you land on a home that actually tells you something: how much time dictation has saved you, your stats and personal records, a heatmap of *when* you dictate, the apps you use it in most, and your searchable history — all stored locally.
 
 <div align="center">
-<img src="Documentation/assets/home.png" alt="Yappy home — time saved, stats, a when-you-dictate heatmap, top apps, and searchable history" width="640">
+<img src="Documentation/assets/home.png" alt="Yappy home — time saved, stats, a when-you-dictate heatmap, top apps, and personal records" width="420">
 </div>
 
-Everything is configurable in one place — hotkeys, Command Mode, optional AI cleanup, and permissions.
+Build dictation **modes** for different contexts — and teach Yappy the names and jargon it mishears, either by typing the spellings or training them with your voice so it learns how *it* hears you.
 
 <div align="center">
-<img src="Documentation/assets/settings.png" alt="Yappy settings — hotkeys, Command Mode, AI cleanup, and permissions" width="640">
+<img src="Documentation/assets/modes.png" alt="Yappy modes — Auto, Email, Code, and Journal profiles" width="560">
+</div>
+
+<div align="center">
+<img src="Documentation/assets/dictionary.png" alt="Yappy custom dictionary, showing the spellings it learned to correct" width="560">
+</div>
+
+Everything is configurable in one place — hotkey, sounds, number formatting, filler removal, spoken commands, voice editing, Command Mode, optional AI cleanup, and permissions.
+
+<div align="center">
+<img src="Documentation/assets/settings.png" alt="Yappy settings — hotkey, sounds, number formatting, filler removal, spoken commands, and voice editing" width="560">
 </div>
 
 ## Features
