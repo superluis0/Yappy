@@ -70,7 +70,11 @@ final class RecordingPillController {
         panel.hasShadow = false
         panel.ignoresMouseEvents = true
         panel.hidesOnDeactivate = false
-        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
+        // canJoinAllSpaces keeps the pill on every Space (and fullScreenAuxiliary
+        // shows it over full-screen apps). `.stationary` is deliberately NOT
+        // included — it's for desktop-pinned windows and conflicts with
+        // canJoinAllSpaces, leaving the pill invisible on non-primary Spaces.
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.isReleasedWhenClosed = false
 
         let hosting = NSHostingView(rootView: RecordingPillView(appState: appState))
