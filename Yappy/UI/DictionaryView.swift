@@ -81,17 +81,25 @@ struct DictionaryView: View {
 
     private var termsList: some View {
         LazyVGrid(columns: [GridItem(.adaptive(minimum: 160), spacing: 8)], spacing: 8) {
-            ForEach(store.terms, id: \.self) { term in
-                HStack {
-                    Text(term).lineLimit(1)
-                    Spacer()
-                    Button {
-                        store.remove(term)
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundStyle(.tertiary)
+            ForEach(store.terms) { term in
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack {
+                        Text(term.text).lineLimit(1)
+                        Spacer()
+                        Button {
+                            store.remove(term)
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundStyle(.tertiary)
+                        }
+                        .buttonStyle(.borderless)
                     }
-                    .buttonStyle(.borderless)
+                    if !term.allAliases.isEmpty {
+                        Text("also hears: " + term.allAliases.joined(separator: ", "))
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                            .lineLimit(1)
+                    }
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)

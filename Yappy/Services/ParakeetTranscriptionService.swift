@@ -151,7 +151,7 @@ final class ParakeetTranscriptionService: ObservableObject {
     /// provided, download/attach the CTC model. Returns false if unavailable;
     /// partial transcripts are delivered via `onPartial`.
     func startStreamingSession(
-        dictionaryTerms: [String],
+        dictionaryTerms: [DictionaryTerm],
         onPartial: @escaping (String) -> Void
     ) async -> Bool {
         guard modelState == .ready, let models = loadedModels else { return false }
@@ -164,7 +164,13 @@ final class ParakeetTranscriptionService: ObservableObject {
 
             if !dictionaryTerms.isEmpty, let ctc = await ensureCtcModels() {
                 let context = CustomVocabularyContext(
-                    terms: dictionaryTerms.map { CustomVocabularyTerm(text: $0) }
+                    terms: dictionaryTerms.map { term in
+                        let aliases = term.allAliases
+                        return CustomVocabularyTerm(
+                            text: term.text,
+                            aliases: aliases.isEmpty ? nil : aliases
+                        )
+                    }
                 )
                 try await manager.configureVocabularyBoosting(vocabulary: context, ctcModels: ctc)
             }

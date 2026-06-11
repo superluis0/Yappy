@@ -38,6 +38,7 @@
 		B100002300000000000000A1 /* ShortcutsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200002300000000000000A1 /* ShortcutsView.swift */; };
 		B100002400000000000000A1 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200002400000000000000A1 /* OnboardingView.swift */; };
 		B100002800000000000000A1 /* DictionaryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200002800000000000000A1 /* DictionaryStore.swift */; };
+		B100003F00000000000000A1 /* DictionaryTerm.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200003F00000000000000A1 /* DictionaryTerm.swift */; };
 		B100002900000000000000A1 /* DictionaryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200002900000000000000A1 /* DictionaryView.swift */; };
 		B100002A00000000000000A1 /* DictionaryStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200002A00000000000000A1 /* DictionaryStoreTests.swift */; };
 		B100002B00000000000000A1 /* WaveformBarsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200002B00000000000000A1 /* WaveformBarsView.swift */; };
@@ -105,6 +106,7 @@
 		B200002300000000000000A1 /* ShortcutsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortcutsView.swift; sourceTree = "<group>"; };
 		B200002400000000000000A1 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		B200002800000000000000A1 /* DictionaryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictionaryStore.swift; sourceTree = "<group>"; };
+		B200003F00000000000000A1 /* DictionaryTerm.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictionaryTerm.swift; sourceTree = "<group>"; };
 		B200002900000000000000A1 /* DictionaryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictionaryView.swift; sourceTree = "<group>"; };
 		B200002A00000000000000A1 /* DictionaryStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictionaryStoreTests.swift; sourceTree = "<group>"; };
 		B200002B00000000000000A1 /* WaveformBarsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WaveformBarsView.swift; sourceTree = "<group>"; };
@@ -206,6 +208,7 @@
 				B200002000000000000000A1 /* ShortcutStore.swift */,
 				B200002200000000000000A1 /* AppContextClassifier.swift */,
 				B200002800000000000000A1 /* DictionaryStore.swift */,
+				B200003F00000000000000A1 /* DictionaryTerm.swift */,
 				B200002D00000000000000A1 /* HeatmapModel.swift */,
 				B200002F00000000000000A1 /* IconCache.swift */,
 			);
@@ -407,6 +410,7 @@
 				B100002300000000000000A1 /* ShortcutsView.swift in Sources */,
 				B100002400000000000000A1 /* OnboardingView.swift in Sources */,
 				B100002800000000000000A1 /* DictionaryStore.swift in Sources */,
+				B100003F00000000000000A1 /* DictionaryTerm.swift in Sources */,
 				B100002900000000000000A1 /* DictionaryView.swift in Sources */,
 				B100002C00000000000000A1 /* EscapeInterceptor.swift in Sources */,
 				B100002F00000000000000A1 /* IconCache.swift in Sources */,

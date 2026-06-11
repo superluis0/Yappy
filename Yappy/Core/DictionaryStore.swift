@@ -7,9 +7,14 @@ import Foundation
 import Combine
 
 /// Local store of custom-dictionary terms (names, jargon, acronyms) used to
-/// bias transcription. Persists as JSON in Application Support.
+/// bias transcription. Persists as JSON in Application Support. Each term may
+/// carry alternative spellings (see `DictionaryTerm`) so a mishearing is
+/// rescored back to the canonical word.
 final class DictionaryStore: ObservableObject {
-    @Published private(set) var terms: [String] = []
+    @Published private(set) var terms: [DictionaryTerm] = []
+
+    /// Just the canonical spellings — for callers that only need plain strings.
+    var boostTerms: [String] { terms.map(\.text) }
 
     private let fileURL: URL
     private let ioQueue = DispatchQueue(label: "com.yappy.dictionarystore", qos: .utility)
@@ -32,26 +37,74 @@ final class DictionaryStore: ObservableObject {
     func add(_ term: String) {
         let trimmed = term.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty,
-              !terms.contains(where: { $0.caseInsensitiveCompare(trimmed) == .orderedSame }) else {
+              !terms.contains(where: { $0.text.caseInsensitiveCompare(trimmed) == .orderedSame }) else {
             return
         }
-        terms.append(trimmed)
+        terms.append(DictionaryTerm(text: trimmed))
         persist()
     }
 
-    func remove(_ term: String) {
-        terms.removeAll { $0 == term }
+    func remove(_ term: DictionaryTerm) {
+        terms.removeAll { $0.id == term.id }
+        persist()
+    }
+
+    /// Removes by canonical spelling (case-insensitive). Convenience for callers
+    /// that don't hold the struct.
+    func remove(text: String) {
+        terms.removeAll { $0.text.caseInsensitiveCompare(text) == .orderedSame }
+        persist()
+    }
+
+    func update(_ term: DictionaryTerm) {
+        guard let idx = terms.firstIndex(where: { $0.id == term.id }) else { return }
+        terms[idx] = term
+        persist()
+    }
+
+    /// Replaces the manual "sounds like" aliases for a term.
+    func setAliases(_ aliases: [String], for term: DictionaryTerm) {
+        guard let idx = terms.firstIndex(where: { $0.id == term.id }) else { return }
+        terms[idx].aliases = aliases.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        persist()
+    }
+
+    /// Appends voice-mined aliases, de-duplicated case-insensitively against the
+    /// term's existing learned aliases.
+    func addLearnedAliases(_ aliases: [String], to term: DictionaryTerm) {
+        guard let idx = terms.firstIndex(where: { $0.id == term.id }) else { return }
+        var combined = terms[idx].learnedAliases
+        for alias in aliases {
+            let trimmed = alias.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty,
+                  !combined.contains(where: { $0.caseInsensitiveCompare(trimmed) == .orderedSame }) else {
+                continue
+            }
+            combined.append(trimmed)
+        }
+        terms[idx].learnedAliases = combined
         persist()
     }
 
     // MARK: - Persistence
 
     private func loadFromDisk() {
-        guard let data = try? Data(contentsOf: fileURL),
-              let loaded = try? JSONDecoder().decode([String].self, from: data) else {
+        guard let data = try? Data(contentsOf: fileURL) else { return }
+
+        // Current format: an array of DictionaryTerm objects.
+        if let modern = try? JSONDecoder().decode([DictionaryTerm].self, from: data) {
+            terms = modern
             return
         }
-        terms = loaded
+        // Legacy format: a bare array of strings. Migrate in place and rewrite
+        // once so the file is upgraded. A failed decode leaves `terms` empty
+        // rather than wiping a good file — but we only reach here if the modern
+        // decode already failed, so the data is genuinely the old shape.
+        if let legacy = try? JSONDecoder().decode([String].self, from: data) {
+            terms = legacy.map { DictionaryTerm(text: $0) }
+            persist()
+        }
     }
 
     private func persist() {
