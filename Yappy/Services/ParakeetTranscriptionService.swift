@@ -3,7 +3,6 @@
 //  Yappy
 //
 
-import AVFoundation
 import Foundation
 import FluidAudio
 import os
@@ -37,20 +36,9 @@ final class ParakeetTranscriptionService: ObservableObject {
         }
     }
 
-    /// Whether the custom-dictionary CTC model is downloading (~97 MB, first use).
-    @Published private(set) var dictionaryDownloading = false
-
     private static let logger = Logger(subsystem: "com.yappy.app", category: "transcription")
     private var asrManager: AsrManager?
-    private var loadedModels: AsrModels?
     private var decoderLayers: Int = 2
-
-    // Streaming / dictionary path (isolated from the batch path).
-    private var slidingManager: SlidingWindowAsrManager?
-    private var streamingUpdateTask: Task<Void, Never>?
-    private var bufferFeedTask: Task<Void, Never>?
-    private var bufferContinuation: AsyncStream<AVAudioPCMBuffer>.Continuation?
-    private var ctcModels: CtcModels?
 
     /// English-only Parakeet — same model variant Spokenly uses.
     private static let modelVersion: AsrModelVersion = .v2
@@ -79,7 +67,6 @@ final class ParakeetTranscriptionService: ObservableObject {
 
             modelState = .loading
             decoderLayers = models.version.decoderLayers
-            loadedModels = models
 
             let manager = AsrManager(config: .default)
             try await manager.loadModels(models)
@@ -142,133 +129,5 @@ final class ParakeetTranscriptionService: ObservableObject {
     /// output is usually the model decoding noise into filler text.
     nonisolated static func acceptsTranscript(confidence: Float) -> Bool {
         confidence >= Constants.transcriptionConfidenceFloor
-    }
-
-    // MARK: - Streaming + Custom Dictionary
-
-    /// Starts a live streaming session on a fresh sliding-window manager (so any
-    /// previous vocabulary boosting is cleared). Custom-dictionary terms, when
-    /// provided, download/attach the CTC model. Returns false if unavailable;
-    /// partial transcripts are delivered via `onPartial`.
-    func startStreamingSession(
-        dictionaryTerms: [DictionaryTerm],
-        onPartial: @escaping (String) -> Void
-    ) async -> Bool {
-        guard modelState == .ready, let models = loadedModels else { return false }
-
-        // `.streaming` emits ~1 s hypothesis updates for a live caption; the
-        // default config only produces output after 15 s of audio.
-        let manager = SlidingWindowAsrManager(config: .streaming)
-        do {
-            try await manager.loadModels(models)
-
-            if !dictionaryTerms.isEmpty, let ctc = await ensureCtcModels() {
-                let context = CustomVocabularyContext(
-                    terms: dictionaryTerms.map { term in
-                        let aliases = term.allAliases
-                        return CustomVocabularyTerm(
-                            text: term.text,
-                            aliases: aliases.isEmpty ? nil : aliases
-                        )
-                    }
-                )
-                try await manager.configureVocabularyBoosting(vocabulary: context, ctcModels: ctc)
-            }
-
-            try await manager.startStreaming(source: .microphone)
-            Self.logger.info("Streaming session started (\(dictionaryTerms.count) dictionary terms)")
-        } catch {
-            Self.logger.error("Streaming start failed: \(error.localizedDescription, privacy: .public)")
-            return false
-        }
-
-        slidingManager = manager
-
-        // Feed buffers through an owned stream so order is preserved across the
-        // hop into the manager actor.
-        let (bufferStream, continuation) = AsyncStream<AVAudioPCMBuffer>.makeStream()
-        bufferContinuation = continuation
-        bufferFeedTask = Task {
-            for await buffer in bufferStream {
-                await manager.streamAudio(buffer)
-            }
-        }
-
-        streamingUpdateTask = Task {
-            var confirmed = ""
-            var loggedFirst = false
-            let updates = await manager.transcriptionUpdates
-            for await update in updates {
-                if !loggedFirst {
-                    loggedFirst = true
-                    Self.logger.info("First streaming partial: \(update.text.count) chars")
-                }
-                if update.isConfirmed {
-                    confirmed += (confirmed.isEmpty ? "" : " ") + update.text
-                    let snapshot = confirmed
-                    await MainActor.run { onPartial(snapshot) }
-                } else {
-                    let display = confirmed.isEmpty ? update.text : confirmed + " " + update.text
-                    await MainActor.run { onPartial(display) }
-                }
-                if Task.isCancelled { break }
-            }
-        }
-        return true
-    }
-
-    /// Pre-downloads the CTC dictionary model so the first dictionary-boosted
-    /// dictation doesn't stall. Safe to call repeatedly.
-    func prewarmDictionary() async {
-        _ = await ensureCtcModels()
-    }
-
-    func streamBuffer(_ buffer: AVAudioPCMBuffer) {
-        bufferContinuation?.yield(buffer)
-    }
-
-    /// Ends the session and returns the final transcript.
-    func finishStreamingSession() async -> String {
-        guard let manager = slidingManager else { return "" }
-        defer { teardownStreaming() }
-        do {
-            return try await manager.finish().trimmingCharacters(in: .whitespacesAndNewlines)
-        } catch {
-            Self.logger.error("Streaming finish failed: \(error.localizedDescription, privacy: .public)")
-            return ""
-        }
-    }
-
-    func cancelStreamingSession() async {
-        if let manager = slidingManager {
-            await manager.cancel()
-        }
-        teardownStreaming()
-    }
-
-    private func teardownStreaming() {
-        bufferContinuation?.finish()
-        bufferContinuation = nil
-        bufferFeedTask?.cancel()
-        bufferFeedTask = nil
-        streamingUpdateTask?.cancel()
-        streamingUpdateTask = nil
-        slidingManager = nil
-    }
-
-    /// Lazily downloads (~97 MB, first use) and loads the CTC model used for
-    /// vocabulary boosting. Returns nil on failure.
-    private func ensureCtcModels() async -> CtcModels? {
-        if let ctcModels { return ctcModels }
-        dictionaryDownloading = true
-        defer { dictionaryDownloading = false }
-        do {
-            let models = try await CtcModels.downloadAndLoad(variant: .ctc110m)
-            ctcModels = models
-            return models
-        } catch {
-            Self.logger.error("CTC model load failed: \(error.localizedDescription, privacy: .public)")
-            return nil
-        }
     }
 }
