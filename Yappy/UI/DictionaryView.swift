@@ -57,16 +57,8 @@ struct DictionaryView: View {
                         .disabled(newTerm.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
 
-                if transcriptionService.dictionaryDownloading {
-                    HStack(spacing: 8) {
-                        ProgressView().controlSize(.small)
-                        Text("Downloading dictionary model (97 MB, one time)…")
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
-                } else {
-                    Text("The first use downloads a 97 MB helper model. Works best with the live-caption (streaming) path.")
-                        .font(.caption).foregroundStyle(.tertiary)
-                }
+                Text("Add a term, then tap its microphone icon to type \u{201c}sounds like\u{201d} spellings or teach pronunciation by voice. Known mishearings are corrected back to your spelling \u{2014} instantly, on-device.")
+                    .font(.caption).foregroundStyle(.tertiary)
             }
         }
     }

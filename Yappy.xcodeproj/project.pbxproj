@@ -32,6 +32,7 @@
 		B100003A00000000000000A1 /* SpokenCommandFormatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200003A00000000000000A1 /* SpokenCommandFormatter.swift */; };
 		B100004000000000000000A1 /* VoiceEditCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200004000000000000000A1 /* VoiceEditCommand.swift */; };
 		B100004600000000000000A1 /* AliasMiner.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200004600000000000000A1 /* AliasMiner.swift */; };
+		B100004E00000000000000A1 /* DictionaryReplacer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200004E00000000000000A1 /* DictionaryReplacer.swift */; };
 		B100003B00000000000000A1 /* TranscriptPipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200003B00000000000000A1 /* TranscriptPipeline.swift */; };
 		B100003C00000000000000A1 /* FillerWordRemoverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200003C00000000000000A1 /* FillerWordRemoverTests.swift */; };
 		B100003D00000000000000A1 /* SpokenCommandFormatterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200003D00000000000000A1 /* SpokenCommandFormatterTests.swift */; };
@@ -40,6 +41,7 @@
 		B100004800000000000000A1 /* AliasMinerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200004800000000000000A1 /* AliasMinerTests.swift */; };
 		B100004C00000000000000A1 /* StatFramingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200004C00000000000000A1 /* StatFramingTests.swift */; };
 		B100004D00000000000000A1 /* PersonalRecordsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200004D00000000000000A1 /* PersonalRecordsTests.swift */; };
+		B100004F00000000000000A1 /* DictionaryReplacerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200004F00000000000000A1 /* DictionaryReplacerTests.swift */; };
 		B100003E00000000000000A1 /* TranscriptPipelineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200003E00000000000000A1 /* TranscriptPipelineTests.swift */; };
 		B100002200000000000000A1 /* AppContextClassifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200002200000000000000A1 /* AppContextClassifier.swift */; };
 		B100002300000000000000A1 /* ShortcutsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200002300000000000000A1 /* ShortcutsView.swift */; };
@@ -114,6 +116,7 @@
 		B200003A00000000000000A1 /* SpokenCommandFormatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpokenCommandFormatter.swift; sourceTree = "<group>"; };
 		B200004000000000000000A1 /* VoiceEditCommand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceEditCommand.swift; sourceTree = "<group>"; };
 		B200004600000000000000A1 /* AliasMiner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AliasMiner.swift; sourceTree = "<group>"; };
+		B200004E00000000000000A1 /* DictionaryReplacer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictionaryReplacer.swift; sourceTree = "<group>"; };
 		B200003B00000000000000A1 /* TranscriptPipeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptPipeline.swift; sourceTree = "<group>"; };
 		B200003C00000000000000A1 /* FillerWordRemoverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FillerWordRemoverTests.swift; sourceTree = "<group>"; };
 		B200003D00000000000000A1 /* SpokenCommandFormatterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpokenCommandFormatterTests.swift; sourceTree = "<group>"; };
@@ -122,6 +125,7 @@
 		B200004800000000000000A1 /* AliasMinerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AliasMinerTests.swift; sourceTree = "<group>"; };
 		B200004C00000000000000A1 /* StatFramingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatFramingTests.swift; sourceTree = "<group>"; };
 		B200004D00000000000000A1 /* PersonalRecordsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonalRecordsTests.swift; sourceTree = "<group>"; };
+		B200004F00000000000000A1 /* DictionaryReplacerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictionaryReplacerTests.swift; sourceTree = "<group>"; };
 		B200003E00000000000000A1 /* TranscriptPipelineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptPipelineTests.swift; sourceTree = "<group>"; };
 		B200002200000000000000A1 /* AppContextClassifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppContextClassifier.swift; sourceTree = "<group>"; };
 		B200002300000000000000A1 /* ShortcutsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortcutsView.swift; sourceTree = "<group>"; };
@@ -261,6 +265,7 @@
 				B200003A00000000000000A1 /* SpokenCommandFormatter.swift */,
 				B200004000000000000000A1 /* VoiceEditCommand.swift */,
 				B200004600000000000000A1 /* AliasMiner.swift */,
+				B200004E00000000000000A1 /* DictionaryReplacer.swift */,
 				B200003B00000000000000A1 /* TranscriptPipeline.swift */,
 				B200002C00000000000000A1 /* EscapeInterceptor.swift */,
 				B200003000000000000000A1 /* SoundPlayer.swift */,
@@ -310,6 +315,7 @@
 				B200004800000000000000A1 /* AliasMinerTests.swift */,
 				B200004C00000000000000A1 /* StatFramingTests.swift */,
 				B200004D00000000000000A1 /* PersonalRecordsTests.swift */,
+				B200004F00000000000000A1 /* DictionaryReplacerTests.swift */,
 				B200003E00000000000000A1 /* TranscriptPipelineTests.swift */,
 			);
 			path = YappyTests;
@@ -449,6 +455,7 @@
 				B100003A00000000000000A1 /* SpokenCommandFormatter.swift in Sources */,
 				B100004000000000000000A1 /* VoiceEditCommand.swift in Sources */,
 				B100004600000000000000A1 /* AliasMiner.swift in Sources */,
+				B100004E00000000000000A1 /* DictionaryReplacer.swift in Sources */,
 				B100003B00000000000000A1 /* TranscriptPipeline.swift in Sources */,
 				B100002200000000000000A1 /* AppContextClassifier.swift in Sources */,
 				B100002300000000000000A1 /* ShortcutsView.swift in Sources */,
@@ -494,6 +501,7 @@
 				B100004800000000000000A1 /* AliasMinerTests.swift in Sources */,
 				B100004C00000000000000A1 /* StatFramingTests.swift in Sources */,
 				B100004D00000000000000A1 /* PersonalRecordsTests.swift in Sources */,
+				B100004F00000000000000A1 /* DictionaryReplacerTests.swift in Sources */,
 				B100003E00000000000000A1 /* TranscriptPipelineTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

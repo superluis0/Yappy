@@ -64,9 +64,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var sessionMode: Mode = .auto
 
     // Dictionary-boosted final via the sliding-window manager.
-    private var dictionarySessionActive = false
-    private var dictionaryReady = false
-    private var pendingStreamBuffers: [AVAudioPCMBuffer] = []
 
     // MARK: - Launch
 
@@ -203,55 +200,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         playFeedback(start: true)
         armMaxDurationTimer { [weak self] in self?.finishDictation() }
         escapeInterceptor.start()
-
-        beginDictionarySessionIfNeeded()
-    }
-
-    // MARK: - Dictionary-boosted Session
-
-    /// Feeds audio to the sliding-window manager (with CTC boosting) so the
-    /// final transcript honors the custom dictionary. No effect on the caption.
-    private func beginDictionarySessionIfNeeded() {
-        var terms = settings.customDictionaryEnabled ? dictionaryStore.terms : []
-        // A non-Auto mode can carry its own vocabulary; boost it even if the
-        // global dictionary toggle is off.
-        if !sessionMode.isAuto, !sessionMode.extraDictionaryTerms.isEmpty {
-            terms += sessionMode.extraDictionaryTerms.map { DictionaryTerm(text: $0) }
-        }
-        guard !terms.isEmpty else { return }
-
-        dictionarySessionActive = true
-        dictionaryReady = false
-        pendingStreamBuffers.removeAll()
-
-        audioRecorder.onBuffer = { [weak self] buffer in
-            DispatchQueue.main.async { self?.routeStreamBuffer(buffer) }
-        }
-
-        Task { @MainActor [weak self] in
-            guard let self, self.appState.isRecording, self.appState.mode == .dictation else { return }
-            let ok = await self.transcriptionService.startStreamingSession(
-                dictionaryTerms: terms
-            ) { _ in }
-            guard ok, self.appState.isRecording else {
-                self.dictionarySessionActive = false
-                return
-            }
-            for buffer in self.pendingStreamBuffers {
-                self.transcriptionService.streamBuffer(buffer)
-            }
-            self.pendingStreamBuffers.removeAll()
-            self.dictionaryReady = true
-        }
-    }
-
-    private func routeStreamBuffer(_ buffer: AVAudioPCMBuffer) {
-        guard dictionarySessionActive else { return }
-        if dictionaryReady {
-            transcriptionService.streamBuffer(buffer)
-        } else {
-            pendingStreamBuffers.append(buffer)
-        }
     }
 
     private func finishDictation() {
@@ -260,15 +208,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         escapeInterceptor.stop()
 
         let samples = audioRecorder.stopRecording()
-        audioRecorder.onBuffer = nil
         let duration = recordingStartTime.map { Date().timeIntervalSince($0) } ?? 0
         recordingStartTime = nil
         let bundleID = sessionBundleID
         let targetAppName = NSWorkspace.shared.frontmostApplication?.localizedName
-        let wasDictionary = dictionarySessionActive
-        dictionarySessionActive = false
-        dictionaryReady = false
-        pendingStreamBuffers.removeAll()
 
         appState.stopRecording()
         playFeedback(start: false)
@@ -279,22 +222,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // Discard near-silent clips (e.g. an instant key tap) so the model
             // can't hallucinate filler words from nothing.
             guard AudioRecorder.containsSpeech(samples) else {
-                if wasDictionary { await self.transcriptionService.cancelStreamingSession() }
                 self.appState.reset()
                 self.pillController.hide()
                 return
             }
 
             do {
-                // The dictionary path carries CTC boosting; fall back to batch if
-                // it produced nothing.
-                var raw = ""
-                if wasDictionary {
-                    raw = await self.transcriptionService.finishStreamingSession()
-                }
-                if raw.isEmpty {
-                    raw = try await self.transcriptionService.transcribe(samples)
-                }
+                let raw = try await self.transcriptionService.transcribe(samples)
 
                 // Nothing usable (too short, or discarded as low confidence).
                 guard !raw.isEmpty else {
@@ -323,7 +257,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     formatNumbers: mode.isAuto ? self.settings.numberFormattingEnabled : mode.numberFormatting,
                     applyCommands: mode.isAuto ? self.settings.spokenCommandsEnabled : mode.spokenCommands
                 ).process(raw)
-                let expanded = ShortcutExpander(shortcuts: self.shortcutStore.shortcuts).expand(cleaned)
+                // Custom-dictionary corrections: rewrite known mishearings
+                // (manual + voice-trained aliases) back to the canonical spelling.
+                let corrected = self.settings.customDictionaryEnabled
+                    ? DictionaryReplacer(terms: self.dictionaryStore.terms).apply(cleaned)
+                    : cleaned
+                let expanded = ShortcutExpander(shortcuts: self.shortcutStore.shortcuts).expand(corrected)
                 let tone = mode.isAuto ? self.resolvedTone(forBundleID: bundleID) : mode.tone
                 let cleanupEnabled = mode.isAuto ? nil : (mode.cleanupEnabledOverride ?? self.settings.cleanupEnabled)
                 let text = await self.lmStudio.cleanup(expanded, tone: tone, cleanupEnabled: cleanupEnabled)
@@ -390,14 +329,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         recordingStartTime = nil
         pendingCommandSelection = nil
         audioRecorder.stopRecording()
-        audioRecorder.onBuffer = nil
-
-        if dictionarySessionActive {
-            dictionarySessionActive = false
-            dictionaryReady = false
-            pendingStreamBuffers.removeAll()
-            Task { await transcriptionService.cancelStreamingSession() }
-        }
 
         appState.reset()
         pillController.hide()
@@ -786,15 +717,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         .store(in: &cancellables)
 
-        // Pre-download the dictionary model when the feature is switched on.
-        settings.$customDictionaryEnabled
-            .dropFirst()
-            .removeDuplicates()
-            .sink { [weak self] enabled in
-                guard enabled else { return }
-                Task { await self?.transcriptionService.prewarmDictionary() }
-            }
-            .store(in: &cancellables)
 
         // Keep the menu-bar Mode submenu in sync with the list and selection.
         modeStore.$modes
