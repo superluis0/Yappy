@@ -14,6 +14,7 @@ struct MainWindowView: View {
         case home = "Home"
         case shortcuts = "Shortcuts"
         case dictionary = "Dictionary"
+        case modes = "Modes"
         case settings = "Settings"
 
         var id: String { rawValue }
@@ -23,6 +24,7 @@ struct MainWindowView: View {
             case .home: return "house"
             case .shortcuts: return "text.badge.plus"
             case .dictionary: return "character.book.closed"
+            case .modes: return "slider.horizontal.3"
             case .settings: return "gearshape"
             }
         }
@@ -32,6 +34,7 @@ struct MainWindowView: View {
     @ObservedObject var history: HistoryStore
     @ObservedObject var shortcutStore: ShortcutStore
     @ObservedObject var dictionaryStore: DictionaryStore
+    @ObservedObject var modeStore: ModeStore
     @ObservedObject var transcriptionService: ParakeetTranscriptionService
     let lmStudio: LMStudioService
 
@@ -56,6 +59,8 @@ struct MainWindowView: View {
                     settings: settings,
                     transcriptionService: transcriptionService
                 )
+            case .modes:
+                ModesView(store: modeStore, settings: settings)
             case .settings:
                 SettingsView(
                     settings: settings,
@@ -79,6 +84,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         history: HistoryStore,
         shortcutStore: ShortcutStore,
         dictionaryStore: DictionaryStore,
+        modeStore: ModeStore,
         transcriptionService: ParakeetTranscriptionService,
         lmStudio: LMStudioService
     ) {
@@ -87,6 +93,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             history: history,
             shortcutStore: shortcutStore,
             dictionaryStore: dictionaryStore,
+            modeStore: modeStore,
             transcriptionService: transcriptionService,
             lmStudio: lmStudio
         )

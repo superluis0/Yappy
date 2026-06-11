@@ -32,10 +32,16 @@ final class TextInserter {
     /// Last character we inserted, used to space consecutive dictations when the
     /// destination app doesn't expose its text to the accessibility API.
     private var lastInsertedTrailingCharacter: Character?
+    /// The full text of our most recent insertion (including any leading space
+    /// we added), used by voice editing to select it back and delete/replace it.
+    private(set) var lastInsertedText: String?
     private var lastInsertionDate: Date?
     /// The fallback is only trusted briefly; after this the cursor has likely
     /// moved to a different field.
     private let fallbackValidityWindow: TimeInterval = 45
+
+    /// Guard against synthesizing an unreasonable number of selection keystrokes.
+    private let maxReselectableLength = 1000
 
     // MARK: - Public
 
@@ -49,9 +55,25 @@ final class TextInserter {
         // flush against the previous word ("box.that"). Add a separating space
         // when the cursor sits right after a word.
         let payload = needsLeadingSpace(before: text) ? " " + text : text
-        lastInsertedTrailingCharacter = payload.last
-        lastInsertionDate = Date()
+        recordInsertion(of: payload)
+        try pasteText(payload)
+    }
 
+    private func recordInsertion(of payload: String) {
+        lastInsertedTrailingCharacter = payload.last
+        lastInsertedText = payload
+        lastInsertionDate = Date()
+    }
+
+    private func clearLastInsertion() {
+        lastInsertedTrailingCharacter = nil
+        lastInsertedText = nil
+        lastInsertionDate = nil
+    }
+
+    /// Puts `payload` on the pasteboard, pastes it, and restores the user's
+    /// clipboard afterward (only if nothing else wrote to it in the meantime).
+    private func pasteText(_ payload: String) throws {
         let pasteboard = NSPasteboard.general
         let snapshot = snapshotClipboard(pasteboard)
 
@@ -61,12 +83,77 @@ final class TextInserter {
 
         try postCommandV()
 
-        // Restore the clipboard once the paste has been delivered — but only if
-        // nothing else has written to the pasteboard in the meantime.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
             guard pasteboard.changeCount == ourChangeCount else { return }
             self?.restoreClipboard(snapshot, to: pasteboard)
         }
+    }
+
+    // MARK: - Voice Editing (act on the last insertion)
+
+    /// Deletes the entire last insertion. Returns false (no-op) if we can't
+    /// trust that the caret still sits right after it.
+    @discardableResult
+    func deleteLastInserted() -> Bool {
+        guard let text = lastInsertedText, !text.isEmpty else { return false }
+        guard selectBackOverLastInsertion(length: text.count) else { return false }
+        postKey(0x33) // Delete (backspace) clears the selection
+        clearLastInsertion()
+        return true
+    }
+
+    @discardableResult func deleteLastWord() -> Bool { deleteTrailing(TextEditMath.trailingWordLength(of:)) }
+    @discardableResult func deleteLastSentence() -> Bool { deleteTrailing(TextEditMath.trailingSentenceLength(of:)) }
+    @discardableResult func deleteLastLine() -> Bool { deleteTrailing(TextEditMath.trailingLineLength(of:)) }
+
+    private func deleteTrailing(_ measure: (String) -> Int) -> Bool {
+        guard let text = lastInsertedText else { return false }
+        let length = measure(text)
+        guard length > 0, length <= text.count else { return false }
+        guard selectBackOverLastInsertion(length: length) else { return false }
+        postKey(0x33)
+        let remaining = String(text.dropLast(length))
+        if remaining.isEmpty {
+            clearLastInsertion()
+        } else {
+            lastInsertedText = remaining
+            lastInsertedTrailingCharacter = remaining.last
+            // keep lastInsertionDate so chained edits stay within the window
+        }
+        return true
+    }
+
+    /// Selects the last insertion and pastes `replacement` over it. Returns
+    /// false (and leaves text untouched) if the caret can't be trusted.
+    @discardableResult
+    func replaceLastInserted(with replacement: String) -> Bool {
+        guard let text = lastInsertedText, !text.isEmpty else { return false }
+        guard selectBackOverLastInsertion(length: text.count) else { return false }
+        do { try pasteText(replacement) } catch { return false }
+        recordInsertion(of: replacement)
+        return true
+    }
+
+    /// Verifies the caret is still right after our last insertion, then extends
+    /// the selection left by `length` characters. Degrades to false rather than
+    /// risk deleting the wrong text.
+    private func selectBackOverLastInsertion(length: Int) -> Bool {
+        guard AXIsProcessTrusted(), length > 0, length <= maxReselectableLength else { return false }
+        guard let when = lastInsertionDate,
+              Date().timeIntervalSince(when) < fallbackValidityWindow,
+              let expectedTrailing = lastInsertedTrailingCharacter else { return false }
+
+        switch precedingContext() {
+        case .startOfField:
+            return false                                   // our text can't precede a start caret
+        case .character(let actual):
+            guard actual == expectedTrailing else { return false }  // caret moved
+        case .unknown:
+            break                                          // opaque app — trust the time window
+        }
+
+        postShiftLeftArrow(times: length)
+        return true
     }
 
     /// Copies the current selection in the frontmost app via ⌘C and returns it,
@@ -176,21 +263,34 @@ final class TextInserter {
     }
 
     private func postCommandKey(_ keyCode: CGKeyCode) throws {
-        let source = CGEventSource(stateID: .hidSystemState)
-
-        guard let keyDown = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: true),
-              let keyUp = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: false) else {
+        guard postKey(keyCode, flags: .maskCommand) else {
             throw InsertionError.eventCreationFailed
         }
+    }
 
-        // The user may still be releasing the recording hotkey; pin the flags to
-        // exactly Command so stray modifiers don't corrupt the keystroke.
-        keyDown.flags = .maskCommand
-        keyUp.flags = .maskCommand
-
+    /// Posts a single key chord. Pins flags to exactly `flags` so a modifier the
+    /// user is still releasing (the recording hotkey) can't corrupt it.
+    @discardableResult
+    private func postKey(_ keyCode: CGKeyCode, flags: CGEventFlags = []) -> Bool {
+        let source = CGEventSource(stateID: .hidSystemState)
+        guard let keyDown = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: true),
+              let keyUp = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: false) else {
+            return false
+        }
+        keyDown.flags = flags
+        keyUp.flags = flags
         keyDown.post(tap: .cghidEventTap)
         usleep(5_000)
         keyUp.post(tap: .cghidEventTap)
+        return true
+    }
+
+    /// Extends the selection left by `times` characters (Shift+Left ×N).
+    private func postShiftLeftArrow(times: Int) {
+        for _ in 0..<times {
+            postKey(0x7B, flags: .maskShift) // Left Arrow
+            usleep(800)
+        }
     }
 
     // MARK: - Clipboard Preservation

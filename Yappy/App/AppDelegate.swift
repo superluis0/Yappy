@@ -20,6 +20,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let history = HistoryStore()
     let shortcutStore = ShortcutStore()
     let dictionaryStore = DictionaryStore()
+    let modeStore = ModeStore()
     let transcriptionService = ParakeetTranscriptionService()
 
     private let audioRecorder = AudioRecorder()
@@ -35,6 +36,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         history: history,
         shortcutStore: shortcutStore,
         dictionaryStore: dictionaryStore,
+        modeStore: modeStore,
         transcriptionService: transcriptionService,
         lmStudio: lmStudio
     )
@@ -42,6 +44,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - State
 
     private var statusItem: NSStatusItem?
+    private var modeMenuItem: NSMenuItem?
     private var menuBarAnimationTimer: Timer?
     private var menuBarFrameIndex = 0
     private var cancellables = Set<AnyCancellable>()
@@ -57,6 +60,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var pendingCommandSelection: String?
     /// Bundle id of the app that had focus when the current session started.
     private var sessionBundleID: String?
+    /// Mode resolved at the start of the current session.
+    private var sessionMode: Mode = .auto
 
     // Dictionary-boosted final via the sliding-window manager.
     private var dictionarySessionActive = false
@@ -190,6 +195,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let frontApp = NSWorkspace.shared.frontmostApplication
         sessionBundleID = frontApp?.bundleIdentifier
+        sessionMode = resolvedMode(forBundleID: sessionBundleID)
 
         recordingStartTime = Date()
         appState.startRecording(mode: .dictation)
@@ -206,7 +212,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Feeds audio to the sliding-window manager (with CTC boosting) so the
     /// final transcript honors the custom dictionary. No effect on the caption.
     private func beginDictionarySessionIfNeeded() {
-        let terms = settings.customDictionaryEnabled ? dictionaryStore.terms : []
+        var terms = settings.customDictionaryEnabled ? dictionaryStore.terms : []
+        // A non-Auto mode can carry its own vocabulary; boost it even if the
+        // global dictionary toggle is off.
+        if !sessionMode.isAuto, !sessionMode.extraDictionaryTerms.isEmpty {
+            terms += sessionMode.extraDictionaryTerms.map { DictionaryTerm(text: $0) }
+        }
         guard !terms.isEmpty else { return }
 
         dictionarySessionActive = true
@@ -292,16 +303,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     return
                 }
 
-                // Local cleanups run on the raw transcript, before shortcut
-                // expansion, so user-authored expansions stay verbatim.
+                // A spoken edit ("scratch that", "all caps that") acts on the
+                // PREVIOUS insertion as its own utterance — never inserted,
+                // never run through the pipeline, never written to history.
+                if self.settings.voiceEditingEnabled,
+                   let command = VoiceEditCommandParser.parse(raw),
+                   self.applyVoiceEdit(command) {
+                    self.playSuccessFeedback()
+                    self.appState.reset()
+                    self.pillController.hide()
+                    return
+                }
+
+                // The session mode dictates cleanup/formatting; Auto defers to the
+                // global settings + per-app tone (byte-identical to no modes).
+                let mode = self.sessionMode
                 let cleaned = TranscriptPipeline(
-                    removeFillers: self.settings.fillerRemovalEnabled,
-                    formatNumbers: self.settings.numberFormattingEnabled,
-                    applyCommands: self.settings.spokenCommandsEnabled
+                    removeFillers: mode.isAuto ? self.settings.fillerRemovalEnabled : mode.fillerRemoval,
+                    formatNumbers: mode.isAuto ? self.settings.numberFormattingEnabled : mode.numberFormatting,
+                    applyCommands: mode.isAuto ? self.settings.spokenCommandsEnabled : mode.spokenCommands
                 ).process(raw)
                 let expanded = ShortcutExpander(shortcuts: self.shortcutStore.shortcuts).expand(cleaned)
-                let tone = self.resolvedTone(forBundleID: bundleID)
-                let text = await self.lmStudio.cleanup(expanded, tone: tone)
+                let tone = mode.isAuto ? self.resolvedTone(forBundleID: bundleID) : mode.tone
+                let cleanupEnabled = mode.isAuto ? nil : (mode.cleanupEnabledOverride ?? self.settings.cleanupEnabled)
+                let text = await self.lmStudio.cleanup(expanded, tone: tone, cleanupEnabled: cleanupEnabled)
 
                 if !text.isEmpty {
                     try self.textInserter.insert(text: text)
@@ -320,6 +345,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self.appState.reset()
             self.pillController.hide()
         }
+    }
+
+    /// Applies a spoken edit to the previous insertion. Returns false (so the
+    /// caller inserts the words as literal text) when there's nothing to act on
+    /// or the caret can no longer be trusted — never a destructive guess.
+    private func applyVoiceEdit(_ command: VoiceEditCommand) -> Bool {
+        switch command {
+        case .deleteLast:
+            return textInserter.deleteLastInserted()
+        case .deleteLastWord:
+            return textInserter.deleteLastWord()
+        case .deleteLastSentence:
+            return textInserter.deleteLastSentence()
+        case .deleteLastLine:
+            return textInserter.deleteLastLine()
+        case .capitalizeThat, .allCapsThat, .lowercaseThat:
+            guard let current = textInserter.lastInsertedText,
+                  let rewritten = VoiceEditCommandParser.transform(command, applyingTo: current) else {
+                return false
+            }
+            return textInserter.replaceLastInserted(with: rewritten)
+        }
+    }
+
+    /// The mode in effect for a session: the explicit selection, or an
+    /// auto-trigger match for the frontmost app's category, else Auto.
+    private func resolvedMode(forBundleID bundleID: String?) -> Mode {
+        let category = AppContextClassifier.category(forBundleID: bundleID)
+        let activeID = settings.activeModeID.flatMap { UUID(uuidString: $0) }
+        return ModeResolver.resolve(activeID: activeID, in: modeStore.modes, forCategory: category)
     }
 
     /// Effective cleanup tone for the destination app (Auto = category default).
@@ -522,10 +577,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let menu = NSMenu()
         menu.addItem(NSMenuItem(title: "Open Yappy", action: #selector(openMainWindow), keyEquivalent: "o"))
         menu.addItem(NSMenuItem.separator())
+
+        let modeItem = NSMenuItem(title: "Mode", action: nil, keyEquivalent: "")
+        menu.addItem(modeItem)
+        modeMenuItem = modeItem
+        rebuildModeMenu()
+
+        menu.addItem(NSMenuItem.separator())
         menu.addItem(NSMenuItem(title: "About Yappy", action: #selector(showAbout), keyEquivalent: ""))
         menu.addItem(NSMenuItem.separator())
         menu.addItem(NSMenuItem(title: "Quit Yappy", action: #selector(quit), keyEquivalent: "q"))
         statusItem?.menu = menu
+    }
+
+    /// Rebuilds the Mode submenu with a checkmark on the active mode. Called when
+    /// the mode list or the active selection changes.
+    private func rebuildModeMenu() {
+        guard let modeMenuItem else { return }
+        let submenu = NSMenu()
+        let activeID = settings.activeModeID.flatMap { UUID(uuidString: $0) } ?? Mode.autoID
+        for mode in modeStore.modes {
+            let item = NSMenuItem(title: mode.name, action: #selector(selectMode(_:)), keyEquivalent: "")
+            item.representedObject = mode.id.uuidString
+            item.state = (mode.id == activeID) ? .on : .off
+            item.target = self
+            submenu.addItem(item)
+        }
+        modeMenuItem.submenu = submenu
+    }
+
+    @objc private func selectMode(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String else { return }
+        // Selecting Auto clears the explicit selection.
+        settings.activeModeID = (raw == Mode.autoID.uuidString) ? nil : raw
     }
 
     private func bindStateToMenuBar() {
@@ -710,6 +794,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 guard enabled else { return }
                 Task { await self?.transcriptionService.prewarmDictionary() }
             }
+            .store(in: &cancellables)
+
+        // Keep the menu-bar Mode submenu in sync with the list and selection.
+        modeStore.$modes
+            .sink { [weak self] _ in self?.rebuildModeMenu() }
+            .store(in: &cancellables)
+        settings.$activeModeID
+            .removeDuplicates()
+            .sink { [weak self] _ in self?.rebuildModeMenu() }
             .store(in: &cancellables)
 
         settings.$launchAtLogin

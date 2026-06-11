@@ -39,6 +39,8 @@ final class Settings: ObservableObject {
         static let numberFormattingEnabled = "com.yappy.numberFormattingEnabled"
         static let fillerRemovalEnabled = "com.yappy.fillerRemovalEnabled"
         static let spokenCommandsEnabled = "com.yappy.spokenCommandsEnabled"
+        static let voiceEditingEnabled = "com.yappy.voiceEditingEnabled"
+        static let activeModeID = "com.yappy.activeModeID"
         static let onboardingComplete = "com.yappy.onboardingComplete"
         static let legacyCleanupMigrated = "com.yappy.legacyCleanupMigrated"
 
@@ -129,6 +131,16 @@ final class Settings: ObservableObject {
         didSet { if !isLoading { save() } }
     }
 
+    /// Whether spoken edits ("scratch that", "all caps that") fix the last dictation.
+    @Published var voiceEditingEnabled: Bool = true {
+        didSet { if !isLoading { save() } }
+    }
+
+    /// The explicitly-selected dictation mode's id (UUID string); nil = Auto.
+    @Published var activeModeID: String? {
+        didSet { if !isLoading { save() } }
+    }
+
     /// Whether the first-run onboarding flow has been completed.
     @Published var onboardingComplete: Bool = false {
         didSet { if !isLoading { save() } }
@@ -178,6 +190,8 @@ final class Settings: ObservableObject {
         defaults.set(numberFormattingEnabled, forKey: Keys.numberFormattingEnabled)
         defaults.set(fillerRemovalEnabled, forKey: Keys.fillerRemovalEnabled)
         defaults.set(spokenCommandsEnabled, forKey: Keys.spokenCommandsEnabled)
+        defaults.set(voiceEditingEnabled, forKey: Keys.voiceEditingEnabled)
+        defaults.set(activeModeID, forKey: Keys.activeModeID)
         defaults.set(onboardingComplete, forKey: Keys.onboardingComplete)
 
         let overrides = Dictionary(uniqueKeysWithValues: toneOverrides.map { ($0.key.rawValue, $0.value.rawValue) })
@@ -254,6 +268,14 @@ final class Settings: ObservableObject {
             spokenCommandsEnabled = true
         }
 
+        if defaults.object(forKey: Keys.voiceEditingEnabled) != nil {
+            voiceEditingEnabled = defaults.bool(forKey: Keys.voiceEditingEnabled)
+        } else {
+            voiceEditingEnabled = true
+        }
+
+        activeModeID = defaults.string(forKey: Keys.activeModeID)
+
         onboardingComplete = defaults.bool(forKey: Keys.onboardingComplete)
 
         if let raw = defaults.dictionary(forKey: Keys.toneOverrides) as? [String: String] {
@@ -286,6 +308,8 @@ final class Settings: ObservableObject {
         numberFormattingEnabled = true
         fillerRemovalEnabled = true
         spokenCommandsEnabled = true
+        voiceEditingEnabled = true
+        activeModeID = nil
         // onboardingComplete intentionally not reset — it tracks lifetime state.
 
         for key in [
@@ -294,6 +318,7 @@ final class Settings: ObservableObject {
             Keys.lmStudioBaseURL, Keys.commandModeEnabled, Keys.commandHotkeyOption,
             Keys.contextAwareToneEnabled, Keys.toneOverrides, Keys.customDictionaryEnabled,
             Keys.numberFormattingEnabled, Keys.fillerRemovalEnabled, Keys.spokenCommandsEnabled,
+            Keys.voiceEditingEnabled, Keys.activeModeID,
         ] {
             defaults.removeObject(forKey: key)
         }

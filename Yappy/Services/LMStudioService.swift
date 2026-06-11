@@ -64,8 +64,10 @@ final class LMStudioService {
     /// Returns the cleaned transcript, or the original text on any failure.
     /// `tone` shapes the output to the destination app's context. Verbatim tone
     /// (e.g. code editors) skips the model entirely so nothing gets reworded.
-    func cleanup(_ text: String, tone: ToneStyle = .formal) async -> String {
-        guard settings.cleanupEnabled, !text.isEmpty else { return text }
+    /// - Parameter cleanupEnabled: overrides the global setting (a mode can force
+    ///   cleanup on/off); nil inherits `settings.cleanupEnabled`.
+    func cleanup(_ text: String, tone: ToneStyle = .formal, cleanupEnabled: Bool? = nil) async -> String {
+        guard (cleanupEnabled ?? settings.cleanupEnabled), !text.isEmpty else { return text }
         guard tone != .verbatim else { return text }
 
         let prompt = """
