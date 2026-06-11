@@ -14,17 +14,36 @@ struct HeatmapView: View {
     private let cell: CGFloat = 16
     private let labelWidth: CGFloat = 34
 
+    @State private var hoveredWeekday: Int? = nil
+    @State private var hoveredHour: Int? = nil
+
     init(entries: [DictationEntry], calendar: Calendar = .current) {
         // Computed once per HomeView invalidation (entries change), not per frame.
         self.rows = HeatmapModel.hourlyRows(entries: entries, calendar: calendar)
         self.weekdaySymbols = calendar.shortWeekdaySymbols
     }
 
+    private var hoveredCellLabel: String? {
+        guard let weekday = hoveredWeekday, let hour = hoveredHour,
+              let row = rows.first(where: { $0.weekday == weekday }) else { return nil }
+        return tooltip(row: row, hour: hour)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("When you dictate")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+            HStack(spacing: 0) {
+                Text("When you dictate")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                if let label = hoveredCellLabel {
+                    Text(label)
+                        .font(.caption)
+                        .foregroundStyle(.primary)
+                        .transition(.opacity)
+                }
+            }
+            .animation(.easeOut(duration: 0.12), value: hoveredCellLabel)
 
             VStack(alignment: .leading, spacing: spacing) {
                 ForEach(rows) { row in
@@ -37,6 +56,23 @@ struct HeatmapView: View {
                             RoundedRectangle(cornerRadius: 2)
                                 .fill(color(forLevel: row.hours[hour].level))
                                 .frame(width: cell, height: cell)
+                                .overlay {
+                                    if hoveredWeekday == row.weekday && hoveredHour == hour {
+                                        RoundedRectangle(cornerRadius: 2)
+                                            .strokeBorder(.primary.opacity(0.45), lineWidth: 1)
+                                    }
+                                }
+                                .onHover { hovering in
+                                    withAnimation(.easeOut(duration: 0.08)) {
+                                        if hovering {
+                                            hoveredWeekday = row.weekday
+                                            hoveredHour = hour
+                                        } else if hoveredWeekday == row.weekday && hoveredHour == hour {
+                                            hoveredWeekday = nil
+                                            hoveredHour = nil
+                                        }
+                                    }
+                                }
                                 .help(tooltip(row: row, hour: hour))
                         }
                     }

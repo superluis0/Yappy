@@ -56,6 +56,7 @@
 		B100004400000000000000A1 /* ModesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200004400000000000000A1 /* ModesView.swift */; };
 		B100004700000000000000A1 /* DictionaryTrainingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200004700000000000000A1 /* DictionaryTrainingView.swift */; };
 		B100004B00000000000000A1 /* RecapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200004B00000000000000A1 /* RecapView.swift */; };
+		B100005000000000000000A1 /* UndoToast.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200005000000000000000A1 /* UndoToast.swift */; };
 		B100002A00000000000000A1 /* DictionaryStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200002A00000000000000A1 /* DictionaryStoreTests.swift */; };
 		B100002B00000000000000A1 /* WaveformBarsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200002B00000000000000A1 /* WaveformBarsView.swift */; };
 		B100002C00000000000000A1 /* EscapeInterceptor.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200002C00000000000000A1 /* EscapeInterceptor.swift */; };
@@ -140,6 +141,7 @@
 		B200004400000000000000A1 /* ModesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModesView.swift; sourceTree = "<group>"; };
 		B200004700000000000000A1 /* DictionaryTrainingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictionaryTrainingView.swift; sourceTree = "<group>"; };
 		B200004B00000000000000A1 /* RecapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecapView.swift; sourceTree = "<group>"; };
+		B200005000000000000000A1 /* UndoToast.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UndoToast.swift; sourceTree = "<group>"; };
 		B200002A00000000000000A1 /* DictionaryStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictionaryStoreTests.swift; sourceTree = "<group>"; };
 		B200002B00000000000000A1 /* WaveformBarsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WaveformBarsView.swift; sourceTree = "<group>"; };
 		B200002C00000000000000A1 /* EscapeInterceptor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EscapeInterceptor.swift; sourceTree = "<group>"; };
@@ -290,6 +292,7 @@
 				B200004B00000000000000A1 /* RecapView.swift */,
 				B200002B00000000000000A1 /* WaveformBarsView.swift */,
 				B200002E00000000000000A1 /* HeatmapView.swift */,
+				B200005000000000000000A1 /* UndoToast.swift */,
 			);
 			path = UI;
 			sourceTree = "<group>";
@@ -474,6 +477,7 @@
 				B100002F00000000000000A1 /* IconCache.swift in Sources */,
 				B100002D00000000000000A1 /* HeatmapModel.swift in Sources */,
 				B100002E00000000000000A1 /* HeatmapView.swift in Sources */,
+				B100005000000000000000A1 /* UndoToast.swift in Sources */,
 				B100002B00000000000000A1 /* WaveformBarsView.swift in Sources */,
 				B100003000000000000000A1 /* SoundPlayer.swift in Sources */,
 			);

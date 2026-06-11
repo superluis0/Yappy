@@ -10,25 +10,64 @@ struct ShortcutsView: View {
     @ObservedObject var store: ShortcutStore
     @State private var editing: VoiceShortcut?
     @State private var showingEditor = false
+    @State private var pendingDeleteShortcut: VoiceShortcut?
+    @State private var deleteTimer: Timer?
+
+    private var visibleShortcuts: [VoiceShortcut] {
+        store.shortcuts.filter { pendingDeleteShortcut?.id != $0.id }
+    }
+
+    private func scheduleDeletion(_ shortcut: VoiceShortcut) {
+        if let pending = pendingDeleteShortcut { store.delete(pending) }
+        deleteTimer?.invalidate()
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+            pendingDeleteShortcut = shortcut
+        }
+        deleteTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: false) { _ in
+            DispatchQueue.main.async {
+                if let s = self.pendingDeleteShortcut { self.store.delete(s) }
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                    self.pendingDeleteShortcut = nil
+                }
+            }
+        }
+    }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 header
 
-                if store.shortcuts.isEmpty {
-                    emptyState
-                } else {
-                    LazyVStack(spacing: 8) {
-                        ForEach(store.shortcuts) { shortcut in
-                            row(shortcut)
+                Group {
+                    if visibleShortcuts.isEmpty {
+                        emptyState
+                            .transition(.opacity.combined(with: .scale(scale: 0.92, anchor: .center)))
+                    } else {
+                        LazyVStack(spacing: 8) {
+                            ForEach(visibleShortcuts) { shortcut in
+                                row(shortcut)
+                            }
                         }
+                        .transition(.opacity.combined(with: .scale(scale: 0.92, anchor: .center)))
                     }
                 }
+                .animation(.spring(response: 0.45, dampingFraction: 0.85), value: visibleShortcuts.isEmpty)
             }
             .padding(24)
         }
         .background(Color(nsColor: .windowBackgroundColor))
+        .overlay(alignment: .bottom) {
+            if pendingDeleteShortcut != nil {
+                UndoToast(message: "Shortcut deleted") {
+                    deleteTimer?.invalidate()
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                        pendingDeleteShortcut = nil
+                    }
+                }
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: pendingDeleteShortcut != nil)
         .sheet(isPresented: $showingEditor) {
             ShortcutEditor(shortcut: editing) { result in
                 if store.shortcuts.contains(where: { $0.id == result.id }) {
@@ -100,7 +139,7 @@ struct ShortcutsView: View {
                 .buttonStyle(.borderless)
 
             Button(role: .destructive) {
-                store.delete(shortcut)
+                scheduleDeletion(shortcut)
             } label: { Image(systemName: "trash") }
                 .buttonStyle(.borderless)
         }

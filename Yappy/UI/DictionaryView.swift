@@ -14,6 +14,28 @@ struct DictionaryView: View {
 
     @State private var newTerm = ""
     @State private var detailTerm: DictionaryTerm?
+    @State private var pendingDeleteTerm: DictionaryTerm?
+    @State private var deleteTimer: Timer?
+
+    private var visibleTerms: [DictionaryTerm] {
+        store.terms.filter { pendingDeleteTerm?.id != $0.id }
+    }
+
+    private func scheduleDeletion(_ term: DictionaryTerm) {
+        if let pending = pendingDeleteTerm { store.remove(pending) }
+        deleteTimer?.invalidate()
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+            pendingDeleteTerm = term
+        }
+        deleteTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: false) { _ in
+            DispatchQueue.main.async {
+                if let t = self.pendingDeleteTerm { self.store.remove(t) }
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                    self.pendingDeleteTerm = nil
+                }
+            }
+        }
+    }
 
     var body: some View {
         ScrollView {
@@ -21,15 +43,32 @@ struct DictionaryView: View {
                 header
                 addField
 
-                if store.terms.isEmpty {
-                    emptyState
-                } else {
-                    termsList
+                Group {
+                    if visibleTerms.isEmpty {
+                        emptyState
+                            .transition(.opacity.combined(with: .scale(scale: 0.92, anchor: .center)))
+                    } else {
+                        termsList
+                            .transition(.opacity.combined(with: .scale(scale: 0.92, anchor: .center)))
+                    }
                 }
+                .animation(.spring(response: 0.45, dampingFraction: 0.85), value: visibleTerms.isEmpty)
             }
             .padding(24)
         }
         .background(Color(nsColor: .windowBackgroundColor))
+        .overlay(alignment: .bottom) {
+            if pendingDeleteTerm != nil {
+                UndoToast(message: "Term deleted") {
+                    deleteTimer?.invalidate()
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                        pendingDeleteTerm = nil
+                    }
+                }
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: pendingDeleteTerm != nil)
         .sheet(item: $detailTerm) { term in
             TermDetailSheet(termID: term.id, store: store, transcriptionService: transcriptionService)
         }
@@ -77,7 +116,7 @@ struct DictionaryView: View {
 
     private var termsList: some View {
         LazyVGrid(columns: [GridItem(.adaptive(minimum: 160), spacing: 8)], spacing: 8) {
-            ForEach(store.terms) { term in
+            ForEach(visibleTerms) { term in
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 6) {
                         Text(term.text).lineLimit(1)
@@ -89,7 +128,7 @@ struct DictionaryView: View {
                         .buttonStyle(.borderless)
                         .help("Edit aliases or teach pronunciation")
                         Button {
-                            store.remove(term)
+                            scheduleDeletion(term)
                         } label: {
                             Image(systemName: "xmark.circle.fill")
                                 .foregroundStyle(.tertiary)

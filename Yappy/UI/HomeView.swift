@@ -16,6 +16,8 @@ struct HomeView: View {
     @State private var statsAppeared = false
     @State private var showRecap = false
     @State private var recapHover = false
+    @State private var pendingDeleteEntry: DictationEntry?
+    @State private var deleteTimer: Timer?
 
     var body: some View {
         ScrollView {
@@ -43,6 +45,18 @@ struct HomeView: View {
                 statsAppeared = true
             }
         }
+        .overlay(alignment: .bottom) {
+            if pendingDeleteEntry != nil {
+                UndoToast(message: "Dictation deleted") {
+                    deleteTimer?.invalidate()
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                        pendingDeleteEntry = nil
+                    }
+                }
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: pendingDeleteEntry != nil)
     }
 
     /// Renders the value as 0 until `statsAppeared` flips, so `.numericText`
@@ -100,8 +114,20 @@ struct HomeView: View {
     private var statsGrid: some View {
         LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 4), spacing: 12) {
             statCard(value: history.totalWords, label: "Words dictated", icon: "text.word.spacing")
-            statCard(value: history.dictationsToday, label: "Dictations today", icon: "mic.fill")
-            statCard(value: history.averageWordsPerMinute, label: "Words / minute", icon: "speedometer")
+            statCard(
+                value: history.dictationsToday,
+                label: "Dictations today",
+                icon: "mic.fill",
+                trend: (history.dictationsYesterday > 0 || history.dictationsToday > 0)
+                    ? history.dictationsToday - history.dictationsYesterday : nil
+            )
+            statCard(
+                value: history.averageWordsPerMinute,
+                label: "Words / minute",
+                icon: "speedometer",
+                trend: history.averageWPMLastWeek > 0
+                    ? history.averageWPMThisWeek - history.averageWPMLastWeek : nil
+            )
             statCard(value: history.streakDays, label: "Day streak", icon: "flame.fill",
                      pulse: history.streakDays >= 2)
         }
@@ -253,7 +279,8 @@ struct HomeView: View {
         }
     }
 
-    private func statCard(value: Int, label: String, icon: String, pulse: Bool = false) -> some View {
+    private func statCard(value: Int, label: String, icon: String,
+                          pulse: Bool = false, trend: Int? = nil) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Image(systemName: icon)
                 .font(.title3)
@@ -271,6 +298,14 @@ struct HomeView: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
+            if let delta = trend, delta != 0 {
+                HStack(spacing: 2) {
+                    Image(systemName: delta > 0 ? "arrow.up" : "arrow.down")
+                    Text("\(abs(delta))")
+                }
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(delta > 0 ? Color.green : Color.red)
+            }
         }
         .frame(maxWidth: .infinity, minHeight: 96, alignment: .topLeading)
         .padding(16)
@@ -279,10 +314,32 @@ struct HomeView: View {
 
     // MARK: - History
 
+    /// Entries minus any pending-delete item (so it vanishes immediately on delete).
+    private var visibleEntries: [DictationEntry] {
+        history.entries.filter { pendingDeleteEntry?.id != $0.id }
+    }
+
     private var filteredEntries: [DictationEntry] {
-        guard !searchText.isEmpty else { return history.entries }
-        return history.entries.filter {
+        guard !searchText.isEmpty else { return visibleEntries }
+        return visibleEntries.filter {
             $0.text.localizedCaseInsensitiveContains(searchText)
+        }
+    }
+
+    private func scheduleDeletion(_ entry: DictationEntry) {
+        // Commit any already-pending delete before starting a new one.
+        if let pending = pendingDeleteEntry { history.delete(pending) }
+        deleteTimer?.invalidate()
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+            pendingDeleteEntry = entry
+        }
+        deleteTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: false) { _ in
+            DispatchQueue.main.async {
+                if let e = self.pendingDeleteEntry { self.history.delete(e) }
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                    self.pendingDeleteEntry = nil
+                }
+            }
         }
     }
 
@@ -294,25 +351,34 @@ struct HomeView: View {
                 Spacer()
                 if !history.entries.isEmpty {
                     Button("Clear All", role: .destructive) {
+                        deleteTimer?.invalidate()
+                        pendingDeleteEntry = nil
                         history.clearAll()
                     }
                     .controlSize(.small)
                 }
             }
 
-            if history.entries.isEmpty {
-                emptyState
-            } else {
-                TextField("Search dictations…", text: $searchText)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(maxWidth: 280)
+            Group {
+                if visibleEntries.isEmpty {
+                    emptyState
+                        .transition(.opacity.combined(with: .scale(scale: 0.92, anchor: .center)))
+                } else {
+                    VStack(alignment: .leading, spacing: 8) {
+                        TextField("Search dictations…", text: $searchText)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(maxWidth: 280)
 
-                LazyVStack(spacing: 8) {
-                    ForEach(filteredEntries) { entry in
-                        historyRow(entry)
+                        LazyVStack(spacing: 8) {
+                            ForEach(filteredEntries) { entry in
+                                historyRow(entry)
+                            }
+                        }
                     }
+                    .transition(.opacity.combined(with: .scale(scale: 0.92, anchor: .center)))
                 }
             }
+            .animation(.spring(response: 0.45, dampingFraction: 0.85), value: visibleEntries.isEmpty)
         }
     }
 
@@ -369,7 +435,7 @@ struct HomeView: View {
                 .help("Copy")
 
                 Button {
-                    history.delete(entry)
+                    scheduleDeletion(entry)
                 } label: {
                     Image(systemName: "trash")
                 }

@@ -167,6 +167,32 @@ final class HistoryStore: ObservableObject {
         return streak
     }
 
+    // MARK: - Trend Data
+
+    var dictationsYesterday: Int {
+        entries.filter { Calendar.current.isDateInYesterday($0.date) }.count
+    }
+
+    /// Average WPM across dictations in the last 7 days.
+    var averageWPMThisWeek: Int {
+        let cutoff = Calendar.current.date(byAdding: .day, value: -7, to: Date())!
+        let recent = entries.filter { $0.date >= cutoff }
+        let secs = recent.reduce(0.0) { $0 + $1.durationSeconds }
+        guard secs > 1 else { return 0 }
+        return Int((Double(recent.reduce(0) { $0 + $1.wordCount }) / secs * 60).rounded())
+    }
+
+    /// Average WPM across dictations in the 7 days before last week (days 8–14 ago).
+    var averageWPMLastWeek: Int {
+        let cal = Calendar.current
+        let end = cal.date(byAdding: .day, value: -7, to: Date())!
+        let start = cal.date(byAdding: .day, value: -14, to: Date())!
+        let prior = entries.filter { $0.date >= start && $0.date < end }
+        let secs = prior.reduce(0.0) { $0 + $1.durationSeconds }
+        guard secs > 1 else { return 0 }
+        return Int((Double(prior.reduce(0) { $0 + $1.wordCount }) / secs * 60).rounded())
+    }
+
     // MARK: - Persistence
 
     private func loadFromDisk() {
