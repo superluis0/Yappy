@@ -13,6 +13,8 @@ final class ModeStore: ObservableObject {
 
     private let fileURL: URL
     private let ioQueue = DispatchQueue(label: "com.yappy.modestore", qos: .utility)
+    private static let encoder = JSONEncoder()
+    private static let decoder = JSONDecoder()
 
     /// - Parameter fileURL: Override for tests; defaults to Application Support/Yappy/modes.json.
     init(fileURL: URL? = nil) {
@@ -59,7 +61,7 @@ final class ModeStore: ObservableObject {
 
     private func loadFromDisk() {
         guard let data = try? Data(contentsOf: fileURL),
-              let loaded = try? JSONDecoder().decode([Mode].self, from: data) else {
+              let loaded = try? Self.decoder.decode([Mode].self, from: data) else {
             modes = [.auto]
             return
         }
@@ -70,7 +72,7 @@ final class ModeStore: ObservableObject {
         let snapshot = modes
         let url = fileURL
         ioQueue.async {
-            guard let data = try? JSONEncoder().encode(snapshot) else { return }
+            guard let data = try? Self.encoder.encode(snapshot) else { return }
             try? data.write(to: url, options: .atomic)
         }
     }

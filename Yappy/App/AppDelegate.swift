@@ -35,6 +35,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var pillController = RecordingPillController(appState: appState)
     private lazy var scratchpadController = ScratchpadController(store: notesStore)
     private let scratchpadHotkey = ScratchpadHotkey()
+
+    /// Precompiled custom-dictionary matcher, rebuilt only when the dictionary
+    /// changes (not per dictation). Kept in sync via a `dictionaryStore` sink.
+    private var dictionaryReplacer = DictionaryReplacer(terms: [])
     private lazy var mainWindowController = MainWindowController(
         settings: settings,
         history: history,
@@ -124,6 +128,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         commandHotkeyManager.stop()
         escapeInterceptor.stop()
         scratchpadHotkey.stop()
+        notesStore.flush()
         maxDurationTimer?.invalidate()
         accessibilityPollTimer?.invalidate()
         menuBarAnimationTimer?.invalidate()
@@ -272,7 +277,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // Custom-dictionary corrections: rewrite known mishearings
                 // (manual + voice-trained aliases) back to the canonical spelling.
                 let corrected = self.settings.customDictionaryEnabled
-                    ? DictionaryReplacer(terms: self.dictionaryStore.terms).apply(cleaned)
+                    ? self.dictionaryReplacer.apply(cleaned)
                     : cleaned
                 let expanded = ShortcutExpander(shortcuts: self.shortcutStore.shortcuts).expand(corrected)
                 let tone = mode.isAuto ? self.resolvedTone(forBundleID: bundleID) : mode.tone
@@ -679,18 +684,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let image: NSImage
         if appState.isProcessing {
-            image = Self.bubbleIcon(.processing)
+            image = Self.processingIcon
         } else {
             switch transcriptionService.modelState {
             case .ready:
-                image = Self.bubbleIcon(.ready)
+                image = Self.readyIcon
             case .downloading, .loading, .notLoaded:
                 image = NSImage(systemSymbolName: "arrow.down.circle", accessibilityDescription: "Downloading model")
-                    ?? Self.bubbleIcon(.ready)
+                    ?? Self.readyIcon
                 image.isTemplate = true
             case .failed:
                 image = NSImage(systemSymbolName: "exclamationmark.bubble", accessibilityDescription: "Model error")
-                    ?? Self.bubbleIcon(.ready)
+                    ?? Self.readyIcon
                 image.isTemplate = true
             }
         }
@@ -698,6 +703,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     // MARK: - Menu Bar Recording Animation
+
+    /// Idle/processing menu-bar glyphs, drawn once and reused on every state
+    /// change rather than redrawn each time (static lets initialize lazily).
+    private static let readyIcon: NSImage = bubbleIcon(.ready)
+    private static let processingIcon: NSImage = bubbleIcon(.processing)
 
     /// Precomputed frames cycling the bubble's bar heights (cheap to swap).
     private static let recordingFrames: [NSImage] = [
@@ -834,6 +844,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Keep the menu-bar Transforms submenu in sync with the list.
         transformStore.$transforms
             .sink { [weak self] _ in self?.rebuildTransformsMenu() }
+            .store(in: &cancellables)
+
+        // Rebuild the precompiled dictionary matcher only when terms change
+        // (fires immediately with the current terms, then on every edit).
+        dictionaryStore.$terms
+            .sink { [weak self] terms in self?.dictionaryReplacer = DictionaryReplacer(terms: terms) }
             .store(in: &cancellables)
         settings.$activeModeID
             .removeDuplicates()

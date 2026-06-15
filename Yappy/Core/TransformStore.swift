@@ -47,6 +47,8 @@ final class TransformStore: ObservableObject {
 
     private let fileURL: URL
     private let ioQueue = DispatchQueue(label: "com.yappy.transformstore", qos: .utility)
+    private static let encoder = JSONEncoder()
+    private static let decoder = JSONDecoder()
 
     private static let seededKey = "com.yappy.transformsSeeded"
 
@@ -120,7 +122,7 @@ final class TransformStore: ObservableObject {
 
     private func loadFromDisk() {
         guard let data = try? Data(contentsOf: fileURL),
-              let loaded = try? JSONDecoder().decode([Transform].self, from: data) else {
+              let loaded = try? Self.decoder.decode([Transform].self, from: data) else {
             return
         }
         transforms = loaded
@@ -130,7 +132,7 @@ final class TransformStore: ObservableObject {
         let snapshot = transforms
         let url = fileURL
         ioQueue.async {
-            guard let data = try? JSONEncoder().encode(snapshot) else { return }
+            guard let data = try? Self.encoder.encode(snapshot) else { return }
             try? data.write(to: url, options: .atomic)
         }
     }

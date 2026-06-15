@@ -54,13 +54,14 @@ final class NotesStoreTests: XCTestCase {
         XCTAssertEqual(Note(body: "Groceries").displayTitle, "Groceries")
     }
 
-    func testRoundTripsThroughDisk() {
+    func testFlushPersistsDebouncedEdit() {
         let note = store.create()
         store.update(note, body: "Persisted note")
+        store.flush() // force the debounced write instead of waiting for the timer
 
         let deadline = Date().addingTimeInterval(2)
         var reloaded = NotesStore(fileURL: fileURL)
-        while reloaded.notes.isEmpty, Date() < deadline {
+        while reloaded.notes.first?.body != "Persisted note", Date() < deadline {
             usleep(50_000)
             reloaded = NotesStore(fileURL: fileURL)
         }

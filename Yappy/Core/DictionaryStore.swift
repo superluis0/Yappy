@@ -18,6 +18,8 @@ final class DictionaryStore: ObservableObject {
 
     private let fileURL: URL
     private let ioQueue = DispatchQueue(label: "com.yappy.dictionarystore", qos: .utility)
+    private static let encoder = JSONEncoder()
+    private static let decoder = JSONDecoder()
 
     /// One-time flag so the built-in starter terms seed exactly once — letting a
     /// user delete a built-in term without it reappearing on the next launch.
@@ -114,7 +116,7 @@ final class DictionaryStore: ObservableObject {
         guard let data = try? Data(contentsOf: fileURL) else { return }
 
         // Current format: an array of DictionaryTerm objects.
-        if let modern = try? JSONDecoder().decode([DictionaryTerm].self, from: data) {
+        if let modern = try? Self.decoder.decode([DictionaryTerm].self, from: data) {
             terms = modern
             return
         }
@@ -122,7 +124,7 @@ final class DictionaryStore: ObservableObject {
         // once so the file is upgraded. A failed decode leaves `terms` empty
         // rather than wiping a good file — but we only reach here if the modern
         // decode already failed, so the data is genuinely the old shape.
-        if let legacy = try? JSONDecoder().decode([String].self, from: data) {
+        if let legacy = try? Self.decoder.decode([String].self, from: data) {
             terms = legacy.map { DictionaryTerm(text: $0) }
             persist()
         }
@@ -132,7 +134,7 @@ final class DictionaryStore: ObservableObject {
         let snapshot = terms
         let url = fileURL
         ioQueue.async {
-            guard let data = try? JSONEncoder().encode(snapshot) else { return }
+            guard let data = try? Self.encoder.encode(snapshot) else { return }
             try? data.write(to: url, options: .atomic)
         }
     }

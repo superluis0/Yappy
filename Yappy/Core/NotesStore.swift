@@ -36,6 +36,10 @@ final class NotesStore: ObservableObject {
 
     private let fileURL: URL
     private let ioQueue = DispatchQueue(label: "com.yappy.notesstore", qos: .utility)
+    /// Pending debounced disk write for rapid edits (see `update`).
+    private var pendingPersist: DispatchWorkItem?
+    private static let encoder = JSONEncoder()
+    private static let decoder = JSONDecoder()
 
     /// - Parameter fileURL: Override for tests; defaults to Application Support/Yappy/notes.json.
     init(fileURL: URL? = nil) {
@@ -61,13 +65,15 @@ final class NotesStore: ObservableObject {
         return note
     }
 
-    /// Updates a note's body and bumps its modified time. Order is left stable
-    /// (no live re-sort) so the sidebar doesn't jump around while typing.
+    /// Updates a note's body and bumps its modified time. The in-memory change is
+    /// immediate (so the sidebar title stays live), but the disk write is
+    /// debounced so typing doesn't trigger a full JSON write per keystroke. Order
+    /// is left stable (no live re-sort) so the sidebar doesn't jump while typing.
     func update(_ note: Note, body: String) {
         guard let index = notes.firstIndex(where: { $0.id == note.id }) else { return }
         notes[index].body = body
         notes[index].updatedAt = Date()
-        persist()
+        schedulePersist()
     }
 
     func delete(_ note: Note) {
@@ -75,11 +81,32 @@ final class NotesStore: ObservableObject {
         persist()
     }
 
+    /// Writes any pending debounced edit to disk immediately. Call when the
+    /// Scratchpad hides or the app is quitting so the last keystrokes aren't lost.
+    func flush() {
+        guard pendingPersist != nil else { return }
+        pendingPersist?.cancel()
+        pendingPersist = nil
+        persist()
+    }
+
+    /// Coalesces rapid edits into a single write `Constants.notesAutosaveDelay`
+    /// after the last keystroke.
+    private func schedulePersist() {
+        pendingPersist?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            self?.pendingPersist = nil
+            self?.persist()
+        }
+        pendingPersist = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + Constants.notesAutosaveDelay, execute: work)
+    }
+
     // MARK: - Persistence
 
     private func loadFromDisk() {
         guard let data = try? Data(contentsOf: fileURL),
-              let loaded = try? JSONDecoder().decode([Note].self, from: data) else {
+              let loaded = try? Self.decoder.decode([Note].self, from: data) else {
             return
         }
         notes = loaded.sorted { $0.updatedAt > $1.updatedAt }
@@ -89,7 +116,7 @@ final class NotesStore: ObservableObject {
         let snapshot = notes
         let url = fileURL
         ioQueue.async {
-            guard let data = try? JSONEncoder().encode(snapshot) else { return }
+            guard let data = try? Self.encoder.encode(snapshot) else { return }
             try? data.write(to: url, options: .atomic)
         }
     }

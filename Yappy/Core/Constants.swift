@@ -76,4 +76,8 @@ enum Constants {
 
     /// Virtual key code for the Scratchpad summon hotkey (⌥⇧S). kVK_ANSI_S = 1.
     static let scratchpadKeyCode: Int64 = 1
+
+    /// Debounce before a note edit is written to disk, so typing doesn't trigger
+    /// a full JSON write per keystroke. Flushed immediately on hide/quit.
+    static let notesAutosaveDelay: TimeInterval = 0.6
 }

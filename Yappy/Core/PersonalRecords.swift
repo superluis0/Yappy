@@ -74,5 +74,6 @@ struct PersonalRecords: Equatable {
 }
 
 extension HistoryStore {
-    var personalRecords: PersonalRecords { PersonalRecords.compute(from: entries) }
+    /// Cached by HistoryStore; recomputed only when entries change.
+    var personalRecords: PersonalRecords { cachedPersonalRecords }
 }

@@ -156,8 +156,8 @@ final class LMStudioService {
         let model: String
         if let configured = settings.lmStudioModelID, !configured.isEmpty {
             model = configured
-        } else if let first = await availableModels().first {
-            model = first
+        } else if let resolved = await resolveAutoModel() {
+            model = resolved
         } else {
             return nil
         }
@@ -178,7 +178,12 @@ final class LMStudioService {
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
             let (data, response) = try await session.data(for: request)
-            guard (response as? HTTPURLResponse)?.statusCode == 200 else { return nil }
+            guard (response as? HTTPURLResponse)?.statusCode == 200 else {
+                // A bad response may mean the auto-resolved model is gone; drop the
+                // cache so the next call re-resolves instead of failing forever.
+                invalidateAutoModel()
+                return nil
+            }
 
             let completion = try JSONDecoder().decode(ChatCompletion.self, from: data)
             return completion.choices.first?.message.content
@@ -186,6 +191,31 @@ final class LMStudioService {
         } catch {
             return nil
         }
+    }
+
+    // MARK: - Model resolution
+
+    /// Cache of the auto-resolved model id (used when no specific model is
+    /// configured — the "First available" default), keyed by the base URL it was
+    /// fetched against. Avoids a `/models` round-trip before every completion.
+    /// Access is serialized by the single in-flight dictation/command flow.
+    private var cachedAutoModel: String?
+    private var cachedAutoModelBaseURL: String?
+
+    private func resolveAutoModel() async -> String? {
+        let base = settings.lmStudioBaseURL
+        if let cached = cachedAutoModel, cachedAutoModelBaseURL == base {
+            return cached
+        }
+        guard let first = await availableModels().first else { return nil }
+        cachedAutoModel = first
+        cachedAutoModelBaseURL = base
+        return first
+    }
+
+    private func invalidateAutoModel() {
+        cachedAutoModel = nil
+        cachedAutoModelBaseURL = nil
     }
 
     // MARK: - Response Types

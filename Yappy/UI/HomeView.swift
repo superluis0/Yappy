@@ -28,7 +28,7 @@ struct HomeView: View {
                 milestoneLine
                 statsGrid
                 if !history.entries.isEmpty {
-                    HeatmapView(entries: history.entries)
+                    HeatmapView(rows: history.cachedHeatmapRows)
                     topAppsCard
                     recordsCard
                     recapButton

@@ -27,6 +27,8 @@ final class ShortcutStore: ObservableObject {
 
     private let fileURL: URL
     private let ioQueue = DispatchQueue(label: "com.yappy.shortcutstore", qos: .utility)
+    private static let encoder = JSONEncoder()
+    private static let decoder = JSONDecoder()
 
     /// - Parameter fileURL: Override for tests; defaults to Application Support/Yappy/shortcuts.json.
     init(fileURL: URL? = nil) {
@@ -63,7 +65,7 @@ final class ShortcutStore: ObservableObject {
 
     private func loadFromDisk() {
         guard let data = try? Data(contentsOf: fileURL),
-              let loaded = try? JSONDecoder().decode([VoiceShortcut].self, from: data) else {
+              let loaded = try? Self.decoder.decode([VoiceShortcut].self, from: data) else {
             return
         }
         shortcuts = loaded
@@ -73,7 +75,7 @@ final class ShortcutStore: ObservableObject {
         let snapshot = shortcuts
         let url = fileURL
         ioQueue.async {
-            guard let data = try? JSONEncoder().encode(snapshot) else { return }
+            guard let data = try? Self.encoder.encode(snapshot) else { return }
             try? data.write(to: url, options: .atomic)
         }
     }

@@ -18,9 +18,10 @@ struct HeatmapView: View {
     @State private var hoveredHour: Int? = nil
     @State private var cellsAppeared = false
 
-    init(entries: [DictationEntry], calendar: Calendar = .current) {
-        // Computed once per HomeView invalidation (entries change), not per frame.
-        self.rows = HeatmapModel.hourlyRows(entries: entries, calendar: calendar)
+    /// Rows are precomputed and cached by HistoryStore (recomputed only when
+    /// entries change), so building this view never rescans the full history.
+    init(rows: [HeatmapWeekday], calendar: Calendar = .current) {
+        self.rows = rows
         self.weekdaySymbols = calendar.shortWeekdaySymbols
     }
 

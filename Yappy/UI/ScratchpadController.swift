@@ -34,6 +34,7 @@ final class ScratchpadController {
     }
 
     func hide() {
+        store.flush() // write any pending note edit before the panel goes away
         panel?.orderOut(nil)
     }
 

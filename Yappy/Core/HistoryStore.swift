@@ -46,8 +46,23 @@ struct AppUsage: Identifiable, Equatable {
 final class HistoryStore: ObservableObject {
     @Published private(set) var entries: [DictationEntry] = []
 
+    // MARK: - Cached derived stats
+    //
+    // These depend only on `entries`, so they're recomputed once per mutation
+    // (in `recomputeDerived`) rather than scanned on every HomeView render.
+    // Date-relative stats (today/yesterday/this-week/streak) stay computed below
+    // so they remain correct across midnight without a mutation.
+
+    private(set) var totalWords = 0
+    private(set) var totalDurationSeconds: Double = 0
+    private(set) var cachedTopApps: [AppUsage] = []
+    private(set) var cachedHeatmapRows: [HeatmapWeekday] = []
+    private(set) var cachedPersonalRecords: PersonalRecords = .empty
+
     private let fileURL: URL
     private let ioQueue = DispatchQueue(label: "com.yappy.historystore", qos: .utility)
+    private static let encoder = JSONEncoder()
+    private static let decoder = JSONDecoder()
 
     // MARK: - Initialization
 
@@ -62,6 +77,7 @@ final class HistoryStore: ObservableObject {
             self.fileURL = dir.appendingPathComponent("history.json")
         }
         loadFromDisk()
+        recomputeDerived()
     }
 
     // MARK: - Mutations
@@ -71,24 +87,32 @@ final class HistoryStore: ObservableObject {
         if entries.count > Constants.historyLimit {
             entries.removeLast(entries.count - Constants.historyLimit)
         }
+        recomputeDerived()
         persist()
     }
 
     func delete(_ entry: DictationEntry) {
         entries.removeAll { $0.id == entry.id }
+        recomputeDerived()
         persist()
     }
 
     func clearAll() {
         entries.removeAll()
+        recomputeDerived()
         persist()
     }
 
-    // MARK: - Stats
-
-    var totalWords: Int {
-        entries.reduce(0) { $0 + $1.wordCount }
+    /// Recomputes the entries-derived caches. Called on every mutation and load.
+    private func recomputeDerived() {
+        totalWords = entries.reduce(0) { $0 + $1.wordCount }
+        totalDurationSeconds = entries.reduce(0.0) { $0 + $1.durationSeconds }
+        cachedTopApps = Self.computeTopApps(entries)
+        cachedHeatmapRows = HeatmapModel.hourlyRows(entries: entries)
+        cachedPersonalRecords = PersonalRecords.compute(from: entries)
     }
+
+    // MARK: - Stats
 
     var dictationsToday: Int {
         entries.filter { Calendar.current.isDateInToday($0.date) }.count
@@ -101,9 +125,8 @@ final class HistoryStore: ObservableObject {
 
     /// Average speaking rate in words per minute across all dictations.
     var averageWordsPerMinute: Int {
-        let totalSeconds = entries.reduce(0.0) { $0 + $1.durationSeconds }
-        guard totalSeconds > 1 else { return 0 }
-        return Int((Double(totalWords) / totalSeconds * 60.0).rounded())
+        guard totalDurationSeconds > 1 else { return 0 }
+        return Int((Double(totalWords) / totalDurationSeconds * 60.0).rounded())
     }
 
     // MARK: - Time Saved
@@ -123,14 +146,16 @@ final class HistoryStore: ObservableObject {
 
     /// Minutes saved across all stored dictations.
     var timeSavedMinutes: Int {
-        Self.timeSavedMinutes(
-            totalWords: totalWords,
-            totalDurationSeconds: entries.reduce(0.0) { $0 + $1.durationSeconds }
-        )
+        Self.timeSavedMinutes(totalWords: totalWords, totalDurationSeconds: totalDurationSeconds)
     }
 
-    /// The most-dictated-into apps, ordered by dictation count.
+    /// The most-dictated-into apps, ordered by dictation count (cached).
     func topApps(limit: Int = 5) -> [AppUsage] {
+        Array(cachedTopApps.prefix(limit))
+    }
+
+    /// Groups all entries by app into the full ranked list (cached by `recomputeDerived`).
+    private static func computeTopApps(_ entries: [DictationEntry]) -> [AppUsage] {
         var grouped: [String: (appName: String, bundleID: String?, count: Int, words: Int)] = [:]
         for entry in entries {
             let key = entry.bundleID ?? entry.appName ?? "Unknown"
@@ -141,7 +166,6 @@ final class HistoryStore: ObservableObject {
         }
         return grouped.values
             .sorted { $0.count > $1.count }
-            .prefix(limit)
             .map { AppUsage(appName: $0.appName, bundleID: $0.bundleID, count: $0.count, words: $0.words) }
     }
 
@@ -197,7 +221,7 @@ final class HistoryStore: ObservableObject {
 
     private func loadFromDisk() {
         guard let data = try? Data(contentsOf: fileURL),
-              let loaded = try? JSONDecoder().decode([DictationEntry].self, from: data) else {
+              let loaded = try? Self.decoder.decode([DictationEntry].self, from: data) else {
             return
         }
         entries = loaded
@@ -207,7 +231,7 @@ final class HistoryStore: ObservableObject {
         let snapshot = entries
         let url = fileURL
         ioQueue.async {
-            guard let data = try? JSONEncoder().encode(snapshot) else { return }
+            guard let data = try? Self.encoder.encode(snapshot) else { return }
             try? data.write(to: url, options: .atomic)
         }
     }
