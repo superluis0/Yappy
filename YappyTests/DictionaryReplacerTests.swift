@@ -17,6 +17,13 @@ final class DictionaryReplacerTests: XCTestCase {
         XCTAssertEqual(r.apply("Hey Lewis, are you free?"), "Hey Luis, are you free?")
     }
 
+    func testBuiltInDevTermsMapToCanonical() {
+        let r = replacer(BuiltInDictionary.terms)
+        XCTAssertEqual(r.apply("deploy to super base"), "deploy to Supabase")
+        XCTAssertEqual(r.apply("scaffold a next js app"), "scaffold a Next.js app")
+        XCTAssertEqual(r.apply("spin up a versel project"), "spin up a Vercel project")
+    }
+
     func testCaseInsensitiveButCanonicalCasingOut() {
         let r = replacer([DictionaryTerm(text: "Luis", aliases: ["Lewis"])])
         XCTAssertEqual(r.apply("lewis and LEWIS"), "Luis and Luis")

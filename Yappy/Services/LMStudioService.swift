@@ -61,19 +61,36 @@ final class LMStudioService {
         text. Reply with ONLY the cleaned text and nothing else.
         """
 
+    /// Guidance for resolving spoken self-corrections ("backtrack").
+    private static let backtrackGuidance = """
+        If the speaker corrects themselves mid-thought — with cues like "actually", \
+        "I mean", "no wait", "make that", "scratch that", or "sorry" — keep only the \
+        corrected version and drop the words they retracted. For example, "let's meet \
+        at 2 actually 3" becomes "Let's meet at 3." and "send it to John I mean Jane" \
+        becomes "Send it to Jane."
+        """
+
+    /// Assembles the cleanup system prompt. Pure and static so the prompt can be
+    /// unit-tested without a running LM Studio server.
+    static func cleanupPrompt(tone: ToneStyle, backtrack: Bool) -> String {
+        var parts = [systemPrompt, tone.promptGuidance]
+        if backtrack { parts.append(backtrackGuidance) }
+        return parts.joined(separator: "\n")
+    }
+
     /// Returns the cleaned transcript, or the original text on any failure.
     /// `tone` shapes the output to the destination app's context. Verbatim tone
     /// (e.g. code editors) skips the model entirely so nothing gets reworded.
-    /// - Parameter cleanupEnabled: overrides the global setting (a mode can force
-    ///   cleanup on/off); nil inherits `settings.cleanupEnabled`.
-    func cleanup(_ text: String, tone: ToneStyle = .formal, cleanupEnabled: Bool? = nil) async -> String {
+    /// - Parameters:
+    ///   - backtrack: when true, the model also resolves spoken self-corrections.
+    ///   - cleanupEnabled: overrides the global setting (a mode can force cleanup
+    ///     on/off); nil inherits `settings.cleanupEnabled`.
+    func cleanup(_ text: String, tone: ToneStyle = .formal, backtrack: Bool = false,
+                 cleanupEnabled: Bool? = nil) async -> String {
         guard (cleanupEnabled ?? settings.cleanupEnabled), !text.isEmpty else { return text }
         guard tone != .verbatim else { return text }
 
-        let prompt = """
-            \(Self.systemPrompt)
-            \(tone.promptGuidance)
-            """
+        let prompt = Self.cleanupPrompt(tone: tone, backtrack: backtrack)
         let result = await complete(systemPrompt: prompt, userContent: text, temperature: 0.1)
         return result?.isEmpty == false ? result! : text
     }
@@ -99,6 +116,29 @@ final class LMStudioService {
             \(selection)
             """
         let result = await complete(systemPrompt: Self.commandSystemPrompt, userContent: user, temperature: 0.2)
+        guard let result, !result.isEmpty else { return nil }
+        return result
+    }
+
+    private static let transformSystemPrompt = """
+        Apply the following instruction to the user's text and reply with ONLY the \
+        resulting text — no preamble, no explanation, no quotes around it.
+        """
+
+    /// Applies a saved transform's prompt to some text. Returns nil when the
+    /// model is disabled/unreachable or returns nothing, so the caller can leave
+    /// the original text untouched.
+    func runTransform(prompt: String, text: String) async -> String? {
+        let trimmedPrompt = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedPrompt.isEmpty, !text.isEmpty else { return nil }
+
+        let user = """
+            Instruction: \(trimmedPrompt)
+
+            Text:
+            \(text)
+            """
+        let result = await complete(systemPrompt: Self.transformSystemPrompt, userContent: user, temperature: 0.2)
         guard let result, !result.isEmpty else { return nil }
         return result
     }

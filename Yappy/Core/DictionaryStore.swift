@@ -19,8 +19,15 @@ final class DictionaryStore: ObservableObject {
     private let fileURL: URL
     private let ioQueue = DispatchQueue(label: "com.yappy.dictionarystore", qos: .utility)
 
-    /// - Parameter fileURL: Override for tests; defaults to Application Support/Yappy/dictionary.json.
-    init(fileURL: URL? = nil) {
+    /// One-time flag so the built-in starter terms seed exactly once — letting a
+    /// user delete a built-in term without it reappearing on the next launch.
+    private static let seededKey = "com.yappy.dictionarySeeded"
+
+    /// - Parameters:
+    ///   - fileURL: Override for tests; defaults to Application Support/Yappy/dictionary.json.
+    ///   - defaults: UserDefaults used for the one-time seed flag (override in tests).
+    ///   - seedsBuiltIns: Seed the developer/tech starter dictionary on first run.
+    init(fileURL: URL? = nil, defaults: UserDefaults = .standard, seedsBuiltIns: Bool = true) {
         if let fileURL {
             self.fileURL = fileURL
         } else {
@@ -30,6 +37,20 @@ final class DictionaryStore: ObservableObject {
             self.fileURL = dir.appendingPathComponent("dictionary.json")
         }
         loadFromDisk()
+        if seedsBuiltIns { seedBuiltInsIfNeeded(defaults: defaults) }
+    }
+
+    /// Appends any built-in terms the user doesn't already have, exactly once.
+    /// The flag is set even when nothing is added, so deletions stick.
+    private func seedBuiltInsIfNeeded(defaults: UserDefaults) {
+        guard !defaults.bool(forKey: Self.seededKey) else { return }
+        defaults.set(true, forKey: Self.seededKey)
+
+        let existing = Set(terms.map { $0.text.lowercased() })
+        let newcomers = BuiltInDictionary.terms.filter { !existing.contains($0.text.lowercased()) }
+        guard !newcomers.isEmpty else { return }
+        terms.append(contentsOf: newcomers)
+        persist()
     }
 
     // MARK: - Mutations

@@ -9,9 +9,13 @@ import XCTest
 final class TranscriptPipelineTests: XCTestCase {
 
     private func pipeline(
-        fillers: Bool = true, numbers: Bool = true, commands: Bool = true
+        fillers: Bool = true, numbers: Bool = true, lists: Bool = true,
+        commands: Bool = true, punctuation: Bool = true
     ) -> TranscriptPipeline {
-        TranscriptPipeline(removeFillers: fillers, formatNumbers: numbers, applyCommands: commands)
+        TranscriptPipeline(
+            removeFillers: fillers, formatNumbers: numbers, formatLists: lists,
+            applyCommands: commands, applyPunctuation: punctuation
+        )
     }
 
     func testFullPipelineIntegration() {
@@ -50,8 +54,38 @@ final class TranscriptPipelineTests: XCTestCase {
     func testAllOffIsIdentity() {
         let input = "Um, twenty dollars, new line, thanks"
         XCTAssertEqual(
-            pipeline(fillers: false, numbers: false, commands: false).process(input),
+            pipeline(fillers: false, numbers: false, lists: false,
+                     commands: false, punctuation: false).process(input),
             input
+        )
+    }
+
+    func testNumberedListAfterNumberFormatting() {
+        // Spoken counters become digits, then a list.
+        XCTAssertEqual(
+            pipeline().process("buy one milk two eggs three bread"),
+            "buy\n1. Milk\n2. Eggs\n3. Bread"
+        )
+    }
+
+    func testListsFlagDisablesStage() {
+        XCTAssertEqual(
+            pipeline(lists: false).process("buy one milk two eggs three bread"),
+            "buy 1 milk 2 eggs 3 bread"
+        )
+    }
+
+    func testSpokenPunctuationApplied() {
+        XCTAssertEqual(
+            pipeline().process("hello comma world question mark"),
+            "hello, world?"
+        )
+    }
+
+    func testPunctuationFlagDisablesStage() {
+        XCTAssertEqual(
+            pipeline(punctuation: false).process("hello comma world"),
+            "hello comma world"
         )
     }
 }

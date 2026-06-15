@@ -18,8 +18,10 @@ struct Mode: Identifiable, Codable, Equatable {
     /// nil = inherit the global `cleanupEnabled` setting.
     var cleanupEnabledOverride: Bool?
     var numberFormatting: Bool
+    var numberedLists: Bool
     var fillerRemoval: Bool
     var spokenCommands: Bool
+    var spokenPunctuation: Bool
     var extraDictionaryTerms: [String]
     var autoTriggerCategory: AppCategory?
     var isAuto: Bool
@@ -31,8 +33,10 @@ struct Mode: Identifiable, Codable, Equatable {
         tone: ToneStyle = .formal,
         cleanupEnabledOverride: Bool? = nil,
         numberFormatting: Bool = true,
+        numberedLists: Bool = true,
         fillerRemoval: Bool = true,
         spokenCommands: Bool = true,
+        spokenPunctuation: Bool = true,
         extraDictionaryTerms: [String] = [],
         autoTriggerCategory: AppCategory? = nil,
         isAuto: Bool = false
@@ -43,8 +47,10 @@ struct Mode: Identifiable, Codable, Equatable {
         self.tone = tone
         self.cleanupEnabledOverride = cleanupEnabledOverride
         self.numberFormatting = numberFormatting
+        self.numberedLists = numberedLists
         self.fillerRemoval = fillerRemoval
         self.spokenCommands = spokenCommands
+        self.spokenPunctuation = spokenPunctuation
         self.extraDictionaryTerms = extraDictionaryTerms
         self.autoTriggerCategory = autoTriggerCategory
         self.isAuto = isAuto
@@ -52,7 +58,7 @@ struct Mode: Identifiable, Codable, Equatable {
 
     private enum CodingKeys: String, CodingKey {
         case id, name, symbolName, tone, cleanupEnabledOverride
-        case numberFormatting, fillerRemoval, spokenCommands
+        case numberFormatting, numberedLists, fillerRemoval, spokenCommands, spokenPunctuation
         case extraDictionaryTerms, autoTriggerCategory, isAuto
     }
 
@@ -64,8 +70,10 @@ struct Mode: Identifiable, Codable, Equatable {
         tone = try c.decodeIfPresent(ToneStyle.self, forKey: .tone) ?? .formal
         cleanupEnabledOverride = try c.decodeIfPresent(Bool.self, forKey: .cleanupEnabledOverride)
         numberFormatting = try c.decodeIfPresent(Bool.self, forKey: .numberFormatting) ?? true
+        numberedLists = try c.decodeIfPresent(Bool.self, forKey: .numberedLists) ?? true
         fillerRemoval = try c.decodeIfPresent(Bool.self, forKey: .fillerRemoval) ?? true
         spokenCommands = try c.decodeIfPresent(Bool.self, forKey: .spokenCommands) ?? true
+        spokenPunctuation = try c.decodeIfPresent(Bool.self, forKey: .spokenPunctuation) ?? true
         extraDictionaryTerms = try c.decodeIfPresent([String].self, forKey: .extraDictionaryTerms) ?? []
         autoTriggerCategory = try c.decodeIfPresent(AppCategory.self, forKey: .autoTriggerCategory)
         isAuto = try c.decodeIfPresent(Bool.self, forKey: .isAuto) ?? false

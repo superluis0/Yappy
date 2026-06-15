@@ -71,4 +71,9 @@ enum Constants {
 
     /// Maximum number of dictation history entries kept on disk.
     static let historyLimit = 1000
+
+    // MARK: - Scratchpad
+
+    /// Virtual key code for the Scratchpad summon hotkey (⌥⇧S). kVK_ANSI_S = 1.
+    static let scratchpadKeyCode: Int64 = 1
 }

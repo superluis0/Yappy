@@ -40,8 +40,9 @@ final class SettingsTests: XCTestCase {
         XCTAssertTrue(settings.commandModeEnabled)
         XCTAssertEqual(settings.commandHotkeyOption, .rightOptionHold)
         XCTAssertTrue(settings.contextAwareToneEnabled)
+        XCTAssertTrue(settings.backtrackEnabled)
         XCTAssertTrue(settings.toneOverrides.isEmpty)
-        XCTAssertFalse(settings.customDictionaryEnabled)
+        XCTAssertTrue(settings.customDictionaryEnabled, "On by default so built-in dev terms apply out of the box")
         XCTAssertFalse(settings.onboardingComplete)
     }
 
@@ -100,8 +101,10 @@ final class SettingsTests: XCTestCase {
 
     func testTranscriptCleanupDefaultsAreOn() {
         XCTAssertTrue(settings.numberFormattingEnabled)
+        XCTAssertTrue(settings.numberedListsEnabled)
         XCTAssertTrue(settings.fillerRemovalEnabled)
         XCTAssertTrue(settings.spokenCommandsEnabled)
+        XCTAssertTrue(settings.spokenPunctuationEnabled)
         XCTAssertTrue(settings.voiceEditingEnabled)
     }
 

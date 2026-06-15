@@ -14,15 +14,20 @@ struct DictionaryTerm: Identifiable, Codable, Equatable {
     var text: String
     var aliases: [String]
     var learnedAliases: [String]
+    /// True for terms seeded from the built-in starter dictionary (dev/tech
+    /// jargon). Lets the UI flag them and the seeder avoid re-adding them.
+    var isBuiltIn: Bool
 
-    init(id: UUID = UUID(), text: String, aliases: [String] = [], learnedAliases: [String] = []) {
+    init(id: UUID = UUID(), text: String, aliases: [String] = [],
+         learnedAliases: [String] = [], isBuiltIn: Bool = false) {
         self.id = id
         self.text = text
         self.aliases = aliases
         self.learnedAliases = learnedAliases
+        self.isBuiltIn = isBuiltIn
     }
 
-    private enum CodingKeys: String, CodingKey { case id, text, aliases, learnedAliases }
+    private enum CodingKeys: String, CodingKey { case id, text, aliases, learnedAliases, isBuiltIn }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -30,6 +35,7 @@ struct DictionaryTerm: Identifiable, Codable, Equatable {
         text = try c.decode(String.self, forKey: .text)
         aliases = try c.decodeIfPresent([String].self, forKey: .aliases) ?? []
         learnedAliases = try c.decodeIfPresent([String].self, forKey: .learnedAliases) ?? []
+        isBuiltIn = try c.decodeIfPresent(Bool.self, forKey: .isBuiltIn) ?? false
     }
 
     /// Manual + learned aliases, trimmed and de-duplicated case-insensitively

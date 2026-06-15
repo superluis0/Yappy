@@ -20,6 +20,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let history = HistoryStore()
     let shortcutStore = ShortcutStore()
     let dictionaryStore = DictionaryStore()
+    let transformStore = TransformStore()
+    let notesStore = NotesStore()
     let modeStore = ModeStore()
     let transcriptionService = ParakeetTranscriptionService()
 
@@ -31,11 +33,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var commandHotkeyManager = HotkeyManager(mode: settings.commandHotkeyOption)
     private lazy var escapeInterceptor = EscapeInterceptor()
     private lazy var pillController = RecordingPillController(appState: appState)
+    private lazy var scratchpadController = ScratchpadController(store: notesStore)
+    private let scratchpadHotkey = ScratchpadHotkey()
     private lazy var mainWindowController = MainWindowController(
         settings: settings,
         history: history,
         shortcutStore: shortcutStore,
         dictionaryStore: dictionaryStore,
+        transformStore: transformStore,
         modeStore: modeStore,
         transcriptionService: transcriptionService,
         lmStudio: lmStudio
@@ -45,6 +50,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var statusItem: NSStatusItem?
     private var modeMenuItem: NSMenuItem?
+    private var transformsMenuItem: NSMenuItem?
     private var menuBarAnimationTimer: Timer?
     private var menuBarFrameIndex = 0
     private var cancellables = Set<AnyCancellable>()
@@ -117,6 +123,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         hotkeyManager.stop()
         commandHotkeyManager.stop()
         escapeInterceptor.stop()
+        scratchpadHotkey.stop()
         maxDurationTimer?.invalidate()
         accessibilityPollTimer?.invalidate()
         menuBarAnimationTimer?.invalidate()
@@ -134,6 +141,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         commandHotkeyManager.onCancel = { [weak self] in self?.cancelDictation() }
 
         escapeInterceptor.onEscape = { [weak self] in self?.escapeCancel() }
+
+        scratchpadHotkey.onTrigger = { [weak self] in self?.scratchpadController.toggle() }
     }
 
     /// Esc pressed mid-session: deactivate both hotkey state machines first so
@@ -172,6 +181,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } else {
             commandHotkeyManager.stop()
         }
+        scratchpadHotkey.start() // idempotent; summons the floating notepad (⌥⇧S)
         return dictationStarted
     }
 
@@ -255,7 +265,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 let cleaned = TranscriptPipeline(
                     removeFillers: mode.isAuto ? self.settings.fillerRemovalEnabled : mode.fillerRemoval,
                     formatNumbers: mode.isAuto ? self.settings.numberFormattingEnabled : mode.numberFormatting,
-                    applyCommands: mode.isAuto ? self.settings.spokenCommandsEnabled : mode.spokenCommands
+                    formatLists: mode.isAuto ? self.settings.numberedListsEnabled : mode.numberedLists,
+                    applyCommands: mode.isAuto ? self.settings.spokenCommandsEnabled : mode.spokenCommands,
+                    applyPunctuation: mode.isAuto ? self.settings.spokenPunctuationEnabled : mode.spokenPunctuation
                 ).process(raw)
                 // Custom-dictionary corrections: rewrite known mishearings
                 // (manual + voice-trained aliases) back to the canonical spelling.
@@ -265,19 +277,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 let expanded = ShortcutExpander(shortcuts: self.shortcutStore.shortcuts).expand(corrected)
                 let tone = mode.isAuto ? self.resolvedTone(forBundleID: bundleID) : mode.tone
                 let cleanupEnabled = mode.isAuto ? nil : (mode.cleanupEnabledOverride ?? self.settings.cleanupEnabled)
-                let text = await self.lmStudio.cleanup(expanded, tone: tone, cleanupEnabled: cleanupEnabled)
+                let text = await self.lmStudio.cleanup(
+                    expanded, tone: tone, backtrack: self.settings.backtrackEnabled,
+                    cleanupEnabled: cleanupEnabled
+                )
+                // Optionally pipe the result through the user's auto-transform.
+                let finalText = await self.applyAutoTransform(to: text)
 
-                if !text.isEmpty {
-                    try self.textInserter.insert(text: text)
+                if !finalText.isEmpty {
+                    try self.textInserter.insert(text: finalText)
                     self.playSuccessFeedback()
                     self.history.add(DictationEntry(
-                        text: text,
+                        text: finalText,
                         durationSeconds: duration,
                         appName: targetAppName,
                         bundleID: bundleID
                     ))
                 }
-                self.appState.setTranscription(text)
+                self.appState.setTranscription(finalText)
             } catch {
                 self.appState.setError(error)
             }
@@ -321,6 +338,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard settings.contextAwareToneEnabled else { return .formal }
         let category = AppContextClassifier.category(forBundleID: bundleID)
         return settings.tone(for: category)
+    }
+
+    /// Pipes dictated text through the user's chosen auto-transform, if one is set
+    /// and enabled. Falls back to the original text when no transform applies or
+    /// the model is unavailable — dictation never breaks.
+    private func applyAutoTransform(to text: String) async -> String {
+        guard !text.isEmpty,
+              let raw = settings.autoTransformID,
+              let id = UUID(uuidString: raw),
+              let transform = transformStore.transforms.first(where: { $0.id == id }),
+              transform.enabled else {
+            return text
+        }
+        let result = await lmStudio.runTransform(prompt: transform.prompt, text: text)
+        return (result?.isEmpty == false) ? result! : text
     }
 
     private func cancelDictation() {
@@ -507,12 +539,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let menu = NSMenu()
         menu.addItem(NSMenuItem(title: "Open Yappy", action: #selector(openMainWindow), keyEquivalent: "o"))
+        menu.addItem(NSMenuItem(title: "Scratchpad (⌥⇧S)", action: #selector(toggleScratchpad), keyEquivalent: ""))
         menu.addItem(NSMenuItem.separator())
 
         let modeItem = NSMenuItem(title: "Mode", action: nil, keyEquivalent: "")
         menu.addItem(modeItem)
         modeMenuItem = modeItem
         rebuildModeMenu()
+
+        let transformsItem = NSMenuItem(title: "Transforms", action: nil, keyEquivalent: "")
+        menu.addItem(transformsItem)
+        transformsMenuItem = transformsItem
+        rebuildTransformsMenu()
 
         menu.addItem(NSMenuItem.separator())
         menu.addItem(NSMenuItem(title: "About Yappy", action: #selector(showAbout), keyEquivalent: ""))
@@ -541,6 +579,71 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let raw = sender.representedObject as? String else { return }
         // Selecting Auto clears the explicit selection.
         settings.activeModeID = (raw == Mode.autoID.uuidString) ? nil : raw
+    }
+
+    /// Rebuilds the Transforms submenu from the enabled transforms.
+    private func rebuildTransformsMenu() {
+        guard let transformsMenuItem else { return }
+        let submenu = NSMenu()
+        let enabled = transformStore.enabledTransforms
+        if enabled.isEmpty {
+            let item = NSMenuItem(title: "No transforms", action: nil, keyEquivalent: "")
+            item.isEnabled = false
+            submenu.addItem(item)
+        } else {
+            for transform in enabled {
+                let item = NSMenuItem(
+                    title: transform.name,
+                    action: #selector(runTransformFromMenu(_:)),
+                    keyEquivalent: ""
+                )
+                item.representedObject = transform.id.uuidString
+                item.target = self
+                submenu.addItem(item)
+            }
+        }
+        transformsMenuItem.submenu = submenu
+    }
+
+    @objc private func runTransformFromMenu(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String,
+              let id = UUID(uuidString: raw),
+              let transform = transformStore.transforms.first(where: { $0.id == id }) else { return }
+        Task { @MainActor [weak self] in await self?.runTransform(transform) }
+    }
+
+    /// Runs a transform on the current selection in the frontmost app. Captures
+    /// the selection after the menu has dismissed (focus returns to the app),
+    /// then replaces it with the model's result. Leaves the selection untouched
+    /// on any failure, mirroring Command Mode.
+    @MainActor
+    private func runTransform(_ transform: Transform) async {
+        guard !appState.isRecording, !appState.isProcessing else { return }
+
+        // Let the status menu finish dismissing so focus returns to the target app.
+        try? await Task.sleep(nanoseconds: 150_000_000)
+
+        let selection = (try? textInserter.copySelection()) ?? nil
+        guard let selection, !selection.isEmpty else {
+            appState.setError(CommandError.noSelection)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in self?.appState.reset() }
+            return
+        }
+
+        appState.beginProcessing()
+        pillController.show()
+
+        if let result = await lmStudio.runTransform(prompt: transform.prompt, text: selection),
+           !result.isEmpty {
+            try? textInserter.insert(text: result)
+            playSuccessFeedback()
+            appState.setTranscription(result)
+        } else {
+            appState.setError(CommandError.unavailable)
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+        }
+        appState.reset()
+        pillController.hide()
     }
 
     private func bindStateToMenuBar() {
@@ -722,6 +825,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         modeStore.$modes
             .sink { [weak self] _ in self?.rebuildModeMenu() }
             .store(in: &cancellables)
+
+        // Keep the menu-bar Transforms submenu in sync with the list.
+        transformStore.$transforms
+            .sink { [weak self] _ in self?.rebuildTransformsMenu() }
+            .store(in: &cancellables)
         settings.$activeModeID
             .removeDuplicates()
             .sink { [weak self] _ in self?.rebuildModeMenu() }
@@ -787,6 +895,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func openMainWindow() {
         showMainWindow()
+    }
+
+    @objc private func toggleScratchpad() {
+        scratchpadController.toggle()
     }
 
     @objc private func showAbout() {

@@ -61,6 +61,17 @@ final class AppState: ObservableObject {
         isProcessing = true
     }
 
+    /// Begins a processing-only session with no recording — e.g. running a
+    /// transform on selected text. The pill shows its processing state until reset.
+    func beginProcessing(mode: Mode = .command) {
+        self.mode = mode
+        isIdle = false
+        isRecording = false
+        isProcessing = true
+        error = nil
+        currentTranscription = ""
+    }
+
     /// Resets all state to initial values.
     func reset() {
         isIdle = true

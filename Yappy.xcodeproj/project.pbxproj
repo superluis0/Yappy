@@ -7,6 +7,19 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		B100005D00000000000000A1 /* LMStudioPromptTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200005D00000000000000A1 /* LMStudioPromptTests.swift */; };
+		B100005C00000000000000A1 /* NotesStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200005C00000000000000A1 /* NotesStoreTests.swift */; };
+		B100005B00000000000000A1 /* TransformStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200005B00000000000000A1 /* TransformStoreTests.swift */; };
+		B100005800000000000000A1 /* ScratchpadController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200005800000000000000A1 /* ScratchpadController.swift */; };
+		B100005700000000000000A1 /* ScratchpadView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200005700000000000000A1 /* ScratchpadView.swift */; };
+		B100005600000000000000A1 /* NotesStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200005600000000000000A1 /* NotesStore.swift */; };
+		B100005500000000000000A1 /* TransformsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200005500000000000000A1 /* TransformsView.swift */; };
+		B100005400000000000000A1 /* TransformStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200005400000000000000A1 /* TransformStore.swift */; };
+		B100005A00000000000000A1 /* SpokenPunctuationFormatterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200005A00000000000000A1 /* SpokenPunctuationFormatterTests.swift */; };
+		B100005900000000000000A1 /* SpokenListFormatterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200005900000000000000A1 /* SpokenListFormatterTests.swift */; };
+		B100005300000000000000A1 /* BuiltInDictionary.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200005300000000000000A1 /* BuiltInDictionary.swift */; };
+		B100005200000000000000A1 /* SpokenPunctuationFormatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200005200000000000000A1 /* SpokenPunctuationFormatter.swift */; };
+		B100005100000000000000A1 /* SpokenListFormatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200005100000000000000A1 /* SpokenListFormatter.swift */; };
 		B100000100000000000000A1 /* YappyApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200000100000000000000A1 /* YappyApp.swift */; };
 		B100000200000000000000A1 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200000200000000000000A1 /* AppDelegate.swift */; };
 		B100000300000000000000A1 /* AudioRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200000300000000000000A1 /* AudioRecorder.swift */; };
@@ -92,6 +105,19 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		B200005D00000000000000A1 /* LMStudioPromptTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LMStudioPromptTests.swift; sourceTree = "<group>"; };
+		B200005C00000000000000A1 /* NotesStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotesStoreTests.swift; sourceTree = "<group>"; };
+		B200005B00000000000000A1 /* TransformStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransformStoreTests.swift; sourceTree = "<group>"; };
+		B200005800000000000000A1 /* ScratchpadController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScratchpadController.swift; sourceTree = "<group>"; };
+		B200005700000000000000A1 /* ScratchpadView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScratchpadView.swift; sourceTree = "<group>"; };
+		B200005600000000000000A1 /* NotesStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotesStore.swift; sourceTree = "<group>"; };
+		B200005500000000000000A1 /* TransformsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransformsView.swift; sourceTree = "<group>"; };
+		B200005400000000000000A1 /* TransformStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransformStore.swift; sourceTree = "<group>"; };
+		B200005A00000000000000A1 /* SpokenPunctuationFormatterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpokenPunctuationFormatterTests.swift; sourceTree = "<group>"; };
+		B200005900000000000000A1 /* SpokenListFormatterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpokenListFormatterTests.swift; sourceTree = "<group>"; };
+		B200005300000000000000A1 /* BuiltInDictionary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BuiltInDictionary.swift; sourceTree = "<group>"; };
+		B200005200000000000000A1 /* SpokenPunctuationFormatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpokenPunctuationFormatter.swift; sourceTree = "<group>"; };
+		B200005100000000000000A1 /* SpokenListFormatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpokenListFormatter.swift; sourceTree = "<group>"; };
 		B200000100000000000000A1 /* YappyApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YappyApp.swift; sourceTree = "<group>"; };
 		B200000200000000000000A1 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		B200000300000000000000A1 /* AudioRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioRecorder.swift; sourceTree = "<group>"; };
@@ -235,6 +261,9 @@
 		B800000400000000000000A1 /* Core */ = {
 			isa = PBXGroup;
 			children = (
+				B200005600000000000000A1 /* NotesStore.swift */,
+				B200005400000000000000A1 /* TransformStore.swift */,
+				B200005300000000000000A1 /* BuiltInDictionary.swift */,
 				B200000400000000000000A1 /* AppState.swift */,
 				B200000500000000000000A1 /* Settings.swift */,
 				B200000600000000000000A1 /* Constants.swift */,
@@ -256,6 +285,8 @@
 		B800000500000000000000A1 /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				B200005200000000000000A1 /* SpokenPunctuationFormatter.swift */,
+				B200005100000000000000A1 /* SpokenListFormatter.swift */,
 				B200000800000000000000A1 /* ParakeetTranscriptionService.swift */,
 				B200000900000000000000A1 /* LMStudioService.swift */,
 				B200000A00000000000000A1 /* HotkeyManager.swift */,
@@ -278,6 +309,9 @@
 		B800000600000000000000A1 /* UI */ = {
 			isa = PBXGroup;
 			children = (
+				B200005800000000000000A1 /* ScratchpadController.swift */,
+				B200005700000000000000A1 /* ScratchpadView.swift */,
+				B200005500000000000000A1 /* TransformsView.swift */,
 				B200000C00000000000000A1 /* RecordingPillController.swift */,
 				B200000D00000000000000A1 /* RecordingPillView.swift */,
 				B200000E00000000000000A1 /* MainWindow.swift */,
@@ -300,6 +334,11 @@
 		B800000700000000000000A1 /* YappyTests */ = {
 			isa = PBXGroup;
 			children = (
+				B200005D00000000000000A1 /* LMStudioPromptTests.swift */,
+				B200005C00000000000000A1 /* NotesStoreTests.swift */,
+				B200005B00000000000000A1 /* TransformStoreTests.swift */,
+				B200005A00000000000000A1 /* SpokenPunctuationFormatterTests.swift */,
+				B200005900000000000000A1 /* SpokenListFormatterTests.swift */,
 				B200001400000000000000A1 /* AppStateTests.swift */,
 				B200001500000000000000A1 /* SettingsTests.swift */,
 				B200001600000000000000A1 /* HotkeyStateMachineTests.swift */,
@@ -433,6 +472,14 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B100005800000000000000A1 /* ScratchpadController.swift in Sources */,
+				B100005700000000000000A1 /* ScratchpadView.swift in Sources */,
+				B100005600000000000000A1 /* NotesStore.swift in Sources */,
+				B100005500000000000000A1 /* TransformsView.swift in Sources */,
+				B100005400000000000000A1 /* TransformStore.swift in Sources */,
+				B100005300000000000000A1 /* BuiltInDictionary.swift in Sources */,
+				B100005200000000000000A1 /* SpokenPunctuationFormatter.swift in Sources */,
+				B100005100000000000000A1 /* SpokenListFormatter.swift in Sources */,
 				B100000100000000000000A1 /* YappyApp.swift in Sources */,
 				B100000200000000000000A1 /* AppDelegate.swift in Sources */,
 				B100000300000000000000A1 /* AudioRecorder.swift in Sources */,
@@ -487,6 +534,11 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B100005D00000000000000A1 /* LMStudioPromptTests.swift in Sources */,
+				B100005C00000000000000A1 /* NotesStoreTests.swift in Sources */,
+				B100005B00000000000000A1 /* TransformStoreTests.swift in Sources */,
+				B100005A00000000000000A1 /* SpokenPunctuationFormatterTests.swift in Sources */,
+				B100005900000000000000A1 /* SpokenListFormatterTests.swift in Sources */,
 				B100001400000000000000A1 /* AppStateTests.swift in Sources */,
 				B100001500000000000000A1 /* SettingsTests.swift in Sources */,
 				B100001600000000000000A1 /* HotkeyStateMachineTests.swift in Sources */,

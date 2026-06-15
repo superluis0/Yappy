@@ -120,6 +120,13 @@ struct DictionaryView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 6) {
                         Text(term.text).lineLimit(1)
+                        if term.isBuiltIn {
+                            Text("built-in")
+                                .font(.system(size: 9, weight: .medium))
+                                .padding(.horizontal, 5).padding(.vertical, 1)
+                                .background(.tertiary.opacity(0.5), in: Capsule())
+                                .foregroundStyle(.secondary)
+                        }
                         Spacer()
                         Button { detailTerm = term } label: {
                             Image(systemName: "waveform.badge.mic")

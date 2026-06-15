@@ -33,12 +33,16 @@ final class Settings: ObservableObject {
         static let lmStudioBaseURL = "com.yappy.lmStudioBaseURL"
         static let commandModeEnabled = "com.yappy.commandModeEnabled"
         static let commandHotkeyOption = "com.yappy.commandHotkeyOption"
+        static let autoTransformID = "com.yappy.autoTransformID"
         static let contextAwareToneEnabled = "com.yappy.contextAwareToneEnabled"
+        static let backtrackEnabled = "com.yappy.backtrackEnabled"
         static let toneOverrides = "com.yappy.toneOverrides"
         static let customDictionaryEnabled = "com.yappy.customDictionaryEnabled"
         static let numberFormattingEnabled = "com.yappy.numberFormattingEnabled"
+        static let numberedListsEnabled = "com.yappy.numberedListsEnabled"
         static let fillerRemovalEnabled = "com.yappy.fillerRemovalEnabled"
         static let spokenCommandsEnabled = "com.yappy.spokenCommandsEnabled"
+        static let spokenPunctuationEnabled = "com.yappy.spokenPunctuationEnabled"
         static let voiceEditingEnabled = "com.yappy.voiceEditingEnabled"
         static let activeModeID = "com.yappy.activeModeID"
         static let onboardingComplete = "com.yappy.onboardingComplete"
@@ -101,8 +105,19 @@ final class Settings: ObservableObject {
         didSet { if !isLoading { save() } }
     }
 
+    /// Transform (UUID string) run automatically after every dictation; nil = none.
+    @Published var autoTransformID: String? {
+        didSet { if !isLoading { save() } }
+    }
+
     /// Whether cleanup adapts tone to the frontmost app's category.
     @Published var contextAwareToneEnabled: Bool = true {
+        didSet { if !isLoading { save() } }
+    }
+
+    /// Whether cleanup resolves spoken self-corrections ("at 2, actually 3").
+    /// Only takes effect when AI cleanup runs (non-verbatim tone).
+    @Published var backtrackEnabled: Bool = true {
         didSet { if !isLoading { save() } }
     }
 
@@ -111,13 +126,20 @@ final class Settings: ObservableObject {
         didSet { if !isLoading { save() } }
     }
 
-    /// Whether the custom dictionary (vocabulary boosting) is enabled.
-    @Published var customDictionaryEnabled: Bool = false {
+    /// Whether the custom dictionary (vocabulary corrections) is enabled. On by
+    /// default so the built-in developer/tech starter terms apply out of the box.
+    @Published var customDictionaryEnabled: Bool = true {
         didSet { if !isLoading { save() } }
     }
 
     /// Whether spoken numbers are written as digits ("eleven point six" -> "11.6").
     @Published var numberFormattingEnabled: Bool = true {
+        didSet { if !isLoading { save() } }
+    }
+
+    /// Whether a spoken enumeration ("one milk two eggs three bread") is written
+    /// as a numbered list. Works best with number formatting on.
+    @Published var numberedListsEnabled: Bool = true {
         didSet { if !isLoading { save() } }
     }
 
@@ -128,6 +150,11 @@ final class Settings: ObservableObject {
 
     /// Whether "new line" / "new paragraph" insert real line breaks.
     @Published var spokenCommandsEnabled: Bool = true {
+        didSet { if !isLoading { save() } }
+    }
+
+    /// Whether spoken marks ("comma", "question mark") become real punctuation.
+    @Published var spokenPunctuationEnabled: Bool = true {
         didSet { if !isLoading { save() } }
     }
 
@@ -185,11 +212,15 @@ final class Settings: ObservableObject {
         defaults.set(lmStudioBaseURL, forKey: Keys.lmStudioBaseURL)
         defaults.set(commandModeEnabled, forKey: Keys.commandModeEnabled)
         defaults.set(commandHotkeyOption.rawValue, forKey: Keys.commandHotkeyOption)
+        defaults.set(autoTransformID, forKey: Keys.autoTransformID)
         defaults.set(contextAwareToneEnabled, forKey: Keys.contextAwareToneEnabled)
+        defaults.set(backtrackEnabled, forKey: Keys.backtrackEnabled)
         defaults.set(customDictionaryEnabled, forKey: Keys.customDictionaryEnabled)
         defaults.set(numberFormattingEnabled, forKey: Keys.numberFormattingEnabled)
+        defaults.set(numberedListsEnabled, forKey: Keys.numberedListsEnabled)
         defaults.set(fillerRemovalEnabled, forKey: Keys.fillerRemovalEnabled)
         defaults.set(spokenCommandsEnabled, forKey: Keys.spokenCommandsEnabled)
+        defaults.set(spokenPunctuationEnabled, forKey: Keys.spokenPunctuationEnabled)
         defaults.set(voiceEditingEnabled, forKey: Keys.voiceEditingEnabled)
         defaults.set(activeModeID, forKey: Keys.activeModeID)
         defaults.set(onboardingComplete, forKey: Keys.onboardingComplete)
@@ -242,18 +273,36 @@ final class Settings: ObservableObject {
             commandHotkeyOption = option
         }
 
+        autoTransformID = defaults.string(forKey: Keys.autoTransformID)
+
         if defaults.object(forKey: Keys.contextAwareToneEnabled) != nil {
             contextAwareToneEnabled = defaults.bool(forKey: Keys.contextAwareToneEnabled)
         } else {
             contextAwareToneEnabled = true
         }
 
-        customDictionaryEnabled = defaults.bool(forKey: Keys.customDictionaryEnabled)
+        if defaults.object(forKey: Keys.backtrackEnabled) != nil {
+            backtrackEnabled = defaults.bool(forKey: Keys.backtrackEnabled)
+        } else {
+            backtrackEnabled = true
+        }
+
+        if defaults.object(forKey: Keys.customDictionaryEnabled) != nil {
+            customDictionaryEnabled = defaults.bool(forKey: Keys.customDictionaryEnabled)
+        } else {
+            customDictionaryEnabled = true
+        }
 
         if defaults.object(forKey: Keys.numberFormattingEnabled) != nil {
             numberFormattingEnabled = defaults.bool(forKey: Keys.numberFormattingEnabled)
         } else {
             numberFormattingEnabled = true
+        }
+
+        if defaults.object(forKey: Keys.numberedListsEnabled) != nil {
+            numberedListsEnabled = defaults.bool(forKey: Keys.numberedListsEnabled)
+        } else {
+            numberedListsEnabled = true
         }
 
         if defaults.object(forKey: Keys.fillerRemovalEnabled) != nil {
@@ -266,6 +315,12 @@ final class Settings: ObservableObject {
             spokenCommandsEnabled = defaults.bool(forKey: Keys.spokenCommandsEnabled)
         } else {
             spokenCommandsEnabled = true
+        }
+
+        if defaults.object(forKey: Keys.spokenPunctuationEnabled) != nil {
+            spokenPunctuationEnabled = defaults.bool(forKey: Keys.spokenPunctuationEnabled)
+        } else {
+            spokenPunctuationEnabled = true
         }
 
         if defaults.object(forKey: Keys.voiceEditingEnabled) != nil {
@@ -302,12 +357,16 @@ final class Settings: ObservableObject {
         lmStudioBaseURL = Constants.defaultLMStudioBaseURL
         commandModeEnabled = true
         commandHotkeyOption = .rightOptionHold
+        autoTransformID = nil
         contextAwareToneEnabled = true
+        backtrackEnabled = true
         toneOverrides = [:]
-        customDictionaryEnabled = false
+        customDictionaryEnabled = true
         numberFormattingEnabled = true
+        numberedListsEnabled = true
         fillerRemovalEnabled = true
         spokenCommandsEnabled = true
+        spokenPunctuationEnabled = true
         voiceEditingEnabled = true
         activeModeID = nil
         // onboardingComplete intentionally not reset — it tracks lifetime state.
@@ -315,9 +374,10 @@ final class Settings: ObservableObject {
         for key in [
             Keys.hotkeyOption, Keys.launchAtLogin, Keys.cleanupEnabled,
             Keys.audioFeedbackEnabled, Keys.audioFeedbackVolume, Keys.lmStudioModelID,
-            Keys.lmStudioBaseURL, Keys.commandModeEnabled, Keys.commandHotkeyOption,
-            Keys.contextAwareToneEnabled, Keys.toneOverrides, Keys.customDictionaryEnabled,
-            Keys.numberFormattingEnabled, Keys.fillerRemovalEnabled, Keys.spokenCommandsEnabled,
+            Keys.lmStudioBaseURL, Keys.commandModeEnabled, Keys.commandHotkeyOption, Keys.autoTransformID,
+            Keys.contextAwareToneEnabled, Keys.backtrackEnabled, Keys.toneOverrides, Keys.customDictionaryEnabled,
+            Keys.numberFormattingEnabled, Keys.numberedListsEnabled, Keys.fillerRemovalEnabled,
+            Keys.spokenCommandsEnabled, Keys.spokenPunctuationEnabled,
             Keys.voiceEditingEnabled, Keys.activeModeID,
         ] {
             defaults.removeObject(forKey: key)

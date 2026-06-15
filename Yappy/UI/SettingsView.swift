@@ -40,12 +40,20 @@ struct SettingsView: View {
                 Text("Turns \u{201c}eleven point six\u{201d} into \u{201c}11.6\u{201d}, \u{201c}twenty dollars\u{201d} into \u{201c}$20\u{201d}, and \u{201c}three thirty PM\u{201d} into \u{201c}3:30 PM.\u{201d}")
                     .font(.caption).foregroundStyle(.secondary)
 
+                Toggle("Format spoken numbered lists", isOn: $settings.numberedListsEnabled)
+                Text("Counting off items \u{2014} \u{201c}one milk two eggs three bread\u{201d} \u{2014} becomes a 1./2./3. list. Works best with spoken numbers on.")
+                    .font(.caption).foregroundStyle(.secondary)
+
                 Toggle("Remove filler words", isOn: $settings.fillerRemovalEnabled)
                 Text("Strips standalone \u{201c}um\u{201d}, \u{201c}uh\u{201d}, \u{201c}erm\u{201d}, and \u{201c}hmm\u{201d} from transcripts.")
                     .font(.caption).foregroundStyle(.secondary)
 
                 Toggle("Spoken formatting commands", isOn: $settings.spokenCommandsEnabled)
                 Text("Say \u{201c}new line\u{201d} or \u{201c}new paragraph\u{201d} to insert line breaks.")
+                    .font(.caption).foregroundStyle(.secondary)
+
+                Toggle("Spoken punctuation", isOn: $settings.spokenPunctuationEnabled)
+                Text("Say \u{201c}comma\u{201d}, \u{201c}period\u{201d}, or \u{201c}question mark\u{201d} to insert punctuation. Turn off if you dictate those words literally.")
                     .font(.caption).foregroundStyle(.secondary)
 
                 Toggle("Voice editing commands", isOn: $settings.voiceEditingEnabled)
@@ -134,6 +142,12 @@ struct SettingsView: View {
                             .listRowBackground(Color.accentColor.opacity(0.04))
                         }
                     }
+
+                    Toggle("Resolve spoken self-corrections", isOn: $settings.backtrackEnabled)
+                        .listRowBackground(Color.accentColor.opacity(0.04))
+                    Text("\u{201c}Let\u{2019}s meet at 2, actually 3\u{201d} becomes \u{201c}Let\u{2019}s meet at 3.\u{201d}")
+                        .font(.caption).foregroundStyle(.secondary)
+                        .listRowBackground(Color.accentColor.opacity(0.04))
                 }
             } header: {
                 Text("AI Cleanup (LM Studio)")

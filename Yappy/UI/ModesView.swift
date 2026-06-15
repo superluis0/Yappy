@@ -140,8 +140,10 @@ private struct ModeEditor: View {
                         ForEach(CleanupChoice.allCases) { Text($0.rawValue).tag($0) }
                     }
                     Toggle("Write spoken numbers as digits", isOn: $mode.numberFormatting)
+                    Toggle("Format spoken numbered lists", isOn: $mode.numberedLists)
                     Toggle("Remove filler words", isOn: $mode.fillerRemoval)
                     Toggle("Spoken formatting commands", isOn: $mode.spokenCommands)
+                    Toggle("Spoken punctuation", isOn: $mode.spokenPunctuation)
                 }
                 Section {
                     Picker("Auto-activate for", selection: autoTriggerBinding) {

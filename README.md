@@ -49,7 +49,7 @@ Build dictation **modes** for different contexts — and teach Yappy the names a
 <img src="Documentation/assets/dictionary.png" alt="Yappy custom dictionary, showing the spellings it learned to correct" width="560">
 </div>
 
-Everything is configurable in one place — hotkey, sounds, number formatting, filler removal, spoken commands, voice editing, Command Mode, optional AI cleanup, and permissions.
+Everything is configurable in one place — hotkey, sounds, number formatting, numbered lists, filler removal, spoken commands, spoken punctuation, voice editing, Command Mode, Transforms, optional AI cleanup (with self-correction), and permissions.
 
 <div align="center">
 <img src="Documentation/assets/settings.png" alt="Yappy settings — hotkey, sounds, number formatting, filler removal, spoken commands, and voice editing" width="560">
@@ -63,9 +63,17 @@ Everything is configurable in one place — hotkey, sounds, number formatting, f
 
 **Numbers written the way you'd type them** — *"three thirty pm"* becomes `3:30 PM`, *"twenty dollars and fifty cents"* becomes `$20.50`, *"twenty twenty six"* becomes `2026`, *"twenty third"* becomes `23rd`, *"version eleven point six point zero"* becomes `11.6.0`. All local and deterministic — no LLM involved — and deliberately conservative, so *"wait a second"* and *"one in a million"* stay exactly as you said them.
 
+**Spoken lists** — count off items and Yappy formats them: *"one milk two eggs three bread"* becomes a clean numbered list. Conservative by design — it only kicks in for a real run that starts at one, so a stray count inside a sentence stays put.
+
 **Clean transcripts** — standalone fillers (*"um"*, *"uh"*) are stripped and the punctuation around them healed; say *"new line"* or *"new paragraph"* to insert real line breaks while you dictate. Both are toggles, and low-confidence noise decodes are discarded instead of inserted as garbage.
 
+**Spoken punctuation** — dictate the marks you want: *"comma"*, *"period"*, *"question mark"*, *"open paren … close paren."* It matches whole words only, so plurals and embedded words are safe — and it's a toggle if you'd rather say those words literally.
+
 **Command Mode** — select text anywhere, hold the command hotkey, and speak an instruction: *"make this concise"*, *"translate to Spanish"*, *"turn this into a bulleted list."* The selection is rewritten in place. Powered by a local LM Studio model; if it isn't running, your text is left untouched.
+
+**Backtrack** — change your mind mid-sentence and Yappy keeps the correction: *"let's meet at 2, actually 3"* lands as *"Let's meet at 3."* Part of the optional AI cleanup, so it rides along with whatever else cleanup is doing.
+
+**Transforms** — reusable AI rewrites of selected text. Two ship built in — **Polish** (tighten for clarity) and **Prompt Engineer** (restructure into a clean AI prompt) — and you can add your own. Run one from the menu bar on any selection, or set one to run automatically after every dictation. Powered by your local LM Studio model.
 
 **Voice editing** — fix what you just said, hands-free: *"scratch that"* undoes the last insertion, *"delete the last word"* trims it, *"all caps that"* / *"capitalize that"* recases it. It only fires on a whole-utterance command (so *"scratch that idea"* stays prose) and won't delete the wrong thing if your cursor has moved on.
 
@@ -73,9 +81,11 @@ Everything is configurable in one place — hotkey, sounds, number formatting, f
 
 **Voice shortcuts** — say a cue and Yappy expands it to canned text: an email signature, a calendar link, a block of boilerplate.
 
+**Scratchpad** — a floating notepad a keystroke away (**⌥⇧S**), always on top like a sticky note. Jot or dictate into it without leaving whatever app you're in; notes are kept locally with a simple sidebar, and sync nowhere.
+
 **Context-aware tone** — optional cleanup adapts to the app you're typing in: formal in Mail, casual in Messages, and strictly verbatim in code editors so nothing gets reworded.
 
-**Custom dictionary** — teach Yappy your names, jargon, and acronyms. Type the spellings it tends to mishear, or **train them by voice** — say a word a few times and Yappy learns how *it* hears you, then corrects those mishearings back to your spelling automatically. Deterministic and fully on-device; recordings are analyzed in memory and never saved.
+**Custom dictionary** — teach Yappy your names, jargon, and acronyms. It comes pre-loaded with common developer and tool names — Supabase, Vercel, Cloudflare, Kubernetes, and more — so they transcribe right the first time. Add your own by typing the spellings it tends to mishear, or **train them by voice** — say a word a few times and Yappy learns how *it* hears you, then corrects those mishearings back to your spelling automatically. Deterministic and fully on-device; recordings are analyzed in memory and never saved.
 
 **Activity at a glance** — a "time saved versus typing" headline, words-per-minute, streaks and personal records, a day-by-hour heatmap of when you dictate, the apps you use it in most, and a shareable *"Year in Voice"* recap.
 
@@ -145,8 +155,11 @@ If LM Studio isn't reachable, dictation degrades gracefully: the raw transcript 
 | Audio capture | `App/AudioRecorder.swift` | AVAudioEngine → in-memory 16 kHz mono Float32 |
 | Hotkeys | `Services/HotkeyManager.swift` | One CGEvent tap + a pure, unit-tested state machine |
 | Text insertion | `Services/TextInserter.swift` | Cmd+V paste with change-count-safe clipboard restore |
-| Command Mode / cleanup | `Services/LMStudioService.swift` | Local OpenAI-compatible calls; graceful fallback |
-| Custom dictionary | `Core/DictionaryStore.swift` | Terms fed to FluidAudio CTC vocabulary boosting |
+| Command Mode / cleanup / transforms | `Services/LMStudioService.swift` | Local OpenAI-compatible calls (cleanup, backtrack, transforms); graceful fallback |
+| Transcript formatting | `Services/TranscriptPipeline.swift` + `Spoken*Formatter.swift` | Fillers, numbers, lists, line breaks, punctuation — deterministic, on-device |
+| Custom dictionary | `Core/DictionaryStore.swift`, `Core/BuiltInDictionary.swift` | Built-in dev terms + learned aliases corrected back to canonical spelling |
+| Transforms | `Core/TransformStore.swift`, `UI/TransformsView.swift` | Named AI rewrites; menu-bar or auto-after-dictation |
+| Scratchpad | `UI/ScratchpadController.swift`, `Core/NotesStore.swift` | Floating notepad (⌥⇧S) with local note storage |
 | Pill & windows | `UI/` | Floating pill, home window, settings, onboarding |
 
 ## Tests
@@ -155,7 +168,7 @@ If LM Studio isn't reachable, dictation degrades gracefully: the raw transcript 
 xcodebuild -project Yappy.xcodeproj -scheme Yappy test
 ```
 
-Covers the hotkey state machine, settings persistence and migration, dictation history and stats, voice-shortcut expansion, and app-context classification.
+Covers the hotkey state machine, settings persistence and migration, the transcript pipeline (numbers, lists, spoken punctuation), the custom dictionary and its built-in dev terms, transforms and notes stores, AI-cleanup prompt assembly, dictation history and stats, voice-shortcut expansion, and app-context classification.
 
 ## Built with
 

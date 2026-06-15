@@ -14,6 +14,7 @@ struct MainWindowView: View {
         case home = "Home"
         case shortcuts = "Shortcuts"
         case dictionary = "Dictionary"
+        case transforms = "Transforms"
         case modes = "Modes"
         case settings = "Settings"
 
@@ -24,6 +25,7 @@ struct MainWindowView: View {
             case .home: return "house"
             case .shortcuts: return "text.badge.plus"
             case .dictionary: return "character.book.closed"
+            case .transforms: return "wand.and.sparkles"
             case .modes: return "slider.horizontal.3"
             case .settings: return "gearshape"
             }
@@ -34,6 +36,7 @@ struct MainWindowView: View {
     @ObservedObject var history: HistoryStore
     @ObservedObject var shortcutStore: ShortcutStore
     @ObservedObject var dictionaryStore: DictionaryStore
+    @ObservedObject var transformStore: TransformStore
     @ObservedObject var modeStore: ModeStore
     @ObservedObject var transcriptionService: ParakeetTranscriptionService
     let lmStudio: LMStudioService
@@ -59,6 +62,8 @@ struct MainWindowView: View {
                     settings: settings,
                     transcriptionService: transcriptionService
                 )
+            case .transforms:
+                TransformsView(store: transformStore, settings: settings)
             case .modes:
                 ModesView(store: modeStore, settings: settings)
             case .settings:
@@ -84,6 +89,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         history: HistoryStore,
         shortcutStore: ShortcutStore,
         dictionaryStore: DictionaryStore,
+        transformStore: TransformStore,
         modeStore: ModeStore,
         transcriptionService: ParakeetTranscriptionService,
         lmStudio: LMStudioService
@@ -93,6 +99,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             history: history,
             shortcutStore: shortcutStore,
             dictionaryStore: dictionaryStore,
+            transformStore: transformStore,
             modeStore: modeStore,
             transcriptionService: transcriptionService,
             lmStudio: lmStudio
