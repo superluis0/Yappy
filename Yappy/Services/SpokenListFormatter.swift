@@ -5,51 +5,65 @@
 
 import Foundation
 
-/// Turns a spoken enumeration into a formatted numbered list. Runs *after*
-/// `SpokenNumberFormatter`, so the counters already read as digits:
+/// Turns a spoken enumeration into a formatted numbered list, working on the
+/// real, messy transcript a speech model produces — number words *or* digits,
+/// ordinals, an optional lead-in word, and the commas/periods the model adds:
 ///
-///   "going to the store for 1 apples 2 bananas 3 oranges"
-///     → "going to the store for\n1. Apples\n2. Bananas\n3. Oranges"
-///
-///   "step 1 grab milk step 2 pay step 3 leave"   // shared lead-in word
+///   "one milk two eggs three bread"
+///     → "1. Milk\n2. Eggs\n3. Bread"
+///   "number one, we need X. number two, we need Y. number three, we need Z"
+///     → "1. We need X.\n2. We need Y.\n3. We need Z."
+///   "first grab milk second pay third leave"
 ///     → "1. Grab milk\n2. Pay\n3. Leave"
 ///
-/// Conservative by design: it only fires on a run of **at least three** counters
-/// that start at 1 and increase by exactly one, each followed by real words. A
-/// stray "press 1 for sales" or "I need 1 thing from 2 stores" is left alone.
+/// Conservative: it only fires on a run of **at least three** counters that go
+/// 1, 2, 3, … starting at one, each followed by real words. A stray "I have one
+/// cat and two dogs" or "press one for sales" is left alone. Works whether or
+/// not the number formatter has already turned the counters into digits.
 enum SpokenListFormatter {
 
-    /// One detected counter: its integer value, the span of the digits, and the
-    /// plain word spoken immediately before it (a shared one like "step" is
-    /// treated as part of the marker, not the item text).
+    // 1–20 covers any practical spoken list.
+    private static let cardinals: [String: Int] = [
+        "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7,
+        "eight": 8, "nine": 9, "ten": 10, "eleven": 11, "twelve": 12, "thirteen": 13,
+        "fourteen": 14, "fifteen": 15, "sixteen": 16, "seventeen": 17, "eighteen": 18,
+        "nineteen": 19, "twenty": 20,
+    ]
+    private static let ordinals: [String: Int] = [
+        "first": 1, "second": 2, "third": 3, "fourth": 4, "fifth": 5, "sixth": 6,
+        "seventh": 7, "eighth": 8, "ninth": 9, "tenth": 10, "eleventh": 11, "twelfth": 12,
+        "thirteenth": 13, "fourteenth": 14, "fifteenth": 15, "sixteenth": 16,
+        "seventeenth": 17, "eighteenth": 18, "nineteenth": 19, "twentieth": 20,
+    ]
+
     private struct Marker {
         let value: Int
-        let numberRange: NSRange
-        let precedingWord: String?
-        let precedingWordLocation: Int   // valid only when precedingWord != nil
-
-        var numberEnd: Int { numberRange.location + numberRange.length }
+        let matchStart: Int   // start of the lead-in word, or the counter itself
+        let contentStart: Int // first content character after the counter + separators
     }
 
-    /// An integer that begins a token (start or whitespace before it) and is
-    /// followed by whitespace + more content — i.e. a plausible "N <item>".
-    /// Anchoring on whitespace keeps "$20", "3:30", and "11.6" out.
-    private static let markerRegex = try! NSRegularExpression(
-        pattern: "(?:(?<=\\s)|^)(\\d+)(?=\\s+\\S)"
-    )
+    /// One counter: an optional lead-in ("number", "step"…), then a digit run or
+    /// a cardinal/ordinal word, then a separator (so a real item follows). The
+    /// left guard keeps "$20", "v2", and "mp3" out; the right guard keeps clock
+    /// times ("1:30") and decimals ("1.5") out.
+    private static let markerRegex: NSRegularExpression = {
+        let words = (Array(cardinals.keys) + Array(ordinals.keys))
+            .sorted { $0.count > $1.count }   // longest first so "twenty" beats "two"
+            .joined(separator: "|")
+        let pattern = "(?<![\\w$£€#@])(?:(?:number|step|item|point|part|section)\\s+)?"
+            + "(\\d+|\(words))(?=[\\s,)]|[.:](?!\\d))"
+        return try! NSRegularExpression(pattern: pattern, options: [.caseInsensitive])
+    }()
+
+    private static let separators: Set<Character> = [" ", "\t", "\n", ",", ".", ":", ")"]
 
     static func format(_ text: String) -> String {
-        // Cheap bail: a list must contain a standalone "1".
-        guard text.contains("1") else { return text }
-
         let ns = text as NSString
         let markers = findMarkers(in: ns)
         guard let run = monotonicRunFromOne(markers, in: ns), run.count >= 3 else {
             return text
         }
-
-        let label = sharedLabel(in: run)
-        return render(ns: ns, run: run, label: label)
+        return render(ns: ns, run: run)
     }
 
     // MARK: - Detection
@@ -57,30 +71,29 @@ enum SpokenListFormatter {
     private static func findMarkers(in ns: NSString) -> [Marker] {
         let full = NSRange(location: 0, length: ns.length)
         return markerRegex.matches(in: ns as String, range: full).compactMap { match in
-            let numberRange = match.range(at: 1)
-            guard numberRange.location != NSNotFound,
-                  let value = Int(ns.substring(with: numberRange)) else { return nil }
-            let (word, location) = precedingWord(in: ns, before: numberRange.location)
-            return Marker(value: value, numberRange: numberRange,
-                          precedingWord: word, precedingWordLocation: location)
+            let valueRange = match.range(at: 1)
+            guard valueRange.location != NSNotFound,
+                  let value = parseValue(ns.substring(with: valueRange)) else { return nil }
+
+            // Skip the counter's trailing separators to find where the item text begins.
+            var contentStart = valueRange.location + valueRange.length
+            while contentStart < ns.length,
+                  let scalar = Unicode.Scalar(ns.character(at: contentStart)),
+                  separators.contains(Character(scalar)) {
+                contentStart += 1
+            }
+            return Marker(value: value, matchStart: match.range.location, contentStart: contentStart)
         }
     }
 
-    /// The run of letters immediately before `location`, skipping a single
-    /// stretch of whitespace ("step 1" → "step"). Returns nil when the counter
-    /// isn't preceded by a word (start of text, or punctuation).
-    private static func precedingWord(in ns: NSString, before location: Int) -> (String?, Int) {
-        var i = location
-        while i > 0, isWhitespace(ns.character(at: i - 1)) { i -= 1 }
-        let wordEnd = i
-        while i > 0, isLetter(ns.character(at: i - 1)) { i -= 1 }
-        guard i < wordEnd else { return (nil, 0) }
-        return (ns.substring(with: NSRange(location: i, length: wordEnd - i)), i)
+    private static func parseValue(_ token: String) -> Int? {
+        if let n = Int(token) { return n }
+        let lower = token.lowercased()
+        return cardinals[lower] ?? ordinals[lower]
     }
 
-    /// The longest leading run of markers valued 1, 2, 3, … with at least one
-    /// letter of item text between consecutive counters (so "4 5 6" can't extend
-    /// a list — there's nothing spoken between those numbers).
+    /// The longest leading run valued 1, 2, 3, … with at least one letter of item
+    /// text between consecutive counters.
     private static func monotonicRunFromOne(_ markers: [Marker], in ns: NSString) -> [Marker]? {
         guard let start = markers.firstIndex(where: { $0.value == 1 }) else { return nil }
         var run = [markers[start]]
@@ -89,48 +102,44 @@ enum SpokenListFormatter {
             let prev = run[run.count - 1]
             let cur = markers[j]
             guard cur.value == prev.value + 1,
-                  hasLetter(in: ns, from: prev.numberEnd, to: cur.numberRange.location) else { break }
+                  hasLetter(in: ns, from: prev.contentStart, to: cur.matchStart) else { break }
             run.append(cur)
             j += 1
         }
         return run
     }
 
-    /// The lead-in word ("step", "number") shared by every counter, if any.
-    private static func sharedLabel(in run: [Marker]) -> String? {
-        guard let first = run.first?.precedingWord, !first.isEmpty else { return nil }
-        let lowered = first.lowercased()
-        for marker in run.dropFirst() {
-            guard let word = marker.precedingWord, word.lowercased() == lowered else { return nil }
-        }
-        return first
-    }
-
     // MARK: - Rendering
 
-    private static func render(ns: NSString, run: [Marker], label: String?) -> String {
-        func itemStart(_ marker: Marker) -> Int {
-            label != nil ? marker.precedingWordLocation : marker.numberRange.location
-        }
-
-        let prefix = ns.substring(to: itemStart(run[0]))
+    private static func render(ns: NSString, run: [Marker]) -> String {
+        let prefix = ns.substring(to: run[0].matchStart)
             .trimmingCharacters(in: .whitespacesAndNewlines)
 
         var lines: [String] = []
         for (index, marker) in run.enumerated() {
-            let contentStart = marker.numberEnd
-            let contentEnd = index + 1 < run.count ? itemStart(run[index + 1]) : ns.length
-            let raw = ns.substring(with: NSRange(location: contentStart, length: contentEnd - contentStart))
-            let item = capitalizeFirst(raw.trimmingCharacters(in: .whitespacesAndNewlines))
+            let end = index + 1 < run.count ? run[index + 1].matchStart : ns.length
+            guard marker.contentStart < end else { continue }
+            let raw = ns.substring(with: NSRange(location: marker.contentStart, length: end - marker.contentStart))
+            let item = capitalizeFirst(trimItem(raw))
+            guard !item.isEmpty else { continue }
             lines.append("\(marker.value). \(item)")
         }
+        guard lines.count >= 3 else { return ns as String }
 
         let list = lines.joined(separator: "\n")
-        let result = prefix.isEmpty ? list : prefix + "\n" + list
-        return result
+        return prefix.isEmpty ? list : prefix + "\n" + list
     }
 
-    // MARK: - Helpers
+    private static func trimItem(_ s: String) -> String {
+        // Drop surrounding whitespace and any trailing list separator the speaker
+        // ran into the next counter (", " / ". ").
+        var result = s.trimmingCharacters(in: .whitespacesAndNewlines)
+        while let last = result.last, last == "," || last == ";" {
+            result.removeLast()
+            result = result.trimmingCharacters(in: .whitespaces)
+        }
+        return result
+    }
 
     private static func capitalizeFirst(_ s: String) -> String {
         guard let first = s.first else { return s }
@@ -138,18 +147,8 @@ enum SpokenListFormatter {
     }
 
     private static func hasLetter(in ns: NSString, from: Int, to: Int) -> Bool {
-        guard to > from else { return false }
+        guard to > from, from >= 0, to <= ns.length else { return false }
         let slice = ns.substring(with: NSRange(location: from, length: to - from))
         return slice.contains { $0.isLetter }
-    }
-
-    private static func isWhitespace(_ unichar: unichar) -> Bool {
-        guard let scalar = Unicode.Scalar(unichar) else { return false }
-        return Character(scalar).isWhitespace
-    }
-
-    private static func isLetter(_ unichar: unichar) -> Bool {
-        guard let scalar = Unicode.Scalar(unichar) else { return false }
-        return Character(scalar).isLetter
     }
 }

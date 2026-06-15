@@ -281,8 +281,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     expanded, tone: tone, backtrack: self.settings.backtrackEnabled,
                     cleanupEnabled: cleanupEnabled
                 )
+                // A cleanup model can reflow a numbered list back onto one line;
+                // re-apply list formatting so the structure survives (idempotent,
+                // and a no-op when there's no list).
+                let listsEnabled = mode.isAuto ? self.settings.numberedListsEnabled : mode.numberedLists
+                let relisted = listsEnabled ? SpokenListFormatter.format(text) : text
                 // Optionally pipe the result through the user's auto-transform.
-                let finalText = await self.applyAutoTransform(to: text)
+                let finalText = await self.applyAutoTransform(to: relisted)
 
                 if !finalText.isEmpty {
                     try self.textInserter.insert(text: finalText)
