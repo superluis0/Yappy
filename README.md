@@ -131,6 +131,8 @@ open /Applications/Yappy.app
 
 > **Tip:** if another FluidAudio app (such as VoiceInk) has already downloaded Parakeet, Yappy reuses it from `~/Library/Application Support/FluidAudio/Models/` — no second download.
 
+> **Maintainer shortcut:** `Scripts/rebuild-install.sh` rebuilds the Release app, verifies it's signed with the local "Yappy Local Signing" identity (so Microphone/Accessibility grants survive), and installs + relaunches it — refusing to install if the signature is wrong. Use `--test` to gate on the unit suite first, or `--build-only` to just verify a build. This requires the maintainer's local signing certificate.
+
 ## Optional: AI cleanup with LM Studio
 
 Yappy can tidy up filler words and punctuation, and power Command Mode, using a model you run locally in [LM Studio](https://lmstudio.ai) — entirely offline, no API keys.
