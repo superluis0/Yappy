@@ -7,6 +7,10 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		B100006100000000000000A1 /* VoiceControlCommandParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200006100000000000000A1 /* VoiceControlCommandParserTests.swift */; };
+		B100006000000000000000A1 /* HistoryInsightsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200006000000000000000A1 /* HistoryInsightsTests.swift */; };
+		B100005F00000000000000A1 /* VoiceControlCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200005F00000000000000A1 /* VoiceControlCommand.swift */; };
+		B100005E00000000000000A1 /* HistoryInsights.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200005E00000000000000A1 /* HistoryInsights.swift */; };
 		B100005D00000000000000A1 /* LMStudioPromptTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200005D00000000000000A1 /* LMStudioPromptTests.swift */; };
 		B100005C00000000000000A1 /* NotesStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200005C00000000000000A1 /* NotesStoreTests.swift */; };
 		B100005B00000000000000A1 /* TransformStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200005B00000000000000A1 /* TransformStoreTests.swift */; };
@@ -105,6 +109,10 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		B200006100000000000000A1 /* VoiceControlCommandParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceControlCommandParserTests.swift; sourceTree = "<group>"; };
+		B200006000000000000000A1 /* HistoryInsightsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryInsightsTests.swift; sourceTree = "<group>"; };
+		B200005F00000000000000A1 /* VoiceControlCommand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceControlCommand.swift; sourceTree = "<group>"; };
+		B200005E00000000000000A1 /* HistoryInsights.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryInsights.swift; sourceTree = "<group>"; };
 		B200005D00000000000000A1 /* LMStudioPromptTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LMStudioPromptTests.swift; sourceTree = "<group>"; };
 		B200005C00000000000000A1 /* NotesStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotesStoreTests.swift; sourceTree = "<group>"; };
 		B200005B00000000000000A1 /* TransformStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransformStoreTests.swift; sourceTree = "<group>"; };
@@ -261,6 +269,7 @@
 		B800000400000000000000A1 /* Core */ = {
 			isa = PBXGroup;
 			children = (
+				B200005E00000000000000A1 /* HistoryInsights.swift */,
 				B200005600000000000000A1 /* NotesStore.swift */,
 				B200005400000000000000A1 /* TransformStore.swift */,
 				B200005300000000000000A1 /* BuiltInDictionary.swift */,
@@ -285,6 +294,7 @@
 		B800000500000000000000A1 /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				B200005F00000000000000A1 /* VoiceControlCommand.swift */,
 				B200005200000000000000A1 /* SpokenPunctuationFormatter.swift */,
 				B200005100000000000000A1 /* SpokenListFormatter.swift */,
 				B200000800000000000000A1 /* ParakeetTranscriptionService.swift */,
@@ -334,6 +344,8 @@
 		B800000700000000000000A1 /* YappyTests */ = {
 			isa = PBXGroup;
 			children = (
+				B200006100000000000000A1 /* VoiceControlCommandParserTests.swift */,
+				B200006000000000000000A1 /* HistoryInsightsTests.swift */,
 				B200005D00000000000000A1 /* LMStudioPromptTests.swift */,
 				B200005C00000000000000A1 /* NotesStoreTests.swift */,
 				B200005B00000000000000A1 /* TransformStoreTests.swift */,
@@ -472,6 +484,8 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B100005F00000000000000A1 /* VoiceControlCommand.swift in Sources */,
+				B100005E00000000000000A1 /* HistoryInsights.swift in Sources */,
 				B100005800000000000000A1 /* ScratchpadController.swift in Sources */,
 				B100005700000000000000A1 /* ScratchpadView.swift in Sources */,
 				B100005600000000000000A1 /* NotesStore.swift in Sources */,
@@ -534,6 +548,8 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B100006100000000000000A1 /* VoiceControlCommandParserTests.swift in Sources */,
+				B100006000000000000000A1 /* HistoryInsightsTests.swift in Sources */,
 				B100005D00000000000000A1 /* LMStudioPromptTests.swift in Sources */,
 				B100005C00000000000000A1 /* NotesStoreTests.swift in Sources */,
 				B100005B00000000000000A1 /* TransformStoreTests.swift in Sources */,

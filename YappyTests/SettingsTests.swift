@@ -41,6 +41,8 @@ final class SettingsTests: XCTestCase {
         XCTAssertEqual(settings.commandHotkeyOption, .rightOptionHold)
         XCTAssertTrue(settings.contextAwareToneEnabled)
         XCTAssertTrue(settings.backtrackEnabled)
+        XCTAssertTrue(settings.adaptiveModeEnabled)
+        XCTAssertTrue(settings.appModeOverrides.isEmpty)
         XCTAssertTrue(settings.toneOverrides.isEmpty)
         XCTAssertTrue(settings.customDictionaryEnabled, "On by default so built-in dev terms apply out of the box")
         XCTAssertFalse(settings.onboardingComplete)
@@ -53,6 +55,16 @@ final class SettingsTests: XCTestCase {
         // Override wins.
         settings.toneOverrides[.code] = .casual
         XCTAssertEqual(settings.tone(for: .code), .casual)
+    }
+
+    func testAdaptiveModeSettingsPersist() {
+        let id = UUID().uuidString
+        settings.adaptiveModeEnabled = false
+        settings.appModeOverrides = ["com.apple.mail": id]
+
+        let reloaded = Settings(defaults: defaults)
+        XCTAssertFalse(reloaded.adaptiveModeEnabled)
+        XCTAssertEqual(reloaded.appModeOverrides["com.apple.mail"], id)
     }
 
     func testToneOverridesPersist() {
@@ -106,6 +118,7 @@ final class SettingsTests: XCTestCase {
         XCTAssertTrue(settings.spokenCommandsEnabled)
         XCTAssertTrue(settings.spokenPunctuationEnabled)
         XCTAssertTrue(settings.voiceEditingEnabled)
+        XCTAssertTrue(settings.voiceControlEnabled)
     }
 
     func testTranscriptCleanupTogglesPersist() {

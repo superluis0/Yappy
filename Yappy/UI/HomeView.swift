@@ -9,7 +9,9 @@ import SwiftUI
 struct HomeView: View {
     @ObservedObject var history: HistoryStore
     @ObservedObject var settings: Settings
+    @ObservedObject var shortcutStore: ShortcutStore
 
+    @State private var editingSuggestion: ShortcutSuggestion?
     @State private var searchText = ""
     @State private var copiedEntryID: UUID?
     /// Flipped once on appear so the stat numerals roll up from zero.
@@ -33,6 +35,7 @@ struct HomeView: View {
                     recordsCard
                     recapButton
                 }
+                suggestionsCard
                 privacyCard
                 historySection
             }
@@ -40,6 +43,11 @@ struct HomeView: View {
         }
         .background(Color(nsColor: .windowBackgroundColor))
         .sheet(isPresented: $showRecap) { RecapView(history: history) }
+        .sheet(item: $editingSuggestion) { suggestion in
+            ShortcutEditor(shortcut: VoiceShortcut(trigger: "", expansion: suggestion.phrase)) { result in
+                shortcutStore.add(result)
+            }
+        }
         .onAppear {
             guard !statsAppeared else { return }
             withAnimation(.spring(response: 0.7, dampingFraction: 0.9).delay(0.1)) {
@@ -323,6 +331,54 @@ struct HomeView: View {
                 .frame(width: 3)
                 .clipShape(.rect(topLeadingRadius: 12, bottomLeadingRadius: 12,
                                  bottomTrailingRadius: 0, topTrailingRadius: 0))
+        }
+    }
+
+    // MARK: - Suggestions
+
+    /// Repeated dictations worth turning into shortcuts (excludes existing
+    /// shortcuts and ones the user dismissed).
+    private var suggestions: [ShortcutSuggestion] {
+        HistoryInsights.suggestedShortcuts(
+            from: history.entries,
+            existing: shortcutStore.shortcuts,
+            dismissedKeys: settings.dismissedSuggestions
+        )
+    }
+
+    @ViewBuilder
+    private var suggestionsCard: some View {
+        if !suggestions.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                Label("Suggestions", systemImage: "wand.and.stars")
+                    .font(.title3.bold())
+                Text("You dictate these a lot — turn them into a shortcut you can speak.")
+                    .font(.caption).foregroundStyle(.secondary)
+
+                ForEach(suggestions) { suggestion in
+                    HStack(alignment: .top, spacing: 12) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("\u{201c}\(suggestion.phrase)\u{201d}")
+                                .font(.callout).lineLimit(2)
+                            Text("dictated \(suggestion.count) times")
+                                .font(.caption2).foregroundStyle(.tertiary)
+                        }
+                        Spacer()
+                        Button("Add shortcut") { editingSuggestion = suggestion }
+                            .controlSize(.small)
+                        Button {
+                            settings.dismissedSuggestions.insert(suggestion.id)
+                        } label: { Image(systemName: "xmark") }
+                            .buttonStyle(.borderless)
+                            .help("Dismiss")
+                    }
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 10))
+                }
+            }
+            .padding(16)
+            .background(Color.accentColor.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
         }
     }
 

@@ -59,6 +59,10 @@ struct SettingsView: View {
                 Toggle("Voice editing commands", isOn: $settings.voiceEditingEnabled)
                 Text("Say \u{201c}scratch that\u{201d}, \u{201c}delete the last word\u{201d}, or \u{201c}all caps that\u{201d} to fix what you just dictated.")
                     .font(.caption).foregroundStyle(.secondary)
+
+                Toggle("Voice commands", isOn: $settings.voiceControlEnabled)
+                Text("Say \u{201c}switch to <mode> mode\u{201d}, \u{201c}open scratchpad\u{201d}, or \u{201c}new note\u{201d} to control Yappy hands-free.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
 
             Section {

@@ -7,9 +7,10 @@ import Foundation
 import Combine
 
 /// Local store of custom-dictionary terms (names, jargon, acronyms) used to
-/// bias transcription. Persists as JSON in Application Support. Each term may
+/// correct transcription. Persists as JSON in Application Support. Each term may
 /// carry alternative spellings (see `DictionaryTerm`) so a mishearing is
-/// rescored back to the canonical word.
+/// rewritten back to the canonical word after transcription (via `DictionaryReplacer`;
+/// the model itself can't be biased on this version — see plans/001-findings.md).
 final class DictionaryStore: ObservableObject {
     @Published private(set) var terms: [DictionaryTerm] = []
 

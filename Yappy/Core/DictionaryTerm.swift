@@ -8,7 +8,9 @@ import Foundation
 /// A custom-dictionary entry: the canonical spelling plus the alternative
 /// spellings the speech model tends to produce for it. `aliases` are entered by
 /// hand ("sounds like"); `learnedAliases` are mined from voice-training takes.
-/// Both feed FluidAudio's vocabulary rescorer so a mishearing snaps back to `text`.
+/// `DictionaryReplacer` rewrites either kind of mishearing back to `text` after
+/// transcription (the speech model itself can't be biased toward these — see
+/// plans/001-findings.md).
 struct DictionaryTerm: Identifiable, Codable, Equatable {
     let id: UUID
     var text: String
@@ -39,8 +41,8 @@ struct DictionaryTerm: Identifiable, Codable, Equatable {
     }
 
     /// Manual + learned aliases, trimmed and de-duplicated case-insensitively
-    /// (manual first), excluding any that equal `text`. This is what's handed to
-    /// the rescorer.
+    /// (manual first), excluding any that equal `text`. These are the strings
+    /// `DictionaryReplacer` rewrites back to `text`.
     var allAliases: [String] {
         var seen: Set<String> = [text.lowercased()]
         var result: [String] = []

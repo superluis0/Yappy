@@ -34,9 +34,12 @@ final class Settings: ObservableObject {
         static let commandModeEnabled = "com.yappy.commandModeEnabled"
         static let commandHotkeyOption = "com.yappy.commandHotkeyOption"
         static let autoTransformID = "com.yappy.autoTransformID"
+        static let dismissedSuggestions = "com.yappy.dismissedSuggestions"
         static let contextAwareToneEnabled = "com.yappy.contextAwareToneEnabled"
         static let backtrackEnabled = "com.yappy.backtrackEnabled"
         static let toneOverrides = "com.yappy.toneOverrides"
+        static let adaptiveModeEnabled = "com.yappy.adaptiveModeEnabled"
+        static let appModeOverrides = "com.yappy.appModeOverrides"
         static let customDictionaryEnabled = "com.yappy.customDictionaryEnabled"
         static let numberFormattingEnabled = "com.yappy.numberFormattingEnabled"
         static let numberedListsEnabled = "com.yappy.numberedListsEnabled"
@@ -44,6 +47,7 @@ final class Settings: ObservableObject {
         static let spokenCommandsEnabled = "com.yappy.spokenCommandsEnabled"
         static let spokenPunctuationEnabled = "com.yappy.spokenPunctuationEnabled"
         static let voiceEditingEnabled = "com.yappy.voiceEditingEnabled"
+        static let voiceControlEnabled = "com.yappy.voiceControlEnabled"
         static let activeModeID = "com.yappy.activeModeID"
         static let onboardingComplete = "com.yappy.onboardingComplete"
         static let legacyCleanupMigrated = "com.yappy.legacyCleanupMigrated"
@@ -110,6 +114,12 @@ final class Settings: ObservableObject {
         didSet { if !isLoading { save() } }
     }
 
+    /// Normalized keys of history-derived shortcut suggestions the user dismissed,
+    /// so they don't reappear in the Home "Suggestions" card.
+    @Published var dismissedSuggestions: Set<String> = [] {
+        didSet { if !isLoading { save() } }
+    }
+
     /// Whether cleanup adapts tone to the frontmost app's category.
     @Published var contextAwareToneEnabled: Bool = true {
         didSet { if !isLoading { save() } }
@@ -118,6 +128,18 @@ final class Settings: ObservableObject {
     /// Whether cleanup resolves spoken self-corrections ("at 2, actually 3").
     /// Only takes effect when AI cleanup runs (non-verbatim tone).
     @Published var backtrackEnabled: Bool = true {
+        didSet { if !isLoading { save() } }
+    }
+
+    /// Whether Auto mode honors the mode you last picked in a given app
+    /// (learned per bundle id). An explicit global mode selection still wins.
+    @Published var adaptiveModeEnabled: Bool = true {
+        didSet { if !isLoading { save() } }
+    }
+
+    /// Learned bundle id → mode UUID string, taught by picking a mode while an
+    /// app is frontmost. Consulted only when no explicit global mode is selected.
+    @Published var appModeOverrides: [String: String] = [:] {
         didSet { if !isLoading { save() } }
     }
 
@@ -160,6 +182,12 @@ final class Settings: ObservableObject {
 
     /// Whether spoken edits ("scratch that", "all caps that") fix the last dictation.
     @Published var voiceEditingEnabled: Bool = true {
+        didSet { if !isLoading { save() } }
+    }
+
+    /// Whether spoken app-control commands ("switch to email mode", "open
+    /// scratchpad", "new note") control Yappy instead of being dictated.
+    @Published var voiceControlEnabled: Bool = true {
         didSet { if !isLoading { save() } }
     }
 
@@ -213,8 +241,11 @@ final class Settings: ObservableObject {
         defaults.set(commandModeEnabled, forKey: Keys.commandModeEnabled)
         defaults.set(commandHotkeyOption.rawValue, forKey: Keys.commandHotkeyOption)
         defaults.set(autoTransformID, forKey: Keys.autoTransformID)
+        defaults.set(Array(dismissedSuggestions), forKey: Keys.dismissedSuggestions)
         defaults.set(contextAwareToneEnabled, forKey: Keys.contextAwareToneEnabled)
         defaults.set(backtrackEnabled, forKey: Keys.backtrackEnabled)
+        defaults.set(adaptiveModeEnabled, forKey: Keys.adaptiveModeEnabled)
+        defaults.set(appModeOverrides, forKey: Keys.appModeOverrides)
         defaults.set(customDictionaryEnabled, forKey: Keys.customDictionaryEnabled)
         defaults.set(numberFormattingEnabled, forKey: Keys.numberFormattingEnabled)
         defaults.set(numberedListsEnabled, forKey: Keys.numberedListsEnabled)
@@ -222,6 +253,7 @@ final class Settings: ObservableObject {
         defaults.set(spokenCommandsEnabled, forKey: Keys.spokenCommandsEnabled)
         defaults.set(spokenPunctuationEnabled, forKey: Keys.spokenPunctuationEnabled)
         defaults.set(voiceEditingEnabled, forKey: Keys.voiceEditingEnabled)
+        defaults.set(voiceControlEnabled, forKey: Keys.voiceControlEnabled)
         defaults.set(activeModeID, forKey: Keys.activeModeID)
         defaults.set(onboardingComplete, forKey: Keys.onboardingComplete)
 
@@ -274,6 +306,7 @@ final class Settings: ObservableObject {
         }
 
         autoTransformID = defaults.string(forKey: Keys.autoTransformID)
+        dismissedSuggestions = Set(defaults.stringArray(forKey: Keys.dismissedSuggestions) ?? [])
 
         if defaults.object(forKey: Keys.contextAwareToneEnabled) != nil {
             contextAwareToneEnabled = defaults.bool(forKey: Keys.contextAwareToneEnabled)
@@ -286,6 +319,14 @@ final class Settings: ObservableObject {
         } else {
             backtrackEnabled = true
         }
+
+        if defaults.object(forKey: Keys.adaptiveModeEnabled) != nil {
+            adaptiveModeEnabled = defaults.bool(forKey: Keys.adaptiveModeEnabled)
+        } else {
+            adaptiveModeEnabled = true
+        }
+
+        appModeOverrides = defaults.dictionary(forKey: Keys.appModeOverrides) as? [String: String] ?? [:]
 
         if defaults.object(forKey: Keys.customDictionaryEnabled) != nil {
             customDictionaryEnabled = defaults.bool(forKey: Keys.customDictionaryEnabled)
@@ -329,6 +370,12 @@ final class Settings: ObservableObject {
             voiceEditingEnabled = true
         }
 
+        if defaults.object(forKey: Keys.voiceControlEnabled) != nil {
+            voiceControlEnabled = defaults.bool(forKey: Keys.voiceControlEnabled)
+        } else {
+            voiceControlEnabled = true
+        }
+
         activeModeID = defaults.string(forKey: Keys.activeModeID)
 
         onboardingComplete = defaults.bool(forKey: Keys.onboardingComplete)
@@ -358,8 +405,11 @@ final class Settings: ObservableObject {
         commandModeEnabled = true
         commandHotkeyOption = .rightOptionHold
         autoTransformID = nil
+        dismissedSuggestions = []
         contextAwareToneEnabled = true
         backtrackEnabled = true
+        adaptiveModeEnabled = true
+        appModeOverrides = [:]
         toneOverrides = [:]
         customDictionaryEnabled = true
         numberFormattingEnabled = true
@@ -368,6 +418,7 @@ final class Settings: ObservableObject {
         spokenCommandsEnabled = true
         spokenPunctuationEnabled = true
         voiceEditingEnabled = true
+        voiceControlEnabled = true
         activeModeID = nil
         // onboardingComplete intentionally not reset — it tracks lifetime state.
 
@@ -375,10 +426,12 @@ final class Settings: ObservableObject {
             Keys.hotkeyOption, Keys.launchAtLogin, Keys.cleanupEnabled,
             Keys.audioFeedbackEnabled, Keys.audioFeedbackVolume, Keys.lmStudioModelID,
             Keys.lmStudioBaseURL, Keys.commandModeEnabled, Keys.commandHotkeyOption, Keys.autoTransformID,
-            Keys.contextAwareToneEnabled, Keys.backtrackEnabled, Keys.toneOverrides, Keys.customDictionaryEnabled,
+            Keys.dismissedSuggestions,
+            Keys.contextAwareToneEnabled, Keys.backtrackEnabled, Keys.adaptiveModeEnabled,
+            Keys.appModeOverrides, Keys.toneOverrides, Keys.customDictionaryEnabled,
             Keys.numberFormattingEnabled, Keys.numberedListsEnabled, Keys.fillerRemovalEnabled,
             Keys.spokenCommandsEnabled, Keys.spokenPunctuationEnabled,
-            Keys.voiceEditingEnabled, Keys.activeModeID,
+            Keys.voiceEditingEnabled, Keys.voiceControlEnabled, Keys.activeModeID,
         ] {
             defaults.removeObject(forKey: key)
         }

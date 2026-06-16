@@ -89,13 +89,26 @@ struct Mode: Identifiable, Codable, Equatable {
 /// Picks the mode in effect for a dictation, given the active selection and the
 /// frontmost app's category. Pure and unit-tested.
 enum ModeResolver {
+    /// Convenience overload for callers without a learned per-app mode.
     static func resolve(activeID: UUID?, in modes: [Mode], forCategory category: AppCategory) -> Mode {
+        resolve(activeID: activeID, learnedModeID: nil, in: modes, forCategory: category)
+    }
+
+    /// Precedence: an explicit global selection wins; otherwise (on Auto) a
+    /// learned per-app mode; otherwise an auto-trigger match for the app's
+    /// category; otherwise the Auto mode.
+    static func resolve(
+        activeID: UUID?, learnedModeID: UUID?, in modes: [Mode], forCategory category: AppCategory
+    ) -> Mode {
         // An explicitly-selected custom mode always wins.
         if let activeID, let active = modes.first(where: { $0.id == activeID }), !active.isAuto {
             return active
         }
-        // Auto (or an unknown selection): fall back to an auto-trigger match for
-        // this app category, otherwise the Auto mode itself.
+        // On Auto: a mode the user previously taught for this specific app.
+        if let learnedModeID, let learned = modes.first(where: { $0.id == learnedModeID }), !learned.isAuto {
+            return learned
+        }
+        // Otherwise: an auto-trigger match for this app category, else Auto.
         if let match = modes.first(where: { !$0.isAuto && $0.autoTriggerCategory == category }) {
             return match
         }

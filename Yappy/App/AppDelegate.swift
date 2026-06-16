@@ -70,6 +70,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var pendingCommandSelection: String?
     /// Bundle id of the app that had focus when the current session started.
     private var sessionBundleID: String?
+    /// Most recently activated app other than Yappy — the app you were in when
+    /// you pick a mode from the menu bar (used by adaptive per-app modes).
+    private var lastActiveBundleID: String?
     /// Mode resolved at the start of the current session.
     private var sessionMode: Mode = .auto
 
@@ -111,7 +114,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } else {
             showOnboarding()
         }
+
+        // Track the frontmost app so adaptive modes can learn per-app preferences.
+        if let front = NSWorkspace.shared.frontmostApplication?.bundleIdentifier,
+           front != Bundle.main.bundleIdentifier {
+            lastActiveBundleID = front
+        }
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self, selector: #selector(appDidActivate(_:)),
+            name: NSWorkspace.didActivateApplicationNotification, object: nil)
+
         startHotkeyMonitoring()
+    }
+
+    @objc private func appDidActivate(_ note: Notification) {
+        guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+              let bundle = app.bundleIdentifier, bundle != Bundle.main.bundleIdentifier else { return }
+        lastActiveBundleID = bundle
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
@@ -264,6 +283,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     return
                 }
 
+                // A spoken app-control command ("switch to email mode", "open
+                // scratchpad", "new note") runs as its own utterance — never inserted.
+                if self.settings.voiceControlEnabled,
+                   let control = VoiceControlCommandParser.parse(raw, modes: self.modeStore.modes) {
+                    self.applyVoiceControl(control)
+                    self.playSuccessFeedback()
+                    self.appState.reset()
+                    self.pillController.hide()
+                    return
+                }
+
                 // The session mode dictates cleanup/formatting; Auto defers to the
                 // global settings + per-app tone (byte-identical to no modes).
                 let mode = self.sessionMode
@@ -335,12 +365,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// Executes a spoken app-control command (runs on the main actor — the
+    /// caller's transcription Task is `@MainActor`).
+    private func applyVoiceControl(_ command: VoiceControlCommand) {
+        switch command {
+        case .switchToMode(let id):
+            settings.activeModeID = id.uuidString
+        case .selectAutoMode:
+            settings.activeModeID = nil
+        case .openScratchpad:
+            scratchpadController.show()
+        case .newNote:
+            notesStore.create()
+            scratchpadController.show()
+        }
+    }
+
     /// The mode in effect for a session: the explicit selection, or an
     /// auto-trigger match for the frontmost app's category, else Auto.
     private func resolvedMode(forBundleID bundleID: String?) -> Mode {
         let category = AppContextClassifier.category(forBundleID: bundleID)
         let activeID = settings.activeModeID.flatMap { UUID(uuidString: $0) }
-        return ModeResolver.resolve(activeID: activeID, in: modeStore.modes, forCategory: category)
+        let learnedID: UUID? = settings.adaptiveModeEnabled
+            ? bundleID.flatMap { settings.appModeOverrides[$0] }.flatMap { UUID(uuidString: $0) }
+            : nil
+        return ModeResolver.resolve(
+            activeID: activeID, learnedModeID: learnedID, in: modeStore.modes, forCategory: category)
     }
 
     /// Effective cleanup tone for the destination app (Auto = category default).
@@ -587,8 +637,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func selectMode(_ sender: NSMenuItem) {
         guard let raw = sender.representedObject as? String else { return }
+        let isAuto = (raw == Mode.autoID.uuidString)
         // Selecting Auto clears the explicit selection.
-        settings.activeModeID = (raw == Mode.autoID.uuidString) ? nil : raw
+        settings.activeModeID = isAuto ? nil : raw
+        // Teach the app you were just in this mode, so Auto applies it there later.
+        if settings.adaptiveModeEnabled, !isAuto, let bundle = lastActiveBundleID {
+            settings.appModeOverrides[bundle] = raw
+        }
     }
 
     /// Rebuilds the Transforms submenu from the enabled transforms.

@@ -49,7 +49,7 @@ Build dictation **modes** for different contexts — and teach Yappy the names a
 <img src="Documentation/assets/dictionary.png" alt="Yappy custom dictionary, showing the spellings it learned to correct" width="560">
 </div>
 
-Everything is configurable in one place — hotkey, sounds, number formatting, numbered lists, filler removal, spoken commands, spoken punctuation, voice editing, Command Mode, Transforms, optional AI cleanup (with self-correction), and permissions.
+Everything is configurable in one place — hotkey, sounds, number formatting, numbered lists, filler removal, spoken commands, spoken punctuation, voice editing, voice commands, Command Mode, Transforms, adaptive per-app modes, optional AI cleanup (with self-correction), and permissions.
 
 <div align="center">
 <img src="Documentation/assets/settings.png" alt="Yappy settings — hotkey, sounds, number formatting, filler removal, spoken commands, and voice editing" width="560">
@@ -77,9 +77,13 @@ Everything is configurable in one place — hotkey, sounds, number formatting, n
 
 **Voice editing** — fix what you just said, hands-free: *"scratch that"* undoes the last insertion, *"delete the last word"* trims it, *"all caps that"* / *"capitalize that"* recases it. It only fires on a whole-utterance command (so *"scratch that idea"* stays prose) and won't delete the wrong thing if your cursor has moved on.
 
-**Dictation modes** — named profiles (Email, Code, Journal…) that bundle tone, AI-cleanup, formatting, and an extra vocabulary. Switch from the menu bar, or let a mode activate itself automatically for a kind of app. The built-in *Auto* mode just follows your global settings.
+**Voice commands** — drive the app by voice, spoken as their own utterance: *"switch to email mode"*, *"open scratchpad"*, *"new note."* Exact-match only (like voice editing), so a real dictation is never swallowed. A toggle.
+
+**Dictation modes** — named profiles (Email, Code, Journal…) that bundle tone, AI-cleanup, formatting, and an extra vocabulary. Switch from the menu bar, or let a mode activate itself automatically for a kind of app. The built-in *Auto* mode follows your global settings — and, optionally, **learns**: it remembers the mode you last picked in each app and reapplies it there (an explicit pick still wins everywhere until you switch back to Auto).
 
 **Voice shortcuts** — say a cue and Yappy expands it to canned text: an email signature, a calendar link, a block of boilerplate.
+
+**Smart suggestions** — Yappy notices phrases you dictate over and over and offers, right on the home screen, to turn them into a shortcut — one click to add, or dismiss. Drawn entirely from your local history.
 
 **Scratchpad** — a floating notepad a keystroke away (**⌥⇧S**), always on top like a sticky note. Jot or dictate into it without leaving whatever app you're in; notes are kept locally with a simple sidebar, and sync nowhere.
 
@@ -170,7 +174,7 @@ If LM Studio isn't reachable, dictation degrades gracefully: the raw transcript 
 xcodebuild -project Yappy.xcodeproj -scheme Yappy test
 ```
 
-Covers the hotkey state machine, settings persistence and migration, the transcript pipeline (numbers, lists, spoken punctuation), the custom dictionary and its built-in dev terms, transforms and notes stores, AI-cleanup prompt assembly, dictation history and stats, voice-shortcut expansion, and app-context classification.
+Covers the hotkey state machine, settings persistence and migration, the transcript pipeline (numbers, lists, spoken punctuation), the custom dictionary and its built-in dev terms, transforms and notes stores, AI-cleanup prompt assembly, history-based shortcut suggestions, voice-command parsing, adaptive per-app mode resolution, dictation history and stats, voice-shortcut expansion, and app-context classification.
 
 ## Built with
 

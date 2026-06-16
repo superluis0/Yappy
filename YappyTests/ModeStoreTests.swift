@@ -102,4 +102,41 @@ final class ModeStoreTests: XCTestCase {
         let resolved = ModeResolver.resolve(activeID: nil, in: [.auto], forCategory: .other)
         XCTAssertTrue(resolved.isAuto)
     }
+
+    // MARK: - Adaptive (learned per-app) resolution
+
+    func testLearnedModeAppliesWhenOnAuto() {
+        let code = Mode(name: "Code", autoTriggerCategory: .code)
+        let email = Mode(name: "Email")
+        let modes: [Mode] = [.auto, code, email]
+        let resolved = ModeResolver.resolve(
+            activeID: nil, learnedModeID: email.id, in: modes, forCategory: .code)
+        XCTAssertEqual(resolved.id, email.id, "On Auto, a learned per-app mode should apply")
+    }
+
+    func testExplicitSelectionBeatsLearnedMode() {
+        let code = Mode(name: "Code")
+        let email = Mode(name: "Email")
+        let modes: [Mode] = [.auto, code, email]
+        let resolved = ModeResolver.resolve(
+            activeID: code.id, learnedModeID: email.id, in: modes, forCategory: .other)
+        XCTAssertEqual(resolved.id, code.id, "An explicit global selection outranks a learned mode")
+    }
+
+    func testLearnedModeBeatsCategoryAutoTrigger() {
+        let emailAuto = Mode(name: "EmailAuto", autoTriggerCategory: .email)
+        let casual = Mode(name: "Casual")
+        let modes: [Mode] = [.auto, emailAuto, casual]
+        let resolved = ModeResolver.resolve(
+            activeID: nil, learnedModeID: casual.id, in: modes, forCategory: .email)
+        XCTAssertEqual(resolved.id, casual.id, "Learned mode outranks a category auto-trigger")
+    }
+
+    func testNilLearnedFallsBackToCategory() {
+        let email = Mode(name: "Email", autoTriggerCategory: .email)
+        let modes: [Mode] = [.auto, email]
+        let resolved = ModeResolver.resolve(
+            activeID: nil, learnedModeID: nil, in: modes, forCategory: .email)
+        XCTAssertEqual(resolved.id, email.id)
+    }
 }

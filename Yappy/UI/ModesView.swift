@@ -29,6 +29,8 @@ struct ModesView: View {
                 }
                 .buttonStyle(.borderless)
                 .padding(.top, 4)
+
+                adaptiveSection
             }
             .padding(24)
         }
@@ -101,6 +103,54 @@ struct ModesView: View {
             parts.append("auto for \(category.displayName)")
         }
         return parts.joined(separator: " \u{00b7} ")
+    }
+
+    // MARK: - Adaptive per-app modes
+
+    @ViewBuilder
+    private var adaptiveSection: some View {
+        Divider().padding(.vertical, 8)
+        Toggle("Adapt to the app I'm using", isOn: $settings.adaptiveModeEnabled)
+        Text("When you're on Auto, Yappy uses the mode you last picked while in a given app. An explicit mode selection still applies everywhere until you switch back to Auto.")
+            .font(.caption).foregroundStyle(.secondary)
+
+        if settings.adaptiveModeEnabled {
+            let learned = settings.appModeOverrides.compactMap { pair -> (bundle: String, mode: Mode)? in
+                guard let mode = store.modes.first(where: { $0.id.uuidString == pair.value }) else { return nil }
+                return (pair.key, mode)
+            }.sorted { $0.bundle < $1.bundle }
+
+            if learned.isEmpty {
+                Text("No per-app modes learned yet — pick a mode from the menu bar while using an app.")
+                    .font(.caption).foregroundStyle(.tertiary).padding(.top, 2)
+            } else {
+                ForEach(learned, id: \.bundle) { item in
+                    HStack(spacing: 6) {
+                        Text(appName(for: item.bundle))
+                        Image(systemName: "arrow.right").font(.caption2).foregroundStyle(.tertiary)
+                        Text(item.mode.name).foregroundStyle(.secondary)
+                        Spacer()
+                        Button {
+                            settings.appModeOverrides.removeValue(forKey: item.bundle)
+                        } label: {
+                            Image(systemName: "xmark.circle.fill").foregroundStyle(.tertiary)
+                        }
+                        .buttonStyle(.borderless)
+                        .help("Forget this app's mode")
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
+        }
+    }
+
+    /// Best-effort friendly app name for a bundle id; falls back to the id itself.
+    private func appName(for bundleID: String) -> String {
+        if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) {
+            return FileManager.default.displayName(atPath: url.path)
+                .replacingOccurrences(of: ".app", with: "")
+        }
+        return bundleID
     }
 }
 

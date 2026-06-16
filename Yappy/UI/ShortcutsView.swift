@@ -150,8 +150,9 @@ struct ShortcutsView: View {
     }
 }
 
-/// Add/edit sheet for a single shortcut.
-private struct ShortcutEditor: View {
+/// Add/edit sheet for a single shortcut. Also reused by the Home "Suggestions"
+/// card to turn a repeated dictation into a shortcut.
+struct ShortcutEditor: View {
     let shortcut: VoiceShortcut?
     let onSave: (VoiceShortcut) -> Void
 

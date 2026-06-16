@@ -53,7 +53,7 @@ struct MainWindowView: View {
         } detail: {
             switch selection {
             case .home:
-                HomeView(history: history, settings: settings)
+                HomeView(history: history, settings: settings, shortcutStore: shortcutStore)
             case .shortcuts:
                 ShortcutsView(store: shortcutStore)
             case .dictionary:
