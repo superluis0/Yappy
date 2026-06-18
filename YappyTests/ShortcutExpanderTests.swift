@@ -23,6 +23,19 @@ final class ShortcutExpanderTests: XCTestCase {
         XCTAssertEqual(exp.expand("  MY EMAIL!  "), "me@example.com")
     }
 
+    func testWholeUtteranceExpansionDetected() {
+        // Used by the verbatim-insert path (no cleanup, no leading space).
+        let exp = expander([VoiceShortcut(trigger: "insert signature", expansion: "Best,\nLuis")])
+        XCTAssertEqual(exp.wholeUtteranceExpansion(for: "Insert signature."), "Best,\nLuis")
+        XCTAssertEqual(exp.wholeUtteranceExpansion(for: "  insert signature  "), "Best,\nLuis")
+    }
+
+    func testWholeUtteranceExpansionNilForInlineOrUnknown() {
+        let exp = expander([VoiceShortcut(trigger: "my email", expansion: "me@example.com")])
+        XCTAssertNil(exp.wholeUtteranceExpansion(for: "reach me at my email please"))
+        XCTAssertNil(exp.wholeUtteranceExpansion(for: "something else"))
+    }
+
     func testInlineReplacement() {
         let exp = expander([VoiceShortcut(trigger: "my email", expansion: "me@example.com")])
         XCTAssertEqual(exp.expand("Reach me at my email please"),

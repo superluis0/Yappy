@@ -45,7 +45,9 @@ final class TextInserter {
 
     // MARK: - Public
 
-    func insert(text: String) throws {
+    /// - Parameter allowLeadingSpace: when false, never prepends a separating
+    ///   space (e.g. canned shortcut text the user wants inserted verbatim).
+    func insert(text: String, allowLeadingSpace: Bool = true) throws {
         guard !text.isEmpty else { return }
         guard AXIsProcessTrusted() else {
             throw InsertionError.accessibilityPermissionDenied
@@ -54,7 +56,7 @@ final class TextInserter {
         // Each transcript is trimmed, so a second dictation would otherwise land
         // flush against the previous word ("box.that"). Add a separating space
         // when the cursor sits right after a word.
-        let payload = needsLeadingSpace(before: text) ? " " + text : text
+        let payload = (allowLeadingSpace && needsLeadingSpace(before: text)) ? " " + text : text
         recordInsertion(of: payload)
         try pasteText(payload)
     }

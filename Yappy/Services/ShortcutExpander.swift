@@ -16,14 +16,20 @@ struct ShortcutExpander {
         self.shortcuts = shortcuts.filter { $0.enabled && !$0.trigger.trimmingCharacters(in: .whitespaces).isEmpty }
     }
 
+    /// The expansion when the entire transcript is just a trigger (so the caller
+    /// can insert it verbatim — no cleanup, no leading space). Nil otherwise.
+    func wholeUtteranceExpansion(for text: String) -> String? {
+        guard !shortcuts.isEmpty else { return nil }
+        let normalizedInput = Self.normalize(text)
+        return shortcuts.first(where: { Self.normalize($0.trigger) == normalizedInput })?.expansion
+    }
+
     func expand(_ text: String) -> String {
         guard !shortcuts.isEmpty else { return text }
 
-        let normalizedInput = Self.normalize(text)
-
         // Whole-utterance match wins and replaces everything.
-        if let match = shortcuts.first(where: { Self.normalize($0.trigger) == normalizedInput }) {
-            return match.expansion
+        if let whole = wholeUtteranceExpansion(for: text) {
+            return whole
         }
 
         // Inline: replace each trigger phrase where it appears as a whole phrase.

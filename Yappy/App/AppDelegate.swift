@@ -318,7 +318,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 let corrected = self.settings.customDictionaryEnabled
                     ? self.dictionaryReplacer.apply(cleaned)
                     : cleaned
-                let expanded = ShortcutExpander(shortcuts: self.shortcutStore.shortcuts).expand(corrected)
+                // A shortcut dictated on its own is canned text — insert it
+                // exactly: bypass cleanup/formatting and the leading-space
+                // heuristic, so e.g. a signature lands verbatim with no stray
+                // space before the first letter.
+                let expander = ShortcutExpander(shortcuts: self.shortcutStore.shortcuts)
+                if let canned = expander.wholeUtteranceExpansion(for: corrected) {
+                    if !canned.isEmpty {
+                        try self.textInserter.insert(text: canned, allowLeadingSpace: false)
+                        self.playSuccessFeedback()
+                        self.history.add(DictationEntry(
+                            text: canned, durationSeconds: duration,
+                            appName: targetAppName, bundleID: bundleID))
+                    }
+                    self.appState.setTranscription(canned)
+                    self.appState.reset()
+                    self.pillController.hide()
+                    return
+                }
+
+                let expanded = expander.expand(corrected)
                 let tone = mode.isAuto ? self.resolvedTone(forBundleID: bundleID) : mode.tone
                 let cleanupEnabled = mode.isAuto ? nil : (mode.cleanupEnabledOverride ?? self.settings.cleanupEnabled)
                 let text = await self.lmStudio.cleanup(
