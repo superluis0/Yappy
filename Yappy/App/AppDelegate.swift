@@ -124,6 +124,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self, selector: #selector(appDidActivate(_:)),
             name: NSWorkspace.didActivateApplicationNotification, object: nil)
 
+        // Build the recording pill now, while idle, so the first dictation shows
+        // it instantly instead of paying SwiftUI hosting-view construction.
+        DispatchQueue.main.async { [weak self] in self?.pillController.prewarm() }
+
         startHotkeyMonitoring()
     }
 
@@ -219,18 +223,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             showSetupWindowIfNotReady()
             return
         }
+        // Resolve context and show the pill FIRST, so visual feedback is instant
+        // on key-press; the slower audio-engine start runs right after, in the
+        // same tick. If the engine fails to start, tear the pill back down.
+        let frontApp = NSWorkspace.shared.frontmostApplication
+        sessionBundleID = frontApp?.bundleIdentifier
+        sessionMode = resolvedMode(forBundleID: sessionBundleID)
+        appState.startRecording(mode: .dictation)
+        pillController.show()
+
         guard audioRecorder.startRecording() else {
+            appState.reset()
+            pillController.hide()
             hotkeyManager.deactivate()
             return
         }
 
-        let frontApp = NSWorkspace.shared.frontmostApplication
-        sessionBundleID = frontApp?.bundleIdentifier
-        sessionMode = resolvedMode(forBundleID: sessionBundleID)
-
         recordingStartTime = Date()
-        appState.startRecording(mode: .dictation)
-        pillController.show()
         playFeedback(start: true)
         armMaxDurationTimer { [weak self] in self?.finishDictation() }
         escapeInterceptor.start()
@@ -447,15 +456,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
+        // Selection captured; show the pill before the audio-engine start so it
+        // appears immediately. The pill is non-activating, so focus is unaffected.
+        pendingCommandSelection = selection
+        appState.startRecording(mode: .command)
+        pillController.show()
+
         guard audioRecorder.startRecording() else {
+            pendingCommandSelection = nil
+            appState.reset()
+            pillController.hide()
             commandHotkeyManager.deactivate()
             return
         }
 
-        pendingCommandSelection = selection
         recordingStartTime = Date()
-        appState.startRecording(mode: .command)
-        pillController.show()
         playFeedback(start: true)
         armMaxDurationTimer { [weak self] in self?.finishCommand() }
         escapeInterceptor.start()

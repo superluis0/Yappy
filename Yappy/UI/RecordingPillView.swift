@@ -83,7 +83,7 @@ struct RecordingPillView: View {
         .frame(width: Constants.pillWidth, height: Constants.pillHeight)
         .scaleEffect(visible ? 1.0 : 0.8)
         .opacity(visible ? 1.0 : 0.0)
-        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: visible)
+        .animation(.spring(response: 0.22, dampingFraction: 0.82), value: visible)
         .animation(.easeInOut(duration: 0.15), value: appState.isRecording)
         // Fill the (larger) panel with a clear, non-interactive container so the
         // capsule is centered and its shadow fades into transparent margin

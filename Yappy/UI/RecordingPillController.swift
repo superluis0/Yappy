@@ -19,6 +19,13 @@ final class RecordingPillController {
 
     // MARK: - Visibility
 
+    /// Builds the panel ahead of time (without showing it) so the first recording
+    /// doesn't pay SwiftUI hosting-view construction at key-press. Call once, at
+    /// launch, off the hot path. Idempotent.
+    func prewarm() {
+        if panel == nil { panel = makePanel() }
+    }
+
     func show() {
         let panel = self.panel ?? makePanel()
         self.panel = panel
@@ -27,7 +34,7 @@ final class RecordingPillController {
         panel.orderFrontRegardless()
 
         NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.18
+            context.duration = 0.10
             panel.animator().alphaValue = 1
         }
     }
