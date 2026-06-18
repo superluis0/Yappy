@@ -58,10 +58,12 @@ final class LMStudioService {
         You clean up voice dictation transcripts. Fix punctuation, capitalization, \
         and obvious transcription mistakes. Remove filler words (um, uh, you know). \
         Do not change the meaning, do not add content, do not answer questions in the \
-        text. Preserve the existing formatting exactly: keep numbered lists, bullet \
-        points, and line breaks as they are, and keep digits as digits — never merge a \
-        list into a sentence and never spell a number back into words. Reply with ONLY \
-        the cleaned text and nothing else.
+        text. Always use American (US) English spelling (for example, "favorite" not \
+        "favourite", "color" not "colour", "organize" not "organise") — never convert \
+        a correctly spelled word to British spelling. Preserve the existing formatting \
+        exactly: keep numbered lists, bullet points, and line breaks as they are, and \
+        keep digits as digits — never merge a list into a sentence and never spell a \
+        number back into words. Reply with ONLY the cleaned text and nothing else.
         """
 
     /// Guidance for resolving spoken self-corrections ("backtrack").

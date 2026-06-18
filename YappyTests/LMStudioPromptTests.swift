@@ -27,4 +27,14 @@ final class LMStudioPromptTests: XCTestCase {
         let prompt = LMStudioService.cleanupPrompt(tone: .casual, backtrack: false)
         XCTAssertTrue(prompt.contains(ToneStyle.casual.promptGuidance))
     }
+
+    func testCleanupPromptPinsUSEnglishSpelling() {
+        // Without this, the local model intermittently "corrects" US spelling to
+        // British (favorite → favourite). The clause must be present for every tone.
+        for tone in [ToneStyle.formal, .casual, .excited] {
+            let prompt = LMStudioService.cleanupPrompt(tone: tone, backtrack: false).lowercased()
+            XCTAssertTrue(prompt.contains("american") && prompt.contains("spelling"),
+                          "Cleanup prompt should pin US English spelling (tone: \(tone))")
+        }
+    }
 }
