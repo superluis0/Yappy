@@ -123,10 +123,10 @@ Prefer to build it yourself? Requires Xcode 15+ and macOS 14+.
 ```bash
 git clone https://github.com/superluis0/Yappy.git
 cd Yappy
-xcodebuild -project Yappy.xcodeproj -scheme Yappy -configuration Release build
-cp -R ~/Library/Developer/Xcode/DerivedData/Yappy-*/Build/Products/Release/Yappy.app /Applications/
-open /Applications/Yappy.app
+open Yappy.xcodeproj
 ```
+
+Then press **Run** (⌘R) in Xcode — dependencies (FluidAudio) resolve automatically via Swift Package Manager on the first build.
 
 > **Tip:** if another FluidAudio app (such as VoiceInk) has already downloaded Parakeet, Yappy reuses it from `~/Library/Application Support/FluidAudio/Models/` — no second download.
 
