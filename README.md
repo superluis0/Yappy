@@ -103,16 +103,11 @@ Everything is configurable in one place — hotkey, sounds, number formatting, n
 
 The easiest way to run Yappy — no Xcode required. macOS 14+ (Apple Silicon recommended).
 
-1. Grab the latest **`Yappy.zip`** from the [**Releases**](https://github.com/superluis0/Yappy/releases/latest) page.
-2. Unzip it and drag **Yappy.app** into your **Applications** folder.
-3. The build is ad-hoc signed (not notarized), so on first launch macOS will say *"Apple cannot check it for malicious software."* Clear the download quarantine, then open it:
+1. Download the latest **`Yappy.dmg`** from the [**Releases**](https://github.com/superluis0/Yappy/releases/latest) page.
+2. Open the DMG and drag **Yappy** into your **Applications** folder.
+3. Double-click **Yappy** to launch it.
 
-   ```bash
-   xattr -dr com.apple.quarantine /Applications/Yappy.app
-   open /Applications/Yappy.app
-   ```
-
-   *(Prefer not to use the terminal? Open **System Settings → Privacy & Security**, scroll to the blocked-app notice, and click **Open Anyway**.)*
+Yappy is signed with an Apple Developer ID and notarized by Apple, so it opens cleanly — no "unidentified developer" or "cannot check it for malicious software" warnings, and no terminal workarounds.
 
 A short first-run flow walks you through the two permissions Yappy needs:
 
@@ -136,6 +131,8 @@ open /Applications/Yappy.app
 > **Tip:** if another FluidAudio app (such as VoiceInk) has already downloaded Parakeet, Yappy reuses it from `~/Library/Application Support/FluidAudio/Models/` — no second download.
 
 > **Maintainer shortcut:** `Scripts/rebuild-install.sh` rebuilds the Release app, verifies it's signed with the local "Yappy Local Signing" identity (so Microphone/Accessibility grants survive), and installs + relaunches it — refusing to install if the signature is wrong. Use `--test` to gate on the unit suite first, or `--build-only` to just verify a build. This requires the maintainer's local signing certificate.
+
+> **Cutting a public release:** `Scripts/release-dmg.sh` builds a Developer ID–signed, notarized, stapled `Yappy.dmg` into `dist/` (the download that opens with no Gatekeeper warnings), and with `--publish <tag>` uploads it to a GitHub Release. Needs a one-time `notarytool` keychain profile — run `Scripts/release-dmg.sh --help` for setup. Maintainer-only.
 
 ## Optional: AI cleanup with LM Studio
 

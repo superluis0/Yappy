@@ -18,6 +18,11 @@ build/
 *.ipa
 dSyms/
 
+# Release / distribution artifacts
+dist/
+*.dmg
+*.xcarchive
+
 # IDEs
 .idea/
 .vscode/
