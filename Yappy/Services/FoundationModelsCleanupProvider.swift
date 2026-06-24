@@ -5,9 +5,11 @@
 
 import Foundation
 
-// FoundationModels ships in the macOS 26 SDK and is weak-linked because the app's
-// deployment target is macOS 14. Every use is gated with @available / #available,
-// so its symbols are only touched on macOS 26+ where the framework is present.
+// FoundationModels ships in the macOS 26 SDK. Wrapped in #if canImport so the file
+// still compiles on older SDKs (e.g. CI on an older Xcode), where this provider
+// falls back to the stub below. On the macOS 26 SDK every use is additionally
+// @available / #available gated for the macOS 14 deployment target.
+#if canImport(FoundationModels)
 import FoundationModels
 
 // MARK: - FoundationModelsCleanupProvider
@@ -166,3 +168,17 @@ final class FoundationModelsCleanupProvider: CleanupProvider {
         retracted words.
         """
 }
+
+#else
+
+/// Fallback for SDKs without FoundationModels (e.g. CI on an older Xcode). Always
+/// reports unavailable, so `CleanupCoordinator` transparently uses another backend.
+final class FoundationModelsCleanupProvider: CleanupProvider {
+    var displayName: String { "Apple Intelligence" }
+    func isAvailable() async -> Bool { false }
+    func cleanup(_ text: String, tone: ToneStyle, backtrack: Bool) async -> String { text }
+    func runCommand(instruction: String, selection: String) async -> String? { nil }
+    func runTransform(prompt: String, text: String) async -> String? { nil }
+}
+
+#endif
