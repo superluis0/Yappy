@@ -232,6 +232,30 @@ notarize "$APP_ZIP"
 xcrun stapler staple "$APP" || die "Stapling the app failed."
 ok "App notarized and stapled."
 
+# ── 3b. Sparkle update channel: zip the stapled app and EdDSA-sign it ────
+# The app inside is already notarized + stapled, so the zip needs no separate
+# notarization (Gatekeeper validates the stapled app on launch). The signed zip
+# and the appcast are only published with --publish (step 5); a degraded run
+# here never blocks the DMG release.
+SIGN_UPDATE="$(find "$BUILD_DIR/dd" "$HOME/Library/Developer/Xcode/DerivedData" -path '*[Ss]parkle*/bin/sign_update' 2>/dev/null | head -1)"
+ZIP_OUT=""; ED_SIG=""; ED_LEN=""
+if [[ -n "$SIGN_UPDATE" && -x "$SIGN_UPDATE" ]]; then
+  ZIP_TMP="$BUILD_DIR/Yappy-$VERSION.zip"
+  ditto -c -k --sequesterRsrc --keepParent "$APP" "$ZIP_TMP"
+  SIG_LINE="$("$SIGN_UPDATE" "$ZIP_TMP" 2>/dev/null || true)"
+  ED_SIG="$(printf '%s' "$SIG_LINE" | sed -n 's/.*sparkle:edSignature="\([^"]*\)".*/\1/p')"
+  ED_LEN="$(printf '%s' "$SIG_LINE" | sed -n 's/.*length="\([^"]*\)".*/\1/p')"
+  if [[ -n "$ED_SIG" && -n "$ED_LEN" ]]; then
+    mkdir -p "$DIST_DIR"; ZIP_OUT="$DIST_DIR/Yappy-$VERSION.zip"
+    rm -f "$ZIP_OUT"; mv "$ZIP_TMP" "$ZIP_OUT"
+    ok "Sparkle update artifact signed (zip)."
+  else
+    log "Note: sign_update produced no signature — skipping the Sparkle update (DMG unaffected)."
+  fi
+else
+  log "Note: Sparkle sign_update tool not found — skipping the update channel (DMG unaffected)."
+fi
+
 # ── 4. Build, sign, notarize, staple the DMG ────────────────────────────
 DMG_TMP="$BUILD_DIR/Yappy-$VERSION.dmg"
 log "Building DMG…"
@@ -263,6 +287,36 @@ if [[ -n "$PUBLISH_TAG" ]]; then
       --notes "Download the DMG, drag Yappy to Applications, and open it. On first launch, grant Microphone and Accessibility in System Settings → Privacy & Security."
   fi
   ok "Published to GitHub Release $PUBLISH_TAG."
+
+  # Sparkle: upload the signed zip and refresh appcast.xml so existing installs
+  # auto-update to this version. The appcast is left as a working-tree change for
+  # you to review and commit (the script never commits on your behalf).
+  if [[ -n "$ZIP_OUT" && -n "$ED_SIG" ]]; then
+    gh release upload "$PUBLISH_TAG" "$ZIP_OUT" --clobber
+    PUBDATE="$(date -u "+%a, %d %b %Y %H:%M:%S +0000")"
+    ZIP_URL="https://github.com/superluis0/Yappy/releases/download/$PUBLISH_TAG/Yappy-$VERSION.zip"
+    cat > "$REPO_ROOT/appcast.xml" <<APPCAST
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <channel>
+    <title>Yappy</title>
+    <link>https://raw.githubusercontent.com/superluis0/Yappy/main/appcast.xml</link>
+    <description>Most recent updates to Yappy.</description>
+    <language>en</language>
+    <item>
+      <title>Version $VERSION</title>
+      <pubDate>$PUBDATE</pubDate>
+      <sparkle:version>$BUILD_NUMBER</sparkle:version>
+      <sparkle:shortVersionString>$VERSION</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <enclosure url="$ZIP_URL" sparkle:edSignature="$ED_SIG" length="$ED_LEN" type="application/zip" />
+    </item>
+  </channel>
+</rss>
+APPCAST
+    ok "Sparkle update uploaded; appcast.xml updated for $VERSION."
+    log "Commit the feed so installs see it:  git add appcast.xml && git commit -m \"Appcast $PUBLISH_TAG\" && git push"
+  fi
 fi
 
 echo
@@ -271,3 +325,4 @@ printf '   version:  %s (build %s)\n' "$VERSION" "$BUILD_NUMBER"
 printf '   dmg:      %s\n' "$OUT_DMG"
 printf '   signed:   %s\n' "$DEV_ID"
 printf '   notarized + stapled (app and dmg).\n'
+[[ -n "$ZIP_OUT" ]] && printf '   update:   %s (Sparkle EdDSA-signed)\n' "$ZIP_OUT"

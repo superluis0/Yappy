@@ -69,11 +69,15 @@ Everything is configurable in one place — hotkey, sounds, number formatting, n
 
 **Spoken punctuation** — dictate the marks you want: *"comma"*, *"period"*, *"question mark"*, *"open paren … close paren."* It matches whole words only, so plurals and embedded words are safe — and it's a toggle if you'd rather say those words literally.
 
-**Command Mode** — select text anywhere, hold the command hotkey, and speak an instruction: *"make this concise"*, *"translate to Spanish"*, *"turn this into a bulleted list."* The selection is rewritten in place. Powered by a local LM Studio model; if it isn't running, your text is left untouched.
+**Command Mode** — select text anywhere, hold the command hotkey, and speak an instruction: *"make this concise"*, *"translate to Spanish"*, *"turn this into a bulleted list."* The selection is rewritten in place. Powered by on-device **Apple Intelligence** (macOS 26+) or a local **LM Studio** model; if neither is available, your text is left untouched.
 
 **Backtrack** — change your mind mid-sentence and Yappy keeps the correction: *"let's meet at 2, actually 3"* lands as *"Let's meet at 3."* Part of the optional AI cleanup, so it rides along with whatever else cleanup is doing.
 
-**Transforms** — reusable AI rewrites of selected text. Two ship built in — **Polish** (tighten for clarity) and **Prompt Engineer** (restructure into a clean AI prompt) — and you can add your own. Run one from the menu bar on any selection, or set one to run automatically after every dictation. Powered by your local LM Studio model.
+**Transforms** — reusable AI rewrites of selected text. Two ship built in — **Polish** (tighten for clarity) and **Prompt Engineer** (restructure into a clean AI prompt) — and you can add your own. Run one from the menu bar on any selection, or set one to run automatically after every dictation. Powered by on-device Apple Intelligence or your local LM Studio model.
+
+**On-device AI cleanup** — polish transcripts with a local model that fixes punctuation, capitalization, and filler. Choose the engine in Settings: **Apple Intelligence** (fully on-device, macOS 26+, nothing to install), a local **LM Studio** model, or **Automatic** (Apple Intelligence when available, otherwise LM Studio). The same engine powers Command Mode, Transforms, and backtrack.
+
+**Automatic updates** — Yappy keeps itself current in the background via [Sparkle](https://sparkle-project.org), with EdDSA-signed releases verified before they're applied. Check manually any time from the menu bar.
 
 **Voice editing** — fix what you just said, hands-free: *"scratch that"* undoes the last insertion, *"delete the last word"* trims it, *"all caps that"* / *"capitalize that"* recases it. It only fires on a whole-utterance command (so *"scratch that idea"* stays prose) and won't delete the wrong thing if your cursor has moved on.
 
@@ -134,14 +138,15 @@ Then press **Run** (⌘R) in Xcode — dependencies (FluidAudio) resolve automat
 
 > **Cutting a public release:** `Scripts/release-dmg.sh` builds a Developer ID–signed, notarized, stapled `Yappy.dmg` into `dist/` (the download that opens with no Gatekeeper warnings), and with `--publish <tag>` uploads it to a GitHub Release. Needs a one-time `notarytool` keychain profile — run `Scripts/release-dmg.sh --help` for setup. Maintainer-only.
 
-## Optional: AI cleanup with LM Studio
+## AI cleanup: on-device or LM Studio
 
-Yappy can tidy up filler words and punctuation, and power Command Mode, using a model you run locally in [LM Studio](https://lmstudio.ai) — entirely offline, no API keys.
+Yappy can tidy up filler words, punctuation, and phrasing — and power Command Mode and Transforms — with a local LLM. Enable **AI Cleanup** under Settings and pick the **engine**:
 
-1. Open LM Studio, load a model, and start its local server (default `http://localhost:1234`).
-2. In Yappy → Settings, enable **AI Cleanup** and pick the model.
+- **Apple Intelligence** *(macOS 26+, recommended)* — fully on-device via Apple's Foundation Models. Nothing to install; just turn on Apple Intelligence in System Settings.
+- **LM Studio** — a model you run locally in [LM Studio](https://lmstudio.ai) (start its server, default `http://localhost:1234`). Works on any supported macOS.
+- **Automatic** — uses Apple Intelligence when it's available, otherwise falls back to LM Studio.
 
-If LM Studio isn't reachable, dictation degrades gracefully: the raw transcript is inserted and nothing breaks.
+Everything stays on your machine — no API keys, no cloud. Cleanup degrades gracefully: if no engine is available, the raw transcript is inserted and nothing breaks.
 
 ## Privacy
 

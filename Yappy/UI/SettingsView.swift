@@ -17,6 +17,26 @@ struct SettingsView: View {
     @State private var microphoneGranted = AudioRecorder.hasPermission
     @State private var accessibilityGranted = AXIsProcessTrusted()
 
+    /// LM Studio server config only matters when LM Studio can actually run a
+    /// request — i.e. the user picked it, or picked Automatic (which falls back to it).
+    private var usesLMStudio: Bool {
+        settings.cleanupBackend == .lmStudio || settings.cleanupBackend == .automatic
+    }
+
+    /// One-line explanation of the selected cleanup engine.
+    private var cleanupBackendHint: String {
+        switch settings.cleanupBackend {
+        case .automatic:
+            return "Uses Apple Intelligence when available, otherwise your LM Studio server."
+        case .appleIntelligence:
+            return "On-device Apple Intelligence — requires macOS 26+ with Apple Intelligence enabled."
+        case .builtIn:
+            return "A small model bundled with Yappy — no setup required."
+        case .lmStudio:
+            return "A model you run locally in LM Studio."
+        }
+    }
+
     var body: some View {
         Form {
             Section("Dictation") {
@@ -95,6 +115,20 @@ struct SettingsView: View {
                 Toggle("Clean up transcripts with a local AI model", isOn: $settings.cleanupEnabled)
 
                 if settings.cleanupEnabled {
+                    Picker("Engine", selection: $settings.cleanupBackend) {
+                        Text(CleanupBackend.automatic.displayName).tag(CleanupBackend.automatic)
+                        Text(CleanupBackend.appleIntelligence.displayName).tag(CleanupBackend.appleIntelligence)
+                        Text(CleanupBackend.lmStudio.displayName).tag(CleanupBackend.lmStudio)
+                        // .builtIn (MLX) is intentionally omitted until that backend ships.
+                    }
+                    .listRowBackground(Color.accentColor.opacity(0.04))
+
+                    Text(cleanupBackendHint)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .listRowBackground(Color.accentColor.opacity(0.04))
+
+                    if usesLMStudio {
                     LabeledContent("Status") {
                         switch lmStudioReachable {
                         case .some(true):
@@ -131,6 +165,7 @@ struct SettingsView: View {
                     TextField("Server URL", text: $settings.lmStudioBaseURL)
                         .textFieldStyle(.roundedBorder)
                         .listRowBackground(Color.accentColor.opacity(0.04))
+                    }
 
                     Toggle("Adapt tone to the app I'm typing in", isOn: $settings.contextAwareToneEnabled)
                         .listRowBackground(Color.accentColor.opacity(0.04))
@@ -154,7 +189,7 @@ struct SettingsView: View {
                         .listRowBackground(Color.accentColor.opacity(0.04))
                 }
             } header: {
-                Text("AI Cleanup (LM Studio)")
+                Text("AI Cleanup")
             } footer: {
                 Text("Requires LM Studio running locally with its server enabled. If it isn't available, the raw transcript is inserted — dictation never breaks.")
                     .font(.caption)
@@ -175,7 +210,7 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .task(id: settings.cleanupEnabled) {
+        .task(id: "\(settings.cleanupEnabled)-\(settings.cleanupBackend.rawValue)") {
             await refreshLMStudio()
         }
         .onReceive(NotificationCenter.default.publisher(

@@ -18,6 +18,24 @@ enum HotkeyOption: String, CaseIterable, Codable {
     }
 }
 
+/// Which backend runs AI cleanup, Command Mode, and Transforms. `automatic`
+/// prefers an on-device model when available, then falls back to LM Studio.
+enum CleanupBackend: String, CaseIterable, Codable {
+    case automatic
+    case appleIntelligence
+    case builtIn
+    case lmStudio
+
+    var displayName: String {
+        switch self {
+        case .automatic: return "Automatic"
+        case .appleIntelligence: return "Apple Intelligence"
+        case .builtIn: return "Built-in model"
+        case .lmStudio: return "LM Studio"
+        }
+    }
+}
+
 /// Application settings with UserDefaults persistence.
 /// Fully local — no API keys. The optional LLM cleanup talks to LM Studio on localhost.
 final class Settings: ObservableObject {
@@ -27,6 +45,7 @@ final class Settings: ObservableObject {
         static let hotkeyOption = "com.yappy.hotkeyOption"
         static let launchAtLogin = "com.yappy.launchAtLogin"
         static let cleanupEnabled = "com.yappy.cleanupEnabled"
+        static let cleanupBackend = "com.yappy.cleanupBackend"
         static let audioFeedbackEnabled = "com.yappy.audioFeedbackEnabled"
         static let audioFeedbackVolume = "com.yappy.audioFeedbackVolume"
         static let lmStudioModelID = "com.yappy.lmStudioModelID"
@@ -76,6 +95,11 @@ final class Settings: ObservableObject {
 
     /// Whether to clean up transcripts with a local LM Studio model. Off by default.
     @Published var cleanupEnabled: Bool = false {
+        didSet { if !isLoading { save() } }
+    }
+
+    /// Which backend performs AI cleanup / Command Mode / Transforms.
+    @Published var cleanupBackend: CleanupBackend = .automatic {
         didSet { if !isLoading { save() } }
     }
 
@@ -234,6 +258,7 @@ final class Settings: ObservableObject {
         defaults.set(hotkeyOption.rawValue, forKey: Keys.hotkeyOption)
         defaults.set(launchAtLogin, forKey: Keys.launchAtLogin)
         defaults.set(cleanupEnabled, forKey: Keys.cleanupEnabled)
+        defaults.set(cleanupBackend.rawValue, forKey: Keys.cleanupBackend)
         defaults.set(audioFeedbackEnabled, forKey: Keys.audioFeedbackEnabled)
         defaults.set(audioFeedbackVolume, forKey: Keys.audioFeedbackVolume)
         defaults.set(lmStudioModelID, forKey: Keys.lmStudioModelID)
@@ -273,6 +298,10 @@ final class Settings: ObservableObject {
 
         launchAtLogin = defaults.bool(forKey: Keys.launchAtLogin)
         cleanupEnabled = defaults.bool(forKey: Keys.cleanupEnabled)
+        if let raw = defaults.string(forKey: Keys.cleanupBackend),
+           let backend = CleanupBackend(rawValue: raw) {
+            cleanupBackend = backend
+        }
 
         if defaults.object(forKey: Keys.audioFeedbackEnabled) != nil {
             audioFeedbackEnabled = defaults.bool(forKey: Keys.audioFeedbackEnabled)
@@ -398,6 +427,7 @@ final class Settings: ObservableObject {
         hotkeyOption = .rightCommandHold
         launchAtLogin = false
         cleanupEnabled = false
+        cleanupBackend = .automatic
         audioFeedbackEnabled = true
         audioFeedbackVolume = 0.5
         lmStudioModelID = nil

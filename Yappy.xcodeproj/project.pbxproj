@@ -33,6 +33,8 @@
 		B100000700000000000000A1 /* HistoryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200000700000000000000A1 /* HistoryStore.swift */; };
 		B100000800000000000000A1 /* ParakeetTranscriptionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200000800000000000000A1 /* ParakeetTranscriptionService.swift */; };
 		B100000900000000000000A1 /* LMStudioService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200000900000000000000A1 /* LMStudioService.swift */; };
+		B100009200000000000000A1 /* CleanupCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200009200000000000000A1 /* CleanupCoordinator.swift */; };
+		B100009300000000000000A1 /* FoundationModelsCleanupProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200009300000000000000A1 /* FoundationModelsCleanupProvider.swift */; };
 		B100000A00000000000000A1 /* HotkeyManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200000A00000000000000A1 /* HotkeyManager.swift */; };
 		B100000B00000000000000A1 /* TextInserter.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200000B00000000000000A1 /* TextInserter.swift */; };
 		B100000C00000000000000A1 /* RecordingPillController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200000C00000000000000A1 /* RecordingPillController.swift */; };
@@ -92,6 +94,7 @@
 		B100002700000000000000A1 /* ShortcutStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200002700000000000000A1 /* ShortcutStoreTests.swift */; };
 		B100001200000000000000A1 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B200001200000000000000A1 /* Assets.xcassets */; };
 		B100001300000000000000A1 /* FluidAudio in Frameworks */ = {isa = PBXBuildFile; productRef = B600000100000000000000A1 /* FluidAudio */; };
+		B100009100000000000000A1 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = B600000300000000000000A1 /* Sparkle */; };
 		B100001400000000000000A1 /* AppStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200001400000000000000A1 /* AppStateTests.swift */; };
 		B100001500000000000000A1 /* SettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200001500000000000000A1 /* SettingsTests.swift */; };
 		B100001600000000000000A1 /* HotkeyStateMachineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200001600000000000000A1 /* HotkeyStateMachineTests.swift */; };
@@ -135,6 +138,8 @@
 		B200000700000000000000A1 /* HistoryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryStore.swift; sourceTree = "<group>"; };
 		B200000800000000000000A1 /* ParakeetTranscriptionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ParakeetTranscriptionService.swift; sourceTree = "<group>"; };
 		B200000900000000000000A1 /* LMStudioService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LMStudioService.swift; sourceTree = "<group>"; };
+		B200009200000000000000A1 /* CleanupCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CleanupCoordinator.swift; sourceTree = "<group>"; };
+		B200009300000000000000A1 /* FoundationModelsCleanupProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FoundationModelsCleanupProvider.swift; sourceTree = "<group>"; };
 		B200000A00000000000000A1 /* HotkeyManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HotkeyManager.swift; sourceTree = "<group>"; };
 		B200000B00000000000000A1 /* TextInserter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextInserter.swift; sourceTree = "<group>"; };
 		B200000C00000000000000A1 /* RecordingPillController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingPillController.swift; sourceTree = "<group>"; };
@@ -209,6 +214,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				B100001300000000000000A1 /* FluidAudio in Frameworks */,
+				B100009100000000000000A1 /* Sparkle in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -299,6 +305,8 @@
 				B200005100000000000000A1 /* SpokenListFormatter.swift */,
 				B200000800000000000000A1 /* ParakeetTranscriptionService.swift */,
 				B200000900000000000000A1 /* LMStudioService.swift */,
+				B200009200000000000000A1 /* CleanupCoordinator.swift */,
+				B200009300000000000000A1 /* FoundationModelsCleanupProvider.swift */,
 				B200000A00000000000000A1 /* HotkeyManager.swift */,
 				B200000B00000000000000A1 /* TextInserter.swift */,
 				B200002100000000000000A1 /* ShortcutExpander.swift */,
@@ -402,6 +410,7 @@
 			name = Yappy;
 			packageProductDependencies = (
 				B600000100000000000000A1 /* FluidAudio */,
+				B600000300000000000000A1 /* Sparkle */,
 			);
 			productName = Yappy;
 			productReference = B200001300000000000000A1 /* Yappy.app */;
@@ -454,6 +463,7 @@
 			mainGroup = B800000100000000000000A1;
 			packageReferences = (
 				B600000200000000000000A1 /* XCRemoteSwiftPackageReference "FluidAudio" */,
+				B600000400000000000000A1 /* XCRemoteSwiftPackageReference "Sparkle" */,
 			);
 			productRefGroup = B800000800000000000000A1 /* Products */;
 			projectDirPath = "";
@@ -503,6 +513,8 @@
 				B100000700000000000000A1 /* HistoryStore.swift in Sources */,
 				B100000800000000000000A1 /* ParakeetTranscriptionService.swift in Sources */,
 				B100000900000000000000A1 /* LMStudioService.swift in Sources */,
+				B100009200000000000000A1 /* CleanupCoordinator.swift in Sources */,
+				B100009300000000000000A1 /* FoundationModelsCleanupProvider.swift in Sources */,
 				B100000A00000000000000A1 /* HotkeyManager.swift in Sources */,
 				B100000B00000000000000A1 /* TextInserter.swift in Sources */,
 				B100000C00000000000000A1 /* RecordingPillController.swift in Sources */,
@@ -847,6 +859,14 @@
 				minimumVersion = 0.15.2;
 			};
 		};
+		B600000400000000000000A1 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sparkle-project/Sparkle.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.9.3;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -854,6 +874,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = B600000200000000000000A1 /* XCRemoteSwiftPackageReference "FluidAudio" */;
 			productName = FluidAudio;
+		};
+		B600000300000000000000A1 /* Sparkle */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B600000400000000000000A1 /* XCRemoteSwiftPackageReference "Sparkle" */;
+			productName = Sparkle;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

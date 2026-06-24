@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Sparkle update feed for Yappy.
+  Served via the raw GitHub URL set as SUFeedURL in Yappy/Info.plist:
+    https://raw.githubusercontent.com/superluis0/Yappy/main/appcast.xml
+  The release item (with the notarized zip enclosure + EdDSA signature) is
+  written by the release script's publish step. An empty channel is a valid
+  feed and reads as "you're up to date".
+-->
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <channel>
+    <title>Yappy</title>
+    <link>https://raw.githubusercontent.com/superluis0/Yappy/main/appcast.xml</link>
+    <description>Most recent updates to Yappy.</description>
+    <language>en</language>
+  </channel>
+</rss>

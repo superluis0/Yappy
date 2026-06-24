@@ -24,5 +24,13 @@
 	<string>Yappy needs access to your microphone to transcribe your voice recordings.</string>
 	<key>CFBundleIconFile</key>
 	<string>AppIcon</string>
+	<key>SUFeedURL</key>
+	<string>https://raw.githubusercontent.com/superluis0/Yappy/main/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>z8Wip8HXiwv1Jg1OyCAORHDvtUUZDju7Sl0KOfEwk6Q=</string>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUScheduledCheckInterval</key>
+	<integer>86400</integer>
 </dict>
 </plist>

@@ -7,6 +7,7 @@ import AVFoundation
 import Cocoa
 import Combine
 import ServiceManagement
+import Sparkle
 import SwiftUI
 
 /// Coordinates the menu bar item, global hotkey, recording pipeline,
@@ -29,6 +30,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let textInserter = TextInserter()
     private let soundPlayer = SoundPlayer()
     private lazy var lmStudio = LMStudioService(settings: settings)
+    private lazy var cleanupCoordinator = CleanupCoordinator(
+        lmStudio: lmStudio, settings: settings,
+        onDeviceProviders: [.appleIntelligence: FoundationModelsCleanupProvider()])
     private lazy var hotkeyManager = HotkeyManager(mode: settings.hotkeyOption)
     private lazy var commandHotkeyManager = HotkeyManager(mode: settings.commandHotkeyOption)
     private lazy var escapeInterceptor = EscapeInterceptor()
@@ -55,6 +59,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
     private var modeMenuItem: NSMenuItem?
     private var transformsMenuItem: NSMenuItem?
+
+    /// Sparkle auto-updater. Lazily created (during menu setup), which starts the
+    /// updater and schedules background checks per the Info.plist SU* keys.
+    private lazy var updaterController = SPUStandardUpdaterController(
+        startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
     private var menuBarAnimationTimer: Timer?
     private var menuBarFrameIndex = 0
     private var cancellables = Set<AnyCancellable>()
@@ -340,7 +349,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 let expanded = expander.expand(corrected)
                 let tone = mode.isAuto ? self.resolvedTone(forBundleID: bundleID) : mode.tone
                 let cleanupEnabled = mode.isAuto ? nil : (mode.cleanupEnabledOverride ?? self.settings.cleanupEnabled)
-                let text = await self.lmStudio.cleanup(
+                let text = await self.cleanupCoordinator.cleanup(
                     expanded, tone: tone, backtrack: self.settings.backtrackEnabled,
                     cleanupEnabled: cleanupEnabled
                 )
@@ -439,7 +448,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
               transform.enabled else {
             return text
         }
-        let result = await lmStudio.runTransform(prompt: transform.prompt, text: text)
+        let result = await cleanupCoordinator.runTransform(prompt: transform.prompt, text: text)
         return (result?.isEmpty == false) ? result! : text
     }
 
@@ -526,7 +535,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 let instruction = self.settings.fillerRemovalEnabled
                     ? FillerWordRemover.remove(rawInstruction)
                     : rawInstruction
-                if let result = await self.lmStudio.runCommand(instruction: instruction, selection: selection),
+                if let result = await self.cleanupCoordinator.runCommand(instruction: instruction, selection: selection),
                    !result.isEmpty {
                     try self.textInserter.insert(text: result)
                     self.playSuccessFeedback()
@@ -552,7 +561,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         var errorDescription: String? {
             switch self {
             case .noSelection: return "Select some text first, then use Command Mode."
-            case .unavailable: return "Command Mode needs LM Studio running. Your text was left unchanged."
+            case .unavailable: return "Command Mode returned no result. Your text was left unchanged."
             }
         }
     }
@@ -647,6 +656,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         rebuildTransformsMenu()
 
         menu.addItem(NSMenuItem.separator())
+        let updatesItem = NSMenuItem(title: "Check for Updates…",
+                                     action: #selector(SPUStandardUpdaterController.checkForUpdates(_:)),
+                                     keyEquivalent: "")
+        updatesItem.target = updaterController
+        menu.addItem(updatesItem)
         menu.addItem(NSMenuItem(title: "About Yappy", action: #selector(showAbout), keyEquivalent: ""))
         menu.addItem(NSMenuItem.separator())
         menu.addItem(NSMenuItem(title: "Quit Yappy", action: #selector(quit), keyEquivalent: "q"))
@@ -732,7 +746,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         appState.beginProcessing()
         pillController.show()
 
-        if let result = await lmStudio.runTransform(prompt: transform.prompt, text: selection),
+        if let result = await cleanupCoordinator.runTransform(prompt: transform.prompt, text: selection),
            !result.isEmpty {
             try? textInserter.insert(text: result)
             playSuccessFeedback()

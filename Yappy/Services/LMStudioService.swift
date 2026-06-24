@@ -235,3 +235,18 @@ final class LMStudioService {
         let choices: [Choice]
     }
 }
+
+// MARK: - CleanupProvider conformance
+
+extension LMStudioService: CleanupProvider {
+    var displayName: String { "LM Studio" }
+
+    func isAvailable() async -> Bool { await isReachable() }
+
+    /// The coordinator has already applied the enable/tone gates, so run the
+    /// cleanup pipeline unconditionally. `runCommand`/`runTransform` already match
+    /// the protocol and need no wrapper.
+    func cleanup(_ text: String, tone: ToneStyle, backtrack: Bool) async -> String {
+        await cleanup(text, tone: tone, backtrack: backtrack, cleanupEnabled: true)
+    }
+}
