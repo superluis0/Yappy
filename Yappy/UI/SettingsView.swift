@@ -11,6 +11,7 @@ struct SettingsView: View {
     @ObservedObject var settings: Settings
     @ObservedObject var transcriptionService: ParakeetTranscriptionService
     let lmStudio: LMStudioService
+    @ObservedObject var updateChecker: UpdateChecker
 
     @State private var lmStudioModels: [String] = []
     @State private var lmStudioReachable: Bool?
@@ -109,6 +110,40 @@ struct SettingsView: View {
             Section("General") {
                 Toggle("Launch Yappy at login", isOn: $settings.launchAtLogin)
                 ModelStatusRow(transcriptionService: transcriptionService)
+            }
+
+            Section {
+                LabeledContent("Current version", value: updateChecker.currentVersionDisplay)
+                Toggle("Check for updates automatically", isOn: $settings.autoUpdateChecksEnabled)
+                HStack {
+                    Button {
+                        updateChecker.checkForUpdates()
+                    } label: {
+                        if updateChecker.isChecking {
+                            HStack(spacing: 6) {
+                                ProgressView().controlSize(.small)
+                                Text("Checking\u{2026}")
+                            }
+                        } else {
+                            Text("Check Now")
+                        }
+                    }
+                    .disabled(updateChecker.isChecking)
+
+                    Spacer()
+
+                    if let release = updateChecker.available {
+                        Label("Version \(release.version) ready", systemImage: "arrow.down.circle.fill")
+                            .font(.callout)
+                            .foregroundStyle(Color.accentColor)
+                    }
+                }
+            } header: {
+                Text("Software Update")
+            } footer: {
+                Text("Updates are downloaded from GitHub and verified with a cryptographic signature before installing. Nothing about you is sent \u{2014} only a version check.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Section {

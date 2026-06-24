@@ -73,7 +73,7 @@ struct RecordingPillView: View {
                         glow: accent.opacity(0.7)
                     )
                     .transition(.opacity)
-                } else if appState.isProcessing {
+                } else if appState.isProcessing || appState.isPreparing {
                     processingDots
                         .transition(.opacity)
                 }

@@ -69,9 +69,18 @@ if [[ "$RUN_TESTS" == 1 ]]; then
   ok "Tests passed."
 fi
 
-log "Building Release to $BUILD_DIR …"
+# Stamp the same git-derived build number the release pipeline uses
+# (Scripts/release-dmg.sh). Without this a dev build keeps the static
+# CURRENT_PROJECT_VERSION=1, which is lower than the published appcast's build
+# number — so the in-app updater would nag forever that "an update" (really just
+# the release of the same code) is available. Matching the release build number
+# keeps dev builds at-or-ahead of the feed.
+BUILD_NUMBER="$(git rev-list --count HEAD 2>/dev/null || echo 1)"
+
+log "Building Release (build $BUILD_NUMBER) to $BUILD_DIR …"
 xcodebuild -project Yappy.xcodeproj -scheme "$SCHEME" \
   -configuration Release -derivedDataPath "$BUILD_DIR" -quiet build \
+  CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
   || die "Build failed."
 
 APP_SRC="$BUILD_DIR/Build/Products/Release/Yappy.app"

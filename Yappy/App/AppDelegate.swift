@@ -7,7 +7,6 @@ import AVFoundation
 import Cocoa
 import Combine
 import ServiceManagement
-import Sparkle
 import SwiftUI
 
 /// Coordinates the menu bar item, global hotkey, recording pipeline,
@@ -51,19 +50,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         transformStore: transformStore,
         modeStore: modeStore,
         transcriptionService: transcriptionService,
-        lmStudio: lmStudio
+        lmStudio: lmStudio,
+        updateChecker: updateChecker,
+        whatsNewPresenter: whatsNewPresenter
     )
 
     // MARK: - State
 
     private var statusItem: NSStatusItem?
+    private var statusMenu: NSMenu?
     private var modeMenuItem: NSMenuItem?
     private var transformsMenuItem: NSMenuItem?
+    /// The "Update to Yappy X.Y…" item shown at the top of the menu when an update
+    /// is available, with its trailing separator. Inserted/removed dynamically.
+    private var updateMenuItem: NSMenuItem?
+    private var updateSeparatorItem: NSMenuItem?
+    /// Small accent dot drawn over the menu-bar icon while an update is pending.
+    private var updateBadgeView: NSView?
 
-    /// Sparkle auto-updater. Lazily created (during menu setup), which starts the
-    /// updater and schedules background checks per the Info.plist SU* keys.
-    private lazy var updaterController = SPUStandardUpdaterController(
-        startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
+    /// Sparkle auto-updater with gentle reminders: instead of popping a surprise
+    /// modal on a background check, it surfaces a found update through the menu-bar
+    /// item, the icon badge, and the in-app banner. See `UpdateChecker`.
+    let updateChecker = UpdateChecker()
+    /// Holds the "What's New" card to show once after an update; the main window
+    /// presents it. See `WhatsNew`.
+    let whatsNewPresenter = WhatsNewPresenter()
     private var menuBarAnimationTimer: Timer?
     private var menuBarFrameIndex = 0
     private var cancellables = Set<AnyCancellable>()
@@ -74,6 +85,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var onboardingWindow: NSWindow?
     /// Live mic levels for the onboarding preview; nil once onboarding ends.
     private var onboardingLevelModel: OnboardingLevelModel?
+
+    /// True when a dictation press is queued waiting for the speech model to finish
+    /// loading; recording auto-starts when it's ready (see bindModelReadyAutostart).
+    private var pendingDictationStart = false
 
     /// Text selected in the frontmost app when Command Mode started.
     private var pendingCommandSelection: String?
@@ -96,7 +111,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         setupMenuBar()
         bindStateToMenuBar()
+        bindModelReadyAutostart()
         bindSettings()
+
+        // Surface a found update through our own UI (gentle reminders). Starting
+        // Sparkle and the launch-time background check are DEFERRED below so the
+        // speech model + hotkey get launch priority — the model load dominates
+        // time-to-first-dictation, and a press right after launch shouldn't wait
+        // on update plumbing.
+        bindUpdateChecker()
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            guard let self else { return }
+            self.updateChecker.startUpdater(autoChecks: self.settings.autoUpdateChecksEnabled)
+            if self.settings.autoUpdateChecksEnabled {
+                self.updateChecker.checkInBackground()
+            }
+        }
 
         audioRecorder.onAudioLevelUpdate = { [weak self] level in
             guard let self else { return }
@@ -114,6 +145,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self.closeSetupWindowWhenReady()
             }
         }
+        // Note: the on-device cleanup model is deliberately NOT warmed here.
+        // Warming it loads it on a background thread, and doing that while a
+        // dictation's audio engine is being torn down races CoreAudio and crashes.
+        // The model is warmed only at audio-idle moments instead — when the user
+        // selects Apple Intelligence (see bindSettings) and right after a cleanup
+        // (see finishDictation), then held resident.
 
         // Onboarding shows only for new users (first launch). Returning users
         // manage permissions from Settings; just resolve mic access up front so
@@ -122,6 +159,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Task { _ = await AudioRecorder.requestPermission() }
         } else {
             showOnboarding()
+        }
+
+        // If the user just updated to a version with release notes, greet them
+        // with the "What's New" card by opening the main window once. (No-op on a
+        // fresh install or when the version is unchanged.)
+        if let entry = WhatsNew.pendingAfterLaunch(onboardingComplete: settings.onboardingComplete) {
+            whatsNewPresenter.entry = entry
+            showMainWindow()
         }
 
         // Track the frontmost app so adaptive modes can learn per-app preferences.
@@ -136,6 +181,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Build the recording pill now, while idle, so the first dictation shows
         // it instantly instead of paying SwiftUI hosting-view construction.
         DispatchQueue.main.async { [weak self] in self?.pillController.prewarm() }
+
+        // Warm the audio input HAL now too: the first AVAudioEngine input start is
+        // otherwise slow (the lag before the waveform appears on the first press).
+        DispatchQueue.main.async { [weak self] in self?.audioRecorder.prewarm() }
 
         startHotkeyMonitoring()
     }
@@ -185,7 +234,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Esc pressed mid-session: deactivate both hotkey state machines first so
     /// the eventual modifier key-up doesn't fire a spurious stop, then cancel.
     private func escapeCancel() {
-        guard appState.isRecording else { return }
+        guard appState.isRecording || appState.isPreparing else { return }
         hotkeyManager.deactivate()
         commandHotkeyManager.deactivate()
         cancelDictation()
@@ -225,13 +274,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Dictation Flow
 
     private func startDictation() {
-        guard !appState.isRecording else { return }
-        guard transcriptionService.modelState == .ready else {
-            // Model still downloading/loading — surface the setup window instead.
+        // Ignore if already capturing, or already queued waiting for the model.
+        guard !appState.isRecording, !appState.isPreparing else { return }
+
+        switch transcriptionService.modelState {
+        case .ready:
+            beginDictationRecording()
+        case .loading, .notLoaded:
+            // The speech model is still warming up (typically the first few seconds
+            // after launch). Do NOT start the audio engine now: loading the model
+            // while the engine later tears down races CoreAudio and crashes. Show a
+            // "preparing" pill and begin recording automatically the moment the
+            // model is ready (see bindModelReadyAutostart) — so a single press/hold
+            // works instead of needing to retry until the model loads.
+            if case .notLoaded = transcriptionService.modelState {
+                Task { [weak self] in await self?.transcriptionService.warmUp() }
+            }
+            pendingDictationStart = true
+            appState.beginPreparing()
+            pillController.show()
+        case .downloading, .failed:
+            // A first-time model download or a load failure needs the setup window,
+            // not a silent queued recording the user could wait on indefinitely.
             hotkeyManager.deactivate()
             showSetupWindowIfNotReady()
-            return
         }
+    }
+
+    /// Begins the actual audio-capture session. Precondition: the speech model is
+    /// `.ready` (the audio engine must never run concurrently with a model load).
+    private func beginDictationRecording() {
+        guard !appState.isRecording else { return }
         // Resolve context and show the pill FIRST, so visual feedback is instant
         // on key-press; the slower audio-engine start runs right after, in the
         // same tick. If the engine fails to start, tear the pill back down.
@@ -255,6 +328,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func finishDictation() {
+        // Released while still waiting for the model to load (preparing, not yet
+        // recording): cancel the queued start cleanly.
+        if pendingDictationStart {
+            pendingDictationStart = false
+            appState.reset()
+            pillController.hide()
+            return
+        }
         guard appState.isRecording, appState.mode == .dictation else { return }
         maxDurationTimer?.invalidate()
         escapeInterceptor.stop()
@@ -353,6 +434,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     expanded, tone: tone, backtrack: self.settings.backtrackEnabled,
                     cleanupEnabled: cleanupEnabled
                 )
+                // If cleanup just ran, the on-device model is loaded — refresh the
+                // keep-warm session so it stays resident for the next dictation.
+                // Cheap here (no cold load) and safe: the audio engine stopped at
+                // the top of finishDictation, so this can't race its teardown.
+                if (cleanupEnabled ?? self.settings.cleanupEnabled), tone != .verbatim {
+                    self.cleanupCoordinator.prewarm()
+                }
                 // A cleanup model can reflow a numbered list back onto one line;
                 // re-apply list formatting so the structure survives (idempotent,
                 // and a no-op when there's no list).
@@ -457,6 +545,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         escapeInterceptor.stop()
         recordingStartTime = nil
         pendingCommandSelection = nil
+        pendingDictationStart = false
         audioRecorder.stopRecording()
 
         appState.reset()
@@ -641,6 +730,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         updateMenuBarIcon()
 
         let menu = NSMenu()
+        statusMenu = menu
         menu.addItem(NSMenuItem(title: "Open Yappy", action: #selector(openMainWindow), keyEquivalent: "o"))
         menu.addItem(NSMenuItem(title: "Scratchpad (⌥⇧S)", action: #selector(toggleScratchpad), keyEquivalent: ""))
         menu.addItem(NSMenuItem.separator())
@@ -657,14 +747,95 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         menu.addItem(NSMenuItem.separator())
         let updatesItem = NSMenuItem(title: "Check for Updates…",
-                                     action: #selector(SPUStandardUpdaterController.checkForUpdates(_:)),
+                                     action: #selector(checkForUpdatesClicked),
                                      keyEquivalent: "")
-        updatesItem.target = updaterController
+        updatesItem.target = self
         menu.addItem(updatesItem)
         menu.addItem(NSMenuItem(title: "About Yappy", action: #selector(showAbout), keyEquivalent: ""))
         menu.addItem(NSMenuItem.separator())
         menu.addItem(NSMenuItem(title: "Quit Yappy", action: #selector(quit), keyEquivalent: "q"))
         statusItem?.menu = menu
+
+        // Reflect any already-known update state into the menu + icon badge.
+        refreshUpdateUI()
+    }
+
+    // MARK: - Software Update UI
+
+    /// Menu/badge actions and the gentle-reminder surfacing. The actual install
+    /// runs through Sparkle's standard signed dialog (see `UpdateChecker`).
+
+    @objc private func checkForUpdatesClicked() {
+        updateChecker.checkForUpdates()
+    }
+
+    /// Subscribes to `UpdateChecker.available` so the menu item and icon badge
+    /// appear/disappear as Sparkle finds (or stops offering) an update.
+    private func bindUpdateChecker() {
+        updateChecker.$available
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.refreshUpdateUI() }
+            .store(in: &cancellables)
+    }
+
+    /// Inserts/removes the highlighted "Update to Yappy X.Y…" item at the top of
+    /// the menu and toggles the menu-bar icon's accent dot, based on whether an
+    /// update is currently available.
+    private func refreshUpdateUI() {
+        let release = updateChecker.available
+        setUpdateBadge(visible: release != nil)
+
+        guard let menu = statusMenu else { return }
+        if let release {
+            let title = "Update to Yappy \(release.version)…"
+            if let item = updateMenuItem {
+                item.title = title
+            } else {
+                let item = NSMenuItem(title: title,
+                                      action: #selector(checkForUpdatesClicked),
+                                      keyEquivalent: "")
+                item.target = self
+                item.image = NSImage(systemSymbolName: "arrow.down.circle.fill",
+                                     accessibilityDescription: "Update available")
+                menu.insertItem(item, at: 0)
+                let separator = NSMenuItem.separator()
+                menu.insertItem(separator, at: 1)
+                updateMenuItem = item
+                updateSeparatorItem = separator
+            }
+        } else {
+            if let item = updateMenuItem { menu.removeItem(item) }
+            if let separator = updateSeparatorItem { menu.removeItem(separator) }
+            updateMenuItem = nil
+            updateSeparatorItem = nil
+        }
+    }
+
+    /// Shows/hides a small blue dot in the top-right corner of the menu-bar button
+    /// while an update is pending. Added as a subview so it survives the icon's
+    /// state swaps (ready/recording/processing) untouched.
+    private func setUpdateBadge(visible: Bool) {
+        guard let button = statusItem?.button else { return }
+        if visible {
+            if updateBadgeView == nil {
+                let dot = NSView()
+                dot.wantsLayer = true
+                dot.layer?.backgroundColor = NSColor.systemBlue.cgColor
+                dot.layer?.cornerRadius = 3.5
+                dot.translatesAutoresizingMaskIntoConstraints = false
+                button.addSubview(dot)
+                NSLayoutConstraint.activate([
+                    dot.widthAnchor.constraint(equalToConstant: 7),
+                    dot.heightAnchor.constraint(equalToConstant: 7),
+                    dot.trailingAnchor.constraint(equalTo: button.trailingAnchor, constant: -1),
+                    dot.topAnchor.constraint(equalTo: button.topAnchor, constant: 2),
+                ])
+                updateBadgeView = dot
+            }
+            updateBadgeView?.isHidden = false
+        } else {
+            updateBadgeView?.isHidden = true
+        }
     }
 
     /// Rebuilds the Mode submenu with a checkmark on the active mode. Called when
@@ -770,6 +941,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.updateMenuBarIcon()
         }
         .store(in: &cancellables)
+    }
+
+    /// When a dictation was requested while the speech model was still loading,
+    /// start recording automatically the instant the model becomes ready (if the
+    /// hotkey is still held). Recording begins only once the model is fully
+    /// loaded — never during the load — so the audio engine never races it.
+    private func bindModelReadyAutostart() {
+        transcriptionService.$modelState
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] state in
+                guard let self, self.pendingDictationStart else { return }
+                switch state {
+                case .ready:
+                    self.pendingDictationStart = false
+                    self.beginDictationRecording()
+                case .failed:
+                    self.pendingDictationStart = false
+                    self.appState.reset()
+                    self.pillController.hide()
+                    self.showSetupWindowIfNotReady()
+                case .notLoaded, .loading, .downloading:
+                    break // keep showing the preparing pill until ready/failed
+                }
+            }
+            .store(in: &cancellables)
     }
 
     private enum MenuBarGlyph {
@@ -973,6 +1169,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     NSLog("Launch-at-login update failed: \(error.localizedDescription)")
                 }
             }
+            .store(in: &cancellables)
+
+        // Reflect the "check for updates automatically" toggle into Sparkle.
+        // dropFirst: the launch code already applies the initial value.
+        settings.$autoUpdateChecksEnabled
+            .dropFirst()
+            .removeDuplicates()
+            .sink { [weak self] enabled in
+                self?.updateChecker.automaticallyChecksForUpdates = enabled
+            }
+            .store(in: &cancellables)
+
+        // Warm up the on-device cleanup model the moment the user enables cleanup
+        // or selects Apple Intelligence, so it's "ready to work" without a cold
+        // start (self-gates to the on-device backends).
+        Publishers.CombineLatest(settings.$cleanupEnabled, settings.$cleanupBackend)
+            .dropFirst()
+            .removeDuplicates(by: { $0 == $1 })
+            .sink { [weak self] _, _ in self?.cleanupCoordinator.prewarm() }
             .store(in: &cancellables)
     }
 

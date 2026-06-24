@@ -35,6 +35,8 @@
 		B100000900000000000000A1 /* LMStudioService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200000900000000000000A1 /* LMStudioService.swift */; };
 		B100009200000000000000A1 /* CleanupCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200009200000000000000A1 /* CleanupCoordinator.swift */; };
 		B100009300000000000000A1 /* FoundationModelsCleanupProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200009300000000000000A1 /* FoundationModelsCleanupProvider.swift */; };
+		B100009400000000000000A1 /* UpdateChecker.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200009400000000000000A1 /* UpdateChecker.swift */; };
+		B100009500000000000000A1 /* WhatsNew.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200009500000000000000A1 /* WhatsNew.swift */; };
 		B100000A00000000000000A1 /* HotkeyManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200000A00000000000000A1 /* HotkeyManager.swift */; };
 		B100000B00000000000000A1 /* TextInserter.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200000B00000000000000A1 /* TextInserter.swift */; };
 		B100000C00000000000000A1 /* RecordingPillController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200000C00000000000000A1 /* RecordingPillController.swift */; };
@@ -99,6 +101,7 @@
 		B100001500000000000000A1 /* SettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200001500000000000000A1 /* SettingsTests.swift */; };
 		B100001600000000000000A1 /* HotkeyStateMachineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200001600000000000000A1 /* HotkeyStateMachineTests.swift */; };
 		B100001700000000000000A1 /* HistoryStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200001700000000000000A1 /* HistoryStoreTests.swift */; };
+		B100009600000000000000A1 /* WhatsNewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200009600000000000000A1 /* WhatsNewTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -140,6 +143,8 @@
 		B200000900000000000000A1 /* LMStudioService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LMStudioService.swift; sourceTree = "<group>"; };
 		B200009200000000000000A1 /* CleanupCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CleanupCoordinator.swift; sourceTree = "<group>"; };
 		B200009300000000000000A1 /* FoundationModelsCleanupProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FoundationModelsCleanupProvider.swift; sourceTree = "<group>"; };
+		B200009400000000000000A1 /* UpdateChecker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateChecker.swift; sourceTree = "<group>"; };
+		B200009500000000000000A1 /* WhatsNew.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhatsNew.swift; sourceTree = "<group>"; };
 		B200000A00000000000000A1 /* HotkeyManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HotkeyManager.swift; sourceTree = "<group>"; };
 		B200000B00000000000000A1 /* TextInserter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextInserter.swift; sourceTree = "<group>"; };
 		B200000C00000000000000A1 /* RecordingPillController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingPillController.swift; sourceTree = "<group>"; };
@@ -203,6 +208,7 @@
 		B200001500000000000000A1 /* SettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsTests.swift; sourceTree = "<group>"; };
 		B200001600000000000000A1 /* HotkeyStateMachineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HotkeyStateMachineTests.swift; sourceTree = "<group>"; };
 		B200001700000000000000A1 /* HistoryStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryStoreTests.swift; sourceTree = "<group>"; };
+		B200009600000000000000A1 /* WhatsNewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhatsNewTests.swift; sourceTree = "<group>"; };
 		B200001800000000000000A1 /* YappyTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = YappyTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		B200001900000000000000A1 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		B200001A00000000000000A1 /* Yappy.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Yappy.entitlements; sourceTree = "<group>"; };
@@ -293,6 +299,7 @@
 				B200004300000000000000A1 /* ModeStore.swift */,
 				B200002D00000000000000A1 /* HeatmapModel.swift */,
 				B200002F00000000000000A1 /* IconCache.swift */,
+				B200009500000000000000A1 /* WhatsNew.swift */,
 			);
 			path = Core;
 			sourceTree = "<group>";
@@ -307,6 +314,7 @@
 				B200000900000000000000A1 /* LMStudioService.swift */,
 				B200009200000000000000A1 /* CleanupCoordinator.swift */,
 				B200009300000000000000A1 /* FoundationModelsCleanupProvider.swift */,
+				B200009400000000000000A1 /* UpdateChecker.swift */,
 				B200000A00000000000000A1 /* HotkeyManager.swift */,
 				B200000B00000000000000A1 /* TextInserter.swift */,
 				B200002100000000000000A1 /* ShortcutExpander.swift */,
@@ -363,6 +371,7 @@
 				B200001500000000000000A1 /* SettingsTests.swift */,
 				B200001600000000000000A1 /* HotkeyStateMachineTests.swift */,
 				B200001700000000000000A1 /* HistoryStoreTests.swift */,
+				B200009600000000000000A1 /* WhatsNewTests.swift */,
 				B200002500000000000000A1 /* ShortcutExpanderTests.swift */,
 				B200002600000000000000A1 /* AppContextClassifierTests.swift */,
 				B200002700000000000000A1 /* ShortcutStoreTests.swift */,
@@ -515,6 +524,8 @@
 				B100000900000000000000A1 /* LMStudioService.swift in Sources */,
 				B100009200000000000000A1 /* CleanupCoordinator.swift in Sources */,
 				B100009300000000000000A1 /* FoundationModelsCleanupProvider.swift in Sources */,
+				B100009400000000000000A1 /* UpdateChecker.swift in Sources */,
+				B100009500000000000000A1 /* WhatsNew.swift in Sources */,
 				B100000A00000000000000A1 /* HotkeyManager.swift in Sources */,
 				B100000B00000000000000A1 /* TextInserter.swift in Sources */,
 				B100000C00000000000000A1 /* RecordingPillController.swift in Sources */,
@@ -571,6 +582,7 @@
 				B100001500000000000000A1 /* SettingsTests.swift in Sources */,
 				B100001600000000000000A1 /* HotkeyStateMachineTests.swift in Sources */,
 				B100001700000000000000A1 /* HistoryStoreTests.swift in Sources */,
+				B100009600000000000000A1 /* WhatsNewTests.swift in Sources */,
 				B100002500000000000000A1 /* ShortcutExpanderTests.swift in Sources */,
 				B100002600000000000000A1 /* AppContextClassifierTests.swift in Sources */,
 				B100002700000000000000A1 /* ShortcutStoreTests.swift in Sources */,
@@ -746,7 +758,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 2.1;
+				MARKETING_VERSION = 2.2;
 				PRODUCT_BUNDLE_IDENTIFIER = com.yappy.app.debug;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -778,7 +790,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 2.1;
+				MARKETING_VERSION = 2.2;
 				PRODUCT_BUNDLE_IDENTIFIER = com.yappy.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;

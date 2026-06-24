@@ -27,6 +27,11 @@ final class AppState: ObservableObject {
     /// Indicates whether transcription/processing is in progress.
     @Published private(set) var isProcessing: Bool = false
 
+    /// A dictation was requested while the speech model was still loading (e.g.
+    /// just after launch). Recording starts automatically once the model is ready;
+    /// until then the pill shows a "preparing" indicator.
+    @Published private(set) var isPreparing: Bool = false
+
     /// Indicates whether the app is idle (pill hidden).
     @Published var isIdle: Bool = true
 
@@ -47,10 +52,23 @@ final class AppState: ObservableObject {
 
         self.mode = mode
         isIdle = false
+        isPreparing = false
         isRecording = true
         error = nil
         currentTranscription = ""
         audioLevels = Array(repeating: 0.0, count: Constants.pillBarCount)
+    }
+
+    /// Marks a dictation as queued while the speech model finishes loading. The
+    /// pill shows a preparing indicator until `startRecording` (triggered
+    /// automatically when the model is ready) or `reset` (cancelled).
+    func beginPreparing() {
+        isIdle = false
+        isPreparing = true
+        isRecording = false
+        isProcessing = false
+        error = nil
+        currentTranscription = ""
     }
 
     /// Stops the recording session and marks the state as processing.
@@ -77,6 +95,7 @@ final class AppState: ObservableObject {
         isIdle = true
         isRecording = false
         isProcessing = false
+        isPreparing = false
         mode = .dictation
         audioLevels = Array(repeating: 0.0, count: Constants.pillBarCount)
         currentTranscription = ""

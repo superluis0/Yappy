@@ -70,6 +70,20 @@ final class AudioRecorder {
         AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
     }
 
+    /// Warms the audio input pipeline so the FIRST recording starts promptly.
+    /// `AVAudioEngine` initializes the HAL input device lazily on first use, which
+    /// can take a second or more — that's the lag before the waveform appears on
+    /// the first hotkey press after launch. Touching the input node + its format
+    /// here forces that setup at launch instead. No audio is captured and the
+    /// engine is never started/stopped, so this can't race on-device ML (the
+    /// audio-vs-ANE crash invariant is preserved). Call once at launch, off the
+    /// hot path. No-op without mic permission or while recording.
+    func prewarm() {
+        guard Self.hasPermission, !isRecording, !isPreviewing else { return }
+        let format = audioEngine.inputNode.outputFormat(forBus: 0)
+        if format.sampleRate > 0 { audioEngine.prepare() }
+    }
+
     /// True if the clip contains real speech energy rather than silence or room
     /// tone. Guards against the brief near-silent recordings (a quick key tap)
     /// that make the speech model emit phantom filler words.

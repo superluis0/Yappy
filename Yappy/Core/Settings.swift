@@ -69,6 +69,7 @@ final class Settings: ObservableObject {
         static let voiceControlEnabled = "com.yappy.voiceControlEnabled"
         static let activeModeID = "com.yappy.activeModeID"
         static let onboardingComplete = "com.yappy.onboardingComplete"
+        static let autoUpdateChecksEnabled = "com.yappy.autoUpdateChecksEnabled"
         static let legacyCleanupMigrated = "com.yappy.legacyCleanupMigrated"
 
         /// Keys from the cloud-based versions of Yappy; removed on first launch.
@@ -225,6 +226,12 @@ final class Settings: ObservableObject {
         didSet { if !isLoading { save() } }
     }
 
+    /// Whether Sparkle checks for app updates automatically in the background.
+    /// On by default; mirrored into the updater (see `UpdateChecker`).
+    @Published var autoUpdateChecksEnabled: Bool = true {
+        didSet { if !isLoading { save() } }
+    }
+
     // MARK: - Tone Resolution
 
     /// The effective tone for a category: the user override, or the category default.
@@ -281,6 +288,7 @@ final class Settings: ObservableObject {
         defaults.set(voiceControlEnabled, forKey: Keys.voiceControlEnabled)
         defaults.set(activeModeID, forKey: Keys.activeModeID)
         defaults.set(onboardingComplete, forKey: Keys.onboardingComplete)
+        defaults.set(autoUpdateChecksEnabled, forKey: Keys.autoUpdateChecksEnabled)
 
         let overrides = Dictionary(uniqueKeysWithValues: toneOverrides.map { ($0.key.rawValue, $0.value.rawValue) })
         defaults.set(overrides, forKey: Keys.toneOverrides)
@@ -409,6 +417,12 @@ final class Settings: ObservableObject {
 
         onboardingComplete = defaults.bool(forKey: Keys.onboardingComplete)
 
+        if defaults.object(forKey: Keys.autoUpdateChecksEnabled) != nil {
+            autoUpdateChecksEnabled = defaults.bool(forKey: Keys.autoUpdateChecksEnabled)
+        } else {
+            autoUpdateChecksEnabled = true
+        }
+
         if let raw = defaults.dictionary(forKey: Keys.toneOverrides) as? [String: String] {
             var parsed: [AppCategory: ToneStyle] = [:]
             for (key, value) in raw {
@@ -450,6 +464,7 @@ final class Settings: ObservableObject {
         voiceEditingEnabled = true
         voiceControlEnabled = true
         activeModeID = nil
+        autoUpdateChecksEnabled = true
         // onboardingComplete intentionally not reset — it tracks lifetime state.
 
         for key in [
@@ -462,6 +477,7 @@ final class Settings: ObservableObject {
             Keys.numberFormattingEnabled, Keys.numberedListsEnabled, Keys.fillerRemovalEnabled,
             Keys.spokenCommandsEnabled, Keys.spokenPunctuationEnabled,
             Keys.voiceEditingEnabled, Keys.voiceControlEnabled, Keys.activeModeID,
+            Keys.autoUpdateChecksEnabled,
         ] {
             defaults.removeObject(forKey: key)
         }

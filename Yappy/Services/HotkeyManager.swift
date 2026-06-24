@@ -58,6 +58,18 @@ struct HotkeyStateMachine {
         isActive = false
     }
 
+    /// Clears ALL transient state. Used when the event tap is re-enabled after the
+    /// system disabled it: key edges may have been missed while it was off, which
+    /// would otherwise leave `keyIsDown` stuck `true` and silently ignore every
+    /// future press (the "hotkey stopped working after a while" bug).
+    mutating func reset() {
+        isActive = false
+        keyIsDown = false
+        lastDownTime = -.infinity
+        lastUpTime = -.infinity
+        lastTapEndTime = -.infinity
+    }
+
     private mutating func handleDown() -> Action {
         switch mode {
         case .rightCommandHold, .rightOptionHold:
@@ -189,11 +201,15 @@ final class HotkeyManager {
     }
 
     private func handle(type: CGEventType, event: CGEvent) {
-        // The system disables taps that stall or when secure input changes.
+        // The system disables taps that stall or when secure input changes. Re-enable
+        // AND reset the state machine: an edge (e.g. the key-up) may have been missed
+        // while the tap was off, which would otherwise leave `keyIsDown` stuck and
+        // ignore every future press.
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
             if let tap = eventTap {
                 CGEvent.tapEnable(tap: tap, enable: true)
             }
+            stateMachine.reset()
             return
         }
 

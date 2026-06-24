@@ -26,6 +26,16 @@ protocol CleanupProvider: AnyObject {
 
     /// Applies a saved Transform's prompt to some text. Returns nil on failure.
     func runTransform(prompt: String, text: String) async -> String?
+
+    /// Asks the provider to load its model into memory ahead of use, so the first
+    /// real request doesn't pay a cold-start. Best-effort and idempotent.
+    func prewarm() async
+}
+
+extension CleanupProvider {
+    /// Default: nothing to warm up (e.g. LM Studio, whose model lives in a
+    /// separate local server with no in-process cold start).
+    func prewarm() async {}
 }
 
 /// Chooses which `CleanupProvider` handles AI text transforms and routes the app's
@@ -68,6 +78,30 @@ final class CleanupCoordinator {
 
     func runTransform(prompt: String, text: String) async -> String? {
         await activeProvider().runTransform(prompt: prompt, text: text)
+    }
+
+    /// Warms up the on-device model so the first cleanup doesn't pay the
+    /// multi-second cold start of loading it into memory. Fire-and-forget and
+    /// cheap once warm. No-op unless an on-device backend (Apple Intelligence) is
+    /// selected and cleanup is on — LM Studio has no in-process model to load.
+    ///
+    /// Call this when the user selects the backend and at the start of each
+    /// dictation: the model loads in the background while the user speaks, so it's
+    /// hot by the time the transcript is ready.
+    func prewarm() {
+        guard settings.cleanupEnabled,
+              settings.cleanupBackend == .appleIntelligence || settings.cleanupBackend == .automatic,
+              let provider = onDeviceProviders[.appleIntelligence] else { return }
+        // Fire-and-forget on the provider's own executor (off the main thread).
+        // No isAvailable() gate: that check is itself costly (it decodes the model
+        // manifest), and prewarm() is a cheap no-op when the model can't load.
+        // IMPORTANT: only call this when no dictation is recording — warming the
+        // model loads it on a background thread, and doing so while the audio
+        // engine is being torn down races CoreAudio and crashes. Callers warm only
+        // at audio-idle moments (backend selection; after a cleanup completes).
+        Task { [provider] in
+            await provider.prewarm()
+        }
     }
 
     // MARK: - Provider resolution

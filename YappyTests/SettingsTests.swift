@@ -46,6 +46,13 @@ final class SettingsTests: XCTestCase {
         XCTAssertTrue(settings.toneOverrides.isEmpty)
         XCTAssertTrue(settings.customDictionaryEnabled, "On by default so built-in dev terms apply out of the box")
         XCTAssertFalse(settings.onboardingComplete)
+        XCTAssertTrue(settings.autoUpdateChecksEnabled, "Automatic update checks should be on by default")
+    }
+
+    func testAutoUpdateChecksEnabledPersists() {
+        settings.autoUpdateChecksEnabled = false
+        let reloaded = Settings(defaults: defaults)
+        XCTAssertFalse(reloaded.autoUpdateChecksEnabled)
     }
 
     func testToneResolution() {

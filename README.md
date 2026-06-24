@@ -77,7 +77,7 @@ Everything is configurable in one place — hotkey, sounds, number formatting, n
 
 **On-device AI cleanup** — polish transcripts with a local model that fixes punctuation, capitalization, and filler. Choose the engine in Settings: **Apple Intelligence** (fully on-device, macOS 26+, nothing to install), a local **LM Studio** model, or **Automatic** (Apple Intelligence when available, otherwise LM Studio). The same engine powers Command Mode, Transforms, and backtrack.
 
-**Automatic updates** — Yappy keeps itself current in the background via [Sparkle](https://sparkle-project.org), with EdDSA-signed releases verified before they're applied. Check manually any time from the menu bar.
+**Automatic updates** — Yappy keeps itself current via [Sparkle](https://sparkle-project.org), with EdDSA-signed releases verified before they're applied. No surprise dialogs: when a new version is ready a calm banner slides in over the window, an *Update to Yappy …* item appears at the top of the menu bar, and a dot marks the menu-bar icon — install on your own schedule with one click. After an update, a short *What's New* card recaps what changed. Check manually any time from the menu bar or **Settings → Software Update**.
 
 **Voice editing** — fix what you just said, hands-free: *"scratch that"* undoes the last insertion, *"delete the last word"* trims it, *"all caps that"* / *"capitalize that"* recases it. It only fires on a whole-utterance command (so *"scratch that idea"* stays prose) and won't delete the wrong thing if your cursor has moved on.
 
@@ -163,7 +163,7 @@ Everything stays on your machine — no API keys, no cloud. Cleanup degrades gra
 | Audio capture | `App/AudioRecorder.swift` | AVAudioEngine → in-memory 16 kHz mono Float32 |
 | Hotkeys | `Services/HotkeyManager.swift` | One CGEvent tap + a pure, unit-tested state machine |
 | Text insertion | `Services/TextInserter.swift` | Cmd+V paste with change-count-safe clipboard restore |
-| Command Mode / cleanup / transforms | `Services/LMStudioService.swift` | Local OpenAI-compatible calls (cleanup, backtrack, transforms); graceful fallback |
+| Command Mode / cleanup / transforms | `Services/CleanupCoordinator.swift`, `FoundationModelsCleanupProvider.swift`, `LMStudioService.swift` | Routes cleanup, backtrack, Command Mode & transforms to on-device Apple Intelligence or local LM Studio; graceful fallback |
 | Transcript formatting | `Services/TranscriptPipeline.swift` + `Spoken*Formatter.swift` | Fillers, numbers, lists, line breaks, punctuation — deterministic, on-device |
 | Custom dictionary | `Core/DictionaryStore.swift`, `Core/BuiltInDictionary.swift` | Built-in dev terms + learned aliases corrected back to canonical spelling |
 | Transforms | `Core/TransformStore.swift`, `UI/TransformsView.swift` | Named AI rewrites; menu-bar or auto-after-dictation |
