@@ -17,6 +17,8 @@ No API keys. No cloud. No subscriptions. Your voice never leaves the device.</p>
 <img src="https://img.shields.io/badge/License-MIT-555?style=flat-square" alt="MIT License">
 </p>
 
+<p><b><a href="https://superluis0.github.io/Yappy/">Website</a></b> &nbsp;&middot;&nbsp; <b><a href="https://github.com/superluis0/Yappy/releases/latest">Download</a></b></p>
+
 </div>
 
 ---
