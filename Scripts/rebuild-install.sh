@@ -7,10 +7,12 @@
 #
 #   • Release config — the Debug config uses bundle id com.yappy.app.debug,
 #     which is a SEPARATE app and would not update the real Yappy.
-#   • Signed with "Yappy Local Signing" — the same identity the installed app
-#     uses, so TCC permission grants survive the rebuild. The script FAILS
-#     CLOSED: if the build isn't signed by that identity, it refuses to install
-#     rather than reset your permissions.
+#   • Signed with the SAME Developer ID as public releases. macOS TCC keys
+#     Microphone/Accessibility grants on the code-signing identity, so signing dev
+#     builds with the release identity means grants survive across rebuilds AND
+#     across Sparkle updates (no re-prompting when you switch between a dev build
+#     and a published release). The script FAILS CLOSED: if the build isn't signed
+#     by that identity, it refuses to install rather than reset your permissions.
 #   • Built to a temp dir under /tmp — building under the iCloud-synced Desktop
 #     breaks codesign.
 #   • Quits the old instance, replaces /Applications/Yappy.app, de-registers the
@@ -26,7 +28,10 @@
 set -euo pipefail
 
 SCHEME="Yappy"
-EXPECTED_IDENTITY="Yappy Local Signing"
+TEAM_ID="JY8DZXQ5P2"
+# Same Developer ID the release pipeline uses — so dev builds and releases share
+# one designated requirement and TCC permissions persist across both.
+EXPECTED_IDENTITY="Developer ID Application: Luis Landeros (JY8DZXQ5P2)"
 APP_DEST="/Applications/Yappy.app"
 BUILD_DIR="$(mktemp -d /tmp/yappy-rel.XXXXXX)"
 
@@ -60,6 +65,8 @@ done
 
 command -v xcodebuild >/dev/null || die "xcodebuild not found — install Xcode."
 [[ -d "Yappy.xcodeproj" ]] || die "Run from the Yappy repo (Yappy.xcodeproj not found)."
+security find-identity -v -p codesigning 2>/dev/null | grep -qF "$EXPECTED_IDENTITY" \
+  || die "Signing identity not found: '$EXPECTED_IDENTITY'. Import the Developer ID certificate into your login keychain."
 
 if [[ "$RUN_TESTS" == 1 ]]; then
   log "Running unit tests…"
@@ -78,9 +85,17 @@ fi
 BUILD_NUMBER="$(git rev-list --count HEAD 2>/dev/null || echo 1)"
 
 log "Building Release (build $BUILD_NUMBER) to $BUILD_DIR …"
+# Sign with the release Developer ID + Hardened Runtime so the designated
+# requirement matches published releases (keeps TCC grants). No --timestamp /
+# notarization needed for a locally-built, non-quarantined app.
 xcodebuild -project Yappy.xcodeproj -scheme "$SCHEME" \
   -configuration Release -derivedDataPath "$BUILD_DIR" -quiet build \
   CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
+  CODE_SIGN_STYLE=Manual \
+  CODE_SIGN_IDENTITY="$EXPECTED_IDENTITY" \
+  DEVELOPMENT_TEAM="$TEAM_ID" \
+  ENABLE_HARDENED_RUNTIME=YES \
+  OTHER_CODE_SIGN_FLAGS="--timestamp=none" \
   || die "Build failed."
 
 APP_SRC="$BUILD_DIR/Build/Products/Release/Yappy.app"
