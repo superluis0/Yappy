@@ -7,9 +7,9 @@ import Foundation
 
 /// A backend that performs Yappy's AI text transforms — transcript cleanup,
 /// Command Mode edits, and named Transforms. Implemented by an on-device model
-/// (Apple Foundation Models on macOS 26+, or a bundled MLX model) and by a local
-/// LM Studio server. Every method is best-effort: on any failure it returns the
-/// input unchanged (or nil) so dictation never breaks.
+/// (Apple Foundation Models on macOS 26+) and by a local LM Studio server. Every
+/// method is best-effort: on any failure it returns the input unchanged (or nil)
+/// so dictation never breaks.
 protocol CleanupProvider: AnyObject {
     /// Short label for the Settings UI (e.g. "Apple Intelligence", "Built-in", "LM Studio").
     var displayName: String { get }
@@ -49,9 +49,9 @@ final class CleanupCoordinator {
     let lmStudio: LMStudioService
 
     private let settings: Settings
-    /// On-device backends keyed by the setting that selects them. Populated as the
-    /// providers are wired in (Foundation Models, MLX); an empty map means every
-    /// request falls back to LM Studio, preserving the original behavior.
+    /// On-device backends keyed by the setting that selects them (currently just
+    /// Foundation Models / Apple Intelligence); an empty map means every request
+    /// falls back to LM Studio, preserving the original behavior.
     private let onDeviceProviders: [CleanupBackend: CleanupProvider]
 
     init(lmStudio: LMStudioService,
@@ -111,15 +111,11 @@ final class CleanupCoordinator {
     private func activeProvider() async -> CleanupProvider {
         switch settings.cleanupBackend {
         case .automatic:
-            // Prefer the most efficient on-device option that's actually ready.
+            // Prefer on-device Apple Intelligence when it's actually ready.
             if let fm = onDeviceProviders[.appleIntelligence], await fm.isAvailable() { return fm }
-            if let mlx = onDeviceProviders[.builtIn], await mlx.isAvailable() { return mlx }
             return lmStudio
         case .appleIntelligence:
             if let fm = onDeviceProviders[.appleIntelligence], await fm.isAvailable() { return fm }
-            return lmStudio
-        case .builtIn:
-            if let mlx = onDeviceProviders[.builtIn], await mlx.isAvailable() { return mlx }
             return lmStudio
         case .lmStudio:
             return lmStudio

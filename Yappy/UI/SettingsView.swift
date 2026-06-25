@@ -31,8 +31,6 @@ struct SettingsView: View {
             return "Uses Apple Intelligence when available, otherwise your LM Studio server."
         case .appleIntelligence:
             return "On-device Apple Intelligence — requires macOS 26+ with Apple Intelligence enabled."
-        case .builtIn:
-            return "A small model bundled with Yappy — no setup required."
         case .lmStudio:
             return "A model you run locally in LM Studio."
         }
@@ -154,7 +152,6 @@ struct SettingsView: View {
                         Text(CleanupBackend.automatic.displayName).tag(CleanupBackend.automatic)
                         Text(CleanupBackend.appleIntelligence.displayName).tag(CleanupBackend.appleIntelligence)
                         Text(CleanupBackend.lmStudio.displayName).tag(CleanupBackend.lmStudio)
-                        // .builtIn (MLX) is intentionally omitted until that backend ships.
                     }
                     .listRowBackground(Color.accentColor.opacity(0.04))
 

@@ -23,14 +23,12 @@ enum HotkeyOption: String, CaseIterable, Codable {
 enum CleanupBackend: String, CaseIterable, Codable {
     case automatic
     case appleIntelligence
-    case builtIn
     case lmStudio
 
     var displayName: String {
         switch self {
         case .automatic: return "Automatic"
         case .appleIntelligence: return "Apple Intelligence"
-        case .builtIn: return "Built-in model"
         case .lmStudio: return "LM Studio"
         }
     }
