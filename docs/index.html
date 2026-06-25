@@ -182,6 +182,7 @@ a { color: inherit; text-decoration: none; }
 }
 .btn-ghost:hover { background: rgba(255,255,255,0.08); border-color: #3a3a45; transform: translateY(-2px); }
 .btn-sm { padding: 0.6rem 1.05rem; font-size: 0.9rem; }
+.btn.is-loading { opacity: 0.72; cursor: progress; pointer-events: none; }
 
 /* === HERO === */
 .hero { position: relative; padding-top: clamp(8rem, 17vh, 11rem); padding-bottom: clamp(3rem, 6vw, 5rem); text-align: center; }
@@ -425,7 +426,7 @@ footer { border-top: 1px solid var(--hairline); padding: clamp(3rem,6vw,4.5rem) 
           <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 1.5A10.5 10.5 0 0 0 8.68 22c.52.1.71-.23.71-.5v-1.94c-2.9.63-3.52-1.24-3.52-1.24-.47-1.2-1.16-1.52-1.16-1.52-.95-.65.07-.64.07-.64 1.05.08 1.6 1.08 1.6 1.08.93 1.6 2.45 1.14 3.05.87.09-.68.36-1.14.66-1.4-2.32-.27-4.76-1.16-4.76-5.16 0-1.14.41-2.07 1.07-2.8-.11-.27-.46-1.33.1-2.77 0 0 .88-.28 2.88 1.07a9.9 9.9 0 0 1 5.24 0c2-1.35 2.87-1.07 2.87-1.07.57 1.44.21 2.5.11 2.77.67.73 1.07 1.66 1.07 2.8 0 4.01-2.45 4.89-4.78 5.15.38.32.71.95.71 1.92v2.85c0 .28.19.61.72.5A10.5 10.5 0 0 0 12 1.5Z"/></svg>
           GitHub
         </a>
-        <a class="btn btn-primary btn-sm" href="https://github.com/superluis0/Yappy/releases/latest" target="_blank" rel="noopener">Download</a>
+        <a class="btn btn-primary btn-sm js-download" href="https://github.com/superluis0/Yappy/releases/latest" target="_blank" rel="noopener">Download</a>
       </div>
     </nav>
   </div>
@@ -440,7 +441,7 @@ footer { border-top: 1px solid var(--hairline); padding: clamp(3rem,6vw,4.5rem) 
       <h1 data-rise style="animation-delay:.12s">Talk. It types. <span class="grad serif-i">Everywhere</span> on your Mac.</h1>
       <p class="hero-sub" data-rise style="animation-delay:.2s">Hold a key, speak, release. Your words appear at the cursor in any app, usually in under a second. No API keys, no cloud, no subscriptions. Your voice never leaves the device.</p>
       <div class="hero-cta" data-rise style="animation-delay:.28s">
-        <a class="btn btn-primary" href="https://github.com/superluis0/Yappy/releases/latest" target="_blank" rel="noopener">
+        <a class="btn btn-primary js-download" href="https://github.com/superluis0/Yappy/releases/latest" target="_blank" rel="noopener">
           <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 3a1 1 0 0 1 1 1v9.59l3.3-3.3a1 1 0 1 1 1.4 1.42l-5 5a1 1 0 0 1-1.4 0l-5-5a1 1 0 1 1 1.4-1.42l3.3 3.3V4a1 1 0 0 1 1-1Zm-7 14a1 1 0 0 1 1 1v1h12v-1a1 1 0 1 1 2 0v2a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-2a1 1 0 0 1 1-1Z"/></svg>
           Download for macOS
         </a>
@@ -674,7 +675,7 @@ footer { border-top: 1px solid var(--hairline); padding: clamp(3rem,6vw,4.5rem) 
         <h2>Stop typing. <span class="serif-i">Start</span> talking.</h2>
         <p>Free, open source, and yours to keep. Download Yappy, hold Right Command, and watch your words appear.</p>
         <div class="final-cta">
-          <a class="btn btn-primary" href="https://github.com/superluis0/Yappy/releases/latest" target="_blank" rel="noopener">
+          <a class="btn btn-primary js-download" href="https://github.com/superluis0/Yappy/releases/latest" target="_blank" rel="noopener">
             <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 3a1 1 0 0 1 1 1v9.59l3.3-3.3a1 1 0 1 1 1.4 1.42l-5 5a1 1 0 0 1-1.4 0l-5-5a1 1 0 1 1 1.4-1.42l3.3 3.3V4a1 1 0 0 1 1-1Zm-7 14a1 1 0 0 1 1 1v1h12v-1a1 1 0 1 1 2 0v2a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-2a1 1 0 0 1 1-1Z"/></svg>
             Download for macOS
           </a>
@@ -779,6 +780,48 @@ footer { border-top: 1px solid var(--hairline); padding: clamp(3rem,6vw,4.5rem) 
 (function(){
   var mq = document.getElementById('mq');
   if(mq) mq.innerHTML += mq.innerHTML;
+})();
+
+/* === direct DMG download ===
+   The Download buttons link to the Releases page (works with no JS, and for
+   modified clicks). On a plain click we instead ask the GitHub API for the
+   latest release's .dmg and send the browser straight to it, so the user gets
+   the actual installer regardless of its versioned filename. Any failure falls
+   back to the Releases page, so the button never dead-ends. */
+(function(){
+  var RELEASES = 'https://github.com/superluis0/Yappy/releases/latest';
+  var API = 'https://api.github.com/repos/superluis0/Yappy/releases/latest';
+  var cachedUrl = null, inflight = null;
+
+  function resolveDmg(){
+    if (cachedUrl) return Promise.resolve(cachedUrl);
+    if (inflight) return inflight;
+    inflight = fetch(API, { headers: { Accept: 'application/vnd.github+json' } })
+      .then(function(r){ if(!r.ok) throw new Error('http ' + r.status); return r.json(); })
+      .then(function(d){
+        var asset = (d.assets || []).find(function(a){ return /\.dmg$/i.test(a.name); });
+        if(!asset) throw new Error('no dmg asset');
+        cachedUrl = asset.browser_download_url;
+        return cachedUrl;
+      })
+      .catch(function(err){ inflight = null; throw err; });
+    return inflight;
+  }
+
+  document.querySelectorAll('a.js-download').forEach(function(btn){
+    btn.addEventListener('click', function(e){
+      // Let Cmd/Ctrl/Shift-click and non-primary buttons use the real href
+      // (open the Releases page in a new tab, etc.).
+      if (e.metaKey || e.ctrlKey || e.shiftKey || e.button) return;
+      e.preventDefault();
+      if (btn.classList.contains('is-loading')) return;
+      btn.classList.add('is-loading');
+      resolveDmg()
+        .then(function(url){ window.location.href = url; })
+        .catch(function(){ window.location.href = RELEASES; })
+        .finally(function(){ setTimeout(function(){ btn.classList.remove('is-loading'); }, 1500); });
+    });
+  });
 })();
 </script>
 </body>
