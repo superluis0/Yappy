@@ -35,7 +35,7 @@ It stays out of your way until you need it: a single global hotkey, a small reco
 
 ## A real app, not just a menu bar blip
 
-Open Yappy and you land on a home that actually tells you something: how much time dictation has saved you, your stats and personal records, a heatmap of *when* you dictate, the apps you use it in most, and your searchable history — all stored locally.
+Open Yappy and you land on a home that actually tells you something: how much time dictation has saved you, your stats and personal records, a heatmap of *when* you dictate, the apps you use it in most, and your searchable history — all stored locally. The whole interface is a bespoke **Liquid Glass** design — a branded sidebar and translucent glass cards across every screen.
 
 <div align="center">
 <img src="Documentation/assets/home.png" alt="Yappy home — time saved, stats, a when-you-dictate heatmap, top apps, and personal records" width="420">
@@ -51,7 +51,7 @@ Build dictation **modes** for different contexts — and teach Yappy the names a
 <img src="Documentation/assets/dictionary.png" alt="Yappy custom dictionary, showing the spellings it learned to correct" width="560">
 </div>
 
-Everything is configurable in one place — hotkey, sounds, number formatting, numbered lists, filler removal, spoken commands, spoken punctuation, voice editing, voice commands, Command Mode, Transforms, adaptive per-app modes, optional AI cleanup (with self-correction), and permissions.
+Everything is configurable in one place — hotkey, sounds, number formatting, numbered lists, filler removal, spoken commands, spoken punctuation, voice editing, voice commands, adaptive per-app modes, optional AI cleanup (with self-correction), and permissions.
 
 <div align="center">
 <img src="Documentation/assets/settings.png" alt="Yappy settings — hotkey, sounds, number formatting, filler removal, spoken commands, and voice editing" width="560">
@@ -59,7 +59,7 @@ Everything is configurable in one place — hotkey, sounds, number formatting, n
 
 ## Features
 
-**Local transcription** — Parakeet TDT 0.6B (English) on the Apple Neural Engine, roughly 120× real-time on Apple Silicon. The model downloads once (~443 MB) and never phones home again.
+**Local transcription** — a selectable speech model, running on the Apple Neural Engine via [FluidAudio](https://github.com/FluidInference/FluidAudio). **Parakeet** (English) is the default — Parakeet TDT 0.6B, roughly 120× real-time on Apple Silicon, downloading once (~443 MB). Prefer another language? Switch to **Nemotron 3.5** (multilingual, ~670 MB), which downloads on first use. Either way the model is fetched once and never phones home again; pick yours in **Settings**.
 
 **Universal insertion** — pastes at the cursor in any app, including Electron apps, web views, and terminals where direct insertion fails. Your clipboard is snapshotted and restored, so nothing you copied gets clobbered.
 
@@ -71,13 +71,9 @@ Everything is configurable in one place — hotkey, sounds, number formatting, n
 
 **Spoken punctuation** — dictate the marks you want: *"comma"*, *"period"*, *"question mark"*, *"open paren … close paren."* It matches whole words only, so plurals and embedded words are safe — and it's a toggle if you'd rather say those words literally.
 
-**Command Mode** — select text anywhere, hold the command hotkey, and speak an instruction: *"make this concise"*, *"translate to Spanish"*, *"turn this into a bulleted list."* The selection is rewritten in place. Powered by on-device **Apple Intelligence** (macOS 26+) or a local **LM Studio** model; if neither is available, your text is left untouched.
-
 **Backtrack** — change your mind mid-sentence and Yappy keeps the correction: *"let's meet at 2, actually 3"* lands as *"Let's meet at 3."* Part of the optional AI cleanup, so it rides along with whatever else cleanup is doing.
 
-**Transforms** — reusable AI rewrites of selected text. Two ship built in — **Polish** (tighten for clarity) and **Prompt Engineer** (restructure into a clean AI prompt) — and you can add your own. Run one from the menu bar on any selection, or set one to run automatically after every dictation. Powered by on-device Apple Intelligence or your local LM Studio model.
-
-**On-device AI cleanup** — polish transcripts with a local model that fixes punctuation, capitalization, and filler. Choose the engine in Settings: **Apple Intelligence** (fully on-device, macOS 26+, nothing to install), a local **LM Studio** model, or **Automatic** (Apple Intelligence when available, otherwise LM Studio). The same engine powers Command Mode, Transforms, and backtrack.
+**On-device AI cleanup** — polish transcripts with a fix-up pass for punctuation, capitalization, and filler. It runs entirely on-device with **Apple Intelligence** (macOS 26+) and is **on by default**; where Apple Intelligence isn't available it degrades to the raw transcript. The same engine powers backtrack.
 
 **Automatic updates** — Yappy keeps itself current via [Sparkle](https://sparkle-project.org), with EdDSA-signed releases verified before they're applied. No surprise dialogs: when a new version is ready a calm banner slides in over the window, an *Update to Yappy …* item appears at the top of the menu bar, and a dot marks the menu-bar icon — install on your own schedule with one click. After an update, a short *What's New* card recaps what changed. Check manually any time from the menu bar or **Settings → Software Update**.
 
@@ -99,11 +95,11 @@ Everything is configurable in one place — hotkey, sounds, number formatting, n
 
 **Activity at a glance** — a "time saved versus typing" headline, words-per-minute, streaks and personal records, a day-by-hour heatmap of when you dictate, the apps you use it in most, and a shareable *"Year in Voice"* recap.
 
-**Polished hotkeys** — hold Right ⌘, double-tap Right ⌘, or hold Right ⌥. A debounced state machine ignores key repeats and accidental taps, so it never fires when you don't mean it. Press **Esc** mid-dictation to cancel cleanly.
+**Polished hotkeys** — hold Right ⌘, double-tap Right ⌘, hold Right ⌥, or hold Right ⌃. A debounced state machine ignores key repeats and accidental taps, so it never fires when you don't mean it. Press **Esc** mid-dictation to cancel cleanly.
 
 **Considered details** — a molten-glass recording pill whose glow breathes with your voice, a menu bar icon that animates while recording, and subtle custom start/stop/done sounds.
 
-**Private by design** — audio is transcribed on-device and never written to disk; no telemetry, no account. After the one-time model download, the only network traffic is to your own LM Studio on `localhost` (and only if you turn cleanup on). A privacy panel on the home screen reflects this state at a glance.
+**Private by design** — audio is transcribed on-device and never written to disk; no telemetry, no account. After the one-time model download, Yappy runs fully offline — nothing you say leaves your Mac. A privacy panel on the home screen reflects this state at a glance.
 
 ## Download
 
@@ -140,35 +136,30 @@ Then press **Run** (⌘R) in Xcode — dependencies (FluidAudio) resolve automat
 
 > **Cutting a public release:** `Scripts/release-dmg.sh` builds a Developer ID–signed, notarized, stapled `Yappy.dmg` into `dist/` (the download that opens with no Gatekeeper warnings), and with `--publish <tag>` uploads it to a GitHub Release. Needs a one-time `notarytool` keychain profile — run `Scripts/release-dmg.sh --help` for setup. Maintainer-only.
 
-## AI cleanup: on-device or LM Studio
+## On-device AI cleanup
 
-Yappy can tidy up filler words, punctuation, and phrasing — and power Command Mode and Transforms — with a local LLM. Enable **AI Cleanup** under Settings and pick the **engine**:
+Yappy can tidy up filler words, punctuation, and phrasing with **Apple Intelligence** (macOS 26+), running fully on-device via Apple's Foundation Models. There's nothing to install: just turn on Apple Intelligence in System Settings.
 
-- **Apple Intelligence** *(macOS 26+, recommended)* — fully on-device via Apple's Foundation Models. Nothing to install; just turn on Apple Intelligence in System Settings.
-- **LM Studio** — a model you run locally in [LM Studio](https://lmstudio.ai) (start its server, default `http://localhost:1234`). Works on any supported macOS.
-- **Automatic** — uses Apple Intelligence when it's available, otherwise falls back to LM Studio.
-
-Everything stays on your machine — no API keys, no cloud. Cleanup degrades gracefully: if no engine is available, the raw transcript is inserted and nothing breaks.
+It's **on by default** and everything stays on your machine — no API keys, no cloud. Cleanup degrades gracefully: where Apple Intelligence isn't available, the raw transcript is inserted and nothing breaks.
 
 ## Privacy
 
 - Audio is transcribed on-device and held only in memory — the recording itself is never written to disk.
 - Your dictation history, shortcuts, and custom dictionary are stored locally in plain JSON under `~/Library/Application Support/Yappy/`, readable only by your macOS account. Clear your history anytime from the home window.
 - No telemetry, no analytics, no account.
-- The single one-time network request is the model download from Hugging Face. After that, Yappy runs fully offline (LM Studio calls, if enabled, stay on `localhost`).
+- The single one-time network request is the model download from Hugging Face. After that, Yappy runs fully offline.
 
 ## Architecture
 
 | Area | Files | Role |
 |------|-------|------|
-| Transcription | `Services/ParakeetTranscriptionService.swift` | Loads & pre-warms Parakeet; batch transcription on release |
+| Transcription | `Services/ParakeetTranscriptionService.swift` | Loads & pre-warms the selected model (Parakeet or Nemotron); batch transcription on release |
 | Audio capture | `App/AudioRecorder.swift` | AVAudioEngine → in-memory 16 kHz mono Float32 |
 | Hotkeys | `Services/HotkeyManager.swift` | One CGEvent tap + a pure, unit-tested state machine |
 | Text insertion | `Services/TextInserter.swift` | Cmd+V paste with change-count-safe clipboard restore |
-| Command Mode / cleanup / transforms | `Services/CleanupCoordinator.swift`, `FoundationModelsCleanupProvider.swift`, `LMStudioService.swift` | Routes cleanup, backtrack, Command Mode & transforms to on-device Apple Intelligence or local LM Studio; graceful fallback |
+| AI cleanup | `Services/CleanupCoordinator.swift`, `FoundationModelsCleanupProvider.swift` | Routes cleanup and backtrack to on-device Apple Intelligence; graceful fallback |
 | Transcript formatting | `Services/TranscriptPipeline.swift` + `Spoken*Formatter.swift` | Fillers, numbers, lists, line breaks, punctuation — deterministic, on-device |
 | Custom dictionary | `Core/DictionaryStore.swift`, `Core/BuiltInDictionary.swift` | Built-in dev terms + learned aliases corrected back to canonical spelling |
-| Transforms | `Core/TransformStore.swift`, `UI/TransformsView.swift` | Named AI rewrites; menu-bar or auto-after-dictation |
 | Scratchpad | `UI/ScratchpadController.swift`, `Core/NotesStore.swift` | Floating notepad (⌥⇧S) with local note storage |
 | Pill & windows | `UI/` | Floating pill, home window, settings, onboarding |
 
@@ -178,12 +169,11 @@ Everything stays on your machine — no API keys, no cloud. Cleanup degrades gra
 xcodebuild -project Yappy.xcodeproj -scheme Yappy test
 ```
 
-Covers the hotkey state machine, settings persistence and migration, the transcript pipeline (numbers, lists, spoken punctuation), the custom dictionary and its built-in dev terms, transforms and notes stores, AI-cleanup prompt assembly, history-based shortcut suggestions, voice-command parsing, adaptive per-app mode resolution, dictation history and stats, voice-shortcut expansion, and app-context classification.
+Covers the hotkey state machine, settings persistence and migration, the transcript pipeline (numbers, lists, spoken punctuation), the custom dictionary and its built-in dev terms, the notes store, AI-cleanup prompt assembly, history-based shortcut suggestions, voice-command parsing, adaptive per-app mode resolution, dictation history and stats, voice-shortcut expansion, and app-context classification.
 
 ## Built with
 
 - [FluidAudio](https://github.com/FluidInference/FluidAudio) — Parakeet, CoreML, and the Apple Neural Engine inference stack.
-- [LM Studio](https://lmstudio.ai) — optional, local LLM cleanup.
 
 ## License
 
