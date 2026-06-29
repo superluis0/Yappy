@@ -39,24 +39,21 @@ struct DictionaryView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 26) {
                 header
-                addField
-
-                Group {
-                    if visibleTerms.isEmpty {
-                        emptyState
-                            .transition(.opacity.combined(with: .scale(scale: 0.92, anchor: .center)))
-                    } else {
-                        termsList
-                            .transition(.opacity.combined(with: .scale(scale: 0.92, anchor: .center)))
-                    }
+                enableSection
+                if settings.customDictionaryEnabled {
+                    termsSection
                 }
-                .animation(.spring(response: 0.45, dampingFraction: 0.85), value: visibleTerms.isEmpty)
             }
-            .padding(24)
+            .frame(maxWidth: 640, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .center)
+            .padding(.horizontal, 30)
+            .padding(.top, 26)
+            .padding(.bottom, 46)
         }
-        .background(Color(nsColor: .windowBackgroundColor))
+        .scrollContentBackground(.hidden)
+        .background(Color.clear)
         .overlay(alignment: .bottom) {
             if pendingDeleteTerm != nil {
                 UndoToast(message: "Term deleted") {
@@ -74,91 +71,228 @@ struct DictionaryView: View {
         }
     }
 
+    // MARK: - Header
+
     private var header: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Custom dictionary")
-                .font(.largeTitle.bold())
-            Text("Add names, jargon, or acronyms Yappy keeps mishearing. Recognition is biased toward these terms — fully on-device.")
-                .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 3) {
+            Text("Dictionary")
+                .font(.system(size: 24, weight: .bold))
+                .foregroundStyle(Brand.ink)
+            Text("Add names, jargon, or acronyms Yappy keeps mishearing — recognition is biased toward these terms, fully on-device.")
+                .font(.system(size: 13.5))
+                .foregroundStyle(Brand.ink3)
         }
     }
 
-    private var addField: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Toggle("Enable custom dictionary", isOn: $settings.customDictionaryEnabled)
+    // MARK: - Enable toggle section
 
-            if settings.customDictionaryEnabled {
-                HStack {
-                    TextField("Add a term (e.g. Kubernetes, Anthropic)", text: $newTerm)
-                        .textFieldStyle(.roundedBorder)
-                        .onSubmit(commit)
-                    Button("Add", action: commit)
-                        .disabled(newTerm.trimmingCharacters(in: .whitespaces).isEmpty)
+    private var enableSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            SectionLabel(icon: "character.book.closed", title: "Custom dictionary")
+                .padding(.horizontal, 4).padding(.bottom, 11)
+
+            GlassCard(padding: 0) {
+                VStack(spacing: 0) {
+                    // Enable toggle row
+                    HStack(spacing: 13) {
+                        RoundedRectangle(cornerRadius: 9, style: .continuous)
+                            .fill(settings.customDictionaryEnabled
+                                  ? Color.accentColor.opacity(0.18)
+                                  : Color.white.opacity(0.06))
+                            .frame(width: 34, height: 34)
+                            .overlay(
+                                Image(systemName: "checkmark.circle")
+                                    .font(.system(size: 15, weight: .medium))
+                                    .foregroundStyle(settings.customDictionaryEnabled
+                                                     ? Color.accentColor : Brand.ink3)
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                    .strokeBorder(settings.customDictionaryEnabled
+                                                  ? Color.accentColor.opacity(0.25)
+                                                  : Color.white.opacity(0.06))
+                            )
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Enable custom dictionary")
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundStyle(Brand.ink)
+                            Text("Bias recognition toward your specific terms when active.")
+                                .font(.system(size: 12))
+                                .foregroundStyle(Brand.ink4)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        Spacer(minLength: 12)
+                        Toggle("", isOn: $settings.customDictionaryEnabled)
+                            .labelsHidden()
+                            .toggleStyle(.switch)
+                            .tint(.accentColor)
+                    }
+                    .padding(.horizontal, 16).padding(.vertical, 12)
+
+                    if settings.customDictionaryEnabled {
+                        // Divider
+                        Rectangle()
+                            .fill(Color.white.opacity(0.07))
+                            .frame(height: 1)
+                            .padding(.leading, 63)
+
+                        // Add-term row
+                        HStack(spacing: 10) {
+                            TextField("Add a term (e.g. Kubernetes, Anthropic)", text: $newTerm)
+                                .textFieldStyle(.roundedBorder)
+                                .onSubmit(commit)
+                            Button("Add", action: commit)
+                                .disabled(newTerm.trimmingCharacters(in: .whitespaces).isEmpty)
+                        }
+                        .padding(.horizontal, 16).padding(.vertical, 12)
+
+                        // Caption
+                        Text("Add a term, then tap its microphone icon to type \u{201c}sounds like\u{201d} spellings or teach pronunciation by voice. Known mishearings are corrected back to your spelling — instantly, on-device.")
+                            .font(.caption)
+                            .foregroundStyle(Brand.ink4)
+                            .padding(.horizontal, 16)
+                            .padding(.bottom, 14)
+                    }
                 }
-
-                Text("Add a term, then tap its microphone icon to type \u{201c}sounds like\u{201d} spellings or teach pronunciation by voice. Known mishearings are corrected back to your spelling \u{2014} instantly, on-device.")
-                    .font(.caption).foregroundStyle(.tertiary)
             }
         }
     }
+
+    // MARK: - Terms section
+
+    private var termsSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            SectionLabel(icon: "textformat.abc", title: "Terms")
+                .padding(.horizontal, 4).padding(.bottom, 11)
+
+            Group {
+                if visibleTerms.isEmpty {
+                    emptyState
+                        .transition(.opacity.combined(with: .scale(scale: 0.92, anchor: .center)))
+                } else {
+                    termsList
+                        .transition(.opacity.combined(with: .scale(scale: 0.92, anchor: .center)))
+                }
+            }
+            .animation(.spring(response: 0.45, dampingFraction: 0.85), value: visibleTerms.isEmpty)
+        }
+    }
+
+    // MARK: - Empty state
 
     private var emptyState: some View {
-        VStack(spacing: 8) {
-            Image(systemName: "character.book.closed")
-                .font(.system(size: 36))
-                .foregroundStyle(.tertiary)
-            Text("No terms yet")
-                .foregroundStyle(.secondary)
+        GlassCard {
+            VStack(spacing: 10) {
+                Image(systemName: "character.book.closed")
+                    .font(.system(size: 32))
+                    .foregroundStyle(Color.accentColor.opacity(0.5))
+                Text("No terms yet")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(Brand.ink3)
+                Text("Type a term above and tap Add to get started.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Brand.ink4)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 28)
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 40)
     }
 
+    // MARK: - Terms list
+
     private var termsList: some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 160), spacing: 8)], spacing: 8) {
-            ForEach(visibleTerms) { term in
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 6) {
-                        Text(term.text).lineLimit(1)
-                        if term.isBuiltIn {
-                            Text("built-in")
-                                .font(.system(size: 9, weight: .medium))
-                                .padding(.horizontal, 5).padding(.vertical, 1)
-                                .background(.tertiary.opacity(0.5), in: Capsule())
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        Button { detailTerm = term } label: {
-                            Image(systemName: "waveform.badge.mic")
-                                .foregroundStyle(.secondary)
-                        }
-                        .buttonStyle(.borderless)
-                        .help("Edit aliases or teach pronunciation")
-                        Button {
-                            scheduleDeletion(term)
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .foregroundStyle(.tertiary)
-                        }
-                        .buttonStyle(.borderless)
+        GlassCard(padding: 0) {
+            VStack(spacing: 0) {
+                ForEach(Array(visibleTerms.enumerated()), id: \.element.id) { index, term in
+                    if index > 0 {
+                        Rectangle()
+                            .fill(Color.white.opacity(0.07))
+                            .frame(height: 1)
+                            .padding(.leading, 63)
                     }
-                    if !term.allAliases.isEmpty {
-                        Text("also hears: " + term.allAliases.joined(separator: ", "))
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
-                            .lineLimit(1)
+                    TermRow(term: term) {
+                        detailTerm = term
+                    } onDelete: {
+                        scheduleDeletion(term)
                     }
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 8))
             }
         }
     }
+
+    // MARK: - Commit
 
     private func commit() {
         store.add(newTerm)
         newTerm = ""
+    }
+}
+
+// MARK: - Term Row
+
+private struct TermRow: View {
+    let term: DictionaryTerm
+    let onEdit: () -> Void
+    let onDelete: () -> Void
+
+    var body: some View {
+        HStack(spacing: 13) {
+            // Icon chip
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .fill(Color.accentColor.opacity(0.12))
+                .frame(width: 34, height: 34)
+                .overlay(
+                    Image(systemName: "textformat")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(Color.accentColor)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .strokeBorder(Color.accentColor.opacity(0.20))
+                )
+
+            // Text stack
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text(term.text)
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(Brand.ink)
+                        .lineLimit(1)
+                    if term.isBuiltIn {
+                        Text("built-in")
+                            .font(.system(size: 9, weight: .medium))
+                            .padding(.horizontal, 5).padding(.vertical, 2)
+                            .background(Color.white.opacity(0.08), in: Capsule())
+                            .foregroundStyle(Brand.ink4)
+                    }
+                }
+                if !term.allAliases.isEmpty {
+                    Text("also hears: " + term.allAliases.joined(separator: ", "))
+                        .font(.system(size: 12))
+                        .foregroundStyle(Brand.ink3)
+                        .lineLimit(1)
+                }
+            }
+
+            Spacer(minLength: 8)
+
+            // Actions
+            Button(action: onEdit) {
+                Image(systemName: "waveform.badge.mic")
+                    .font(.system(size: 14))
+                    .foregroundStyle(Brand.ink3)
+            }
+            .buttonStyle(.borderless)
+            .help("Edit aliases or teach pronunciation")
+
+            Button(action: onDelete) {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 14))
+                    .foregroundStyle(Brand.ink4)
+            }
+            .buttonStyle(.borderless)
+        }
+        .padding(.horizontal, 16).padding(.vertical, 11)
     }
 }
 

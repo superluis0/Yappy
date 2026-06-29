@@ -158,38 +158,6 @@ final class TextInserter {
         return true
     }
 
-    /// Copies the current selection in the frontmost app via ⌘C and returns it,
-    /// restoring the user's clipboard afterward. Returns nil if nothing was
-    /// captured (no selection). Used by Command Mode.
-    func copySelection() throws -> String? {
-        guard AXIsProcessTrusted() else {
-            throw InsertionError.accessibilityPermissionDenied
-        }
-
-        let pasteboard = NSPasteboard.general
-        let snapshot = snapshotClipboard(pasteboard)
-        let beforeCount = pasteboard.changeCount
-
-        // Clear first so a stale clipboard string isn't mistaken for a selection.
-        pasteboard.clearContents()
-        try postCommandKey(0x08) // 'C'
-
-        // ⌘C is asynchronous; poll briefly for the pasteboard to update.
-        var captured: String?
-        let deadline = Date().addingTimeInterval(0.4)
-        while Date() < deadline {
-            if pasteboard.changeCount != beforeCount {
-                captured = pasteboard.string(forType: .string)
-                break
-            }
-            usleep(15_000)
-        }
-
-        restoreClipboard(snapshot, to: pasteboard)
-        let trimmed = captured?.trimmingCharacters(in: .whitespacesAndNewlines)
-        return (trimmed?.isEmpty == false) ? captured : nil
-    }
-
     // MARK: - Leading-space Decision
 
     private enum PrecedingContext {

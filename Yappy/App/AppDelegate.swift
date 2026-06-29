@@ -20,7 +20,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let history = HistoryStore()
     let shortcutStore = ShortcutStore()
     let dictionaryStore = DictionaryStore()
-    let transformStore = TransformStore()
     let notesStore = NotesStore()
     let modeStore = ModeStore()
     let transcriptionService = ParakeetTranscriptionService()
@@ -28,12 +27,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let audioRecorder = AudioRecorder()
     private let textInserter = TextInserter()
     private let soundPlayer = SoundPlayer()
-    private lazy var lmStudio = LMStudioService(settings: settings)
     private lazy var cleanupCoordinator = CleanupCoordinator(
-        lmStudio: lmStudio, settings: settings,
-        onDeviceProviders: [.appleIntelligence: FoundationModelsCleanupProvider()])
+        settings: settings, provider: FoundationModelsCleanupProvider())
     private lazy var hotkeyManager = HotkeyManager(mode: settings.hotkeyOption)
-    private lazy var commandHotkeyManager = HotkeyManager(mode: settings.commandHotkeyOption)
     private lazy var escapeInterceptor = EscapeInterceptor()
     private lazy var pillController = RecordingPillController(appState: appState)
     private lazy var scratchpadController = ScratchpadController(store: notesStore)
@@ -47,10 +43,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         history: history,
         shortcutStore: shortcutStore,
         dictionaryStore: dictionaryStore,
-        transformStore: transformStore,
         modeStore: modeStore,
         transcriptionService: transcriptionService,
-        lmStudio: lmStudio,
         updateChecker: updateChecker,
         whatsNewPresenter: whatsNewPresenter
     )
@@ -60,7 +54,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
     private var statusMenu: NSMenu?
     private var modeMenuItem: NSMenuItem?
-    private var transformsMenuItem: NSMenuItem?
     /// The "Update to Yappy X.Y…" item shown at the top of the menu when an update
     /// is available, with its trailing separator. Inserted/removed dynamically.
     private var updateMenuItem: NSMenuItem?
@@ -90,8 +83,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// loading; recording auto-starts when it's ready (see bindModelReadyAutostart).
     private var pendingDictationStart = false
 
-    /// Text selected in the frontmost app when Command Mode started.
-    private var pendingCommandSelection: String?
     /// Bundle id of the app that had focus when the current session started.
     private var sessionBundleID: String?
     /// Most recently activated app other than Yappy — the app you were in when
@@ -108,6 +99,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Show the Dock icon for the whole time Yappy is running (alongside the
         // menu bar item), not just while the main window is open.
         NSApp.setActivationPolicy(.regular)
+
+        // Select the persisted speech model BEFORE any warm-up runs, so the
+        // launch-time load (below) loads the right one. Changes after launch are
+        // handled by a sink in bindSettings.
+        transcriptionService.activeModel = settings.transcriptionModel
 
         setupMenuBar()
         bindStateToMenuBar()
@@ -206,7 +202,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         hotkeyManager.stop()
-        commandHotkeyManager.stop()
         escapeInterceptor.stop()
         scratchpadHotkey.stop()
         notesStore.flush()
@@ -222,21 +217,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         hotkeyManager.onStop = { [weak self] in self?.finishDictation() }
         hotkeyManager.onCancel = { [weak self] in self?.cancelDictation() }
 
-        commandHotkeyManager.onStart = { [weak self] in self?.startCommand() }
-        commandHotkeyManager.onStop = { [weak self] in self?.finishCommand() }
-        commandHotkeyManager.onCancel = { [weak self] in self?.cancelDictation() }
-
         escapeInterceptor.onEscape = { [weak self] in self?.escapeCancel() }
 
         scratchpadHotkey.onTrigger = { [weak self] in self?.scratchpadController.toggle() }
     }
 
-    /// Esc pressed mid-session: deactivate both hotkey state machines first so
-    /// the eventual modifier key-up doesn't fire a spurious stop, then cancel.
+    /// Esc pressed mid-session: deactivate the hotkey state machine first so the
+    /// eventual modifier key-up doesn't fire a spurious stop, then cancel.
     private func escapeCancel() {
         guard appState.isRecording || appState.isPreparing else { return }
         hotkeyManager.deactivate()
-        commandHotkeyManager.deactivate()
         cancelDictation()
     }
 
@@ -257,16 +247,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// Starts the dictation tap, plus the command tap when enabled and not
-    /// colliding with the dictation hotkey. Returns true once dictation is live.
+    /// Starts the dictation tap (and the always-on scratchpad hotkey). Returns
+    /// true once the dictation tap is live.
     @discardableResult
     private func startTaps() -> Bool {
         let dictationStarted = hotkeyManager.start()
-        if settings.commandModeEnabled, !settings.hotkeysCollide {
-            commandHotkeyManager.start()
-        } else {
-            commandHotkeyManager.stop()
-        }
         scratchpadHotkey.start() // idempotent; summons the floating notepad (⌥⇧S)
         return dictationStarted
     }
@@ -311,7 +296,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let frontApp = NSWorkspace.shared.frontmostApplication
         sessionBundleID = frontApp?.bundleIdentifier
         sessionMode = resolvedMode(forBundleID: sessionBundleID)
-        appState.startRecording(mode: .dictation)
+        appState.startRecording()
         pillController.show()
 
         guard audioRecorder.startRecording() else {
@@ -336,7 +321,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             pillController.hide()
             return
         }
-        guard appState.isRecording, appState.mode == .dictation else { return }
+        guard appState.isRecording else { return }
         maxDurationTimer?.invalidate()
         escapeInterceptor.stop()
 
@@ -374,12 +359,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // PREVIOUS insertion as its own utterance — never inserted,
                 // never run through the pipeline, never written to history.
                 if self.settings.voiceEditingEnabled,
-                   let command = VoiceEditCommandParser.parse(raw),
-                   self.applyVoiceEdit(command) {
-                    self.playSuccessFeedback()
-                    self.appState.reset()
-                    self.pillController.hide()
-                    return
+                   let command = VoiceEditCommandParser.parse(raw) {
+                    if self.applyVoiceEdit(command) {
+                        self.playSuccessFeedback()
+                        self.appState.reset()
+                        self.pillController.hide()
+                        return
+                    }
                 }
 
                 // A spoken app-control command ("switch to email mode", "open
@@ -403,11 +389,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     applyCommands: mode.isAuto ? self.settings.spokenCommandsEnabled : mode.spokenCommands,
                     applyPunctuation: mode.isAuto ? self.settings.spokenPunctuationEnabled : mode.spokenPunctuation
                 ).process(raw)
+
                 // Custom-dictionary corrections: rewrite known mishearings
                 // (manual + voice-trained aliases) back to the canonical spelling.
                 let corrected = self.settings.customDictionaryEnabled
                     ? self.dictionaryReplacer.apply(cleaned)
                     : cleaned
+
                 // A shortcut dictated on its own is canned text — insert it
                 // exactly: bypass cleanup/formatting and the leading-space
                 // heuristic, so e.g. a signature lands verbatim with no stray
@@ -428,12 +416,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
 
                 let expanded = expander.expand(corrected)
+
                 let tone = mode.isAuto ? self.resolvedTone(forBundleID: bundleID) : mode.tone
                 let cleanupEnabled = mode.isAuto ? nil : (mode.cleanupEnabledOverride ?? self.settings.cleanupEnabled)
                 let text = await self.cleanupCoordinator.cleanup(
                     expanded, tone: tone, backtrack: self.settings.backtrackEnabled,
                     cleanupEnabled: cleanupEnabled
                 )
+
                 // If cleanup just ran, the on-device model is loaded — refresh the
                 // keep-warm session so it stays resident for the next dictation.
                 // Cheap here (no cold load) and safe: the audio engine stopped at
@@ -446,8 +436,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // and a no-op when there's no list).
                 let listsEnabled = mode.isAuto ? self.settings.numberedListsEnabled : mode.numberedLists
                 let relisted = listsEnabled ? SpokenListFormatter.format(text) : text
-                // Optionally pipe the result through the user's auto-transform.
-                let finalText = await self.applyAutoTransform(to: relisted)
+
+                let finalText = relisted
 
                 if !finalText.isEmpty {
                     try self.textInserter.insert(text: finalText)
@@ -525,134 +515,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return settings.tone(for: category)
     }
 
-    /// Pipes dictated text through the user's chosen auto-transform, if one is set
-    /// and enabled. Falls back to the original text when no transform applies or
-    /// the model is unavailable — dictation never breaks.
-    private func applyAutoTransform(to text: String) async -> String {
-        guard !text.isEmpty,
-              let raw = settings.autoTransformID,
-              let id = UUID(uuidString: raw),
-              let transform = transformStore.transforms.first(where: { $0.id == id }),
-              transform.enabled else {
-            return text
-        }
-        let result = await cleanupCoordinator.runTransform(prompt: transform.prompt, text: text)
-        return (result?.isEmpty == false) ? result! : text
-    }
-
     private func cancelDictation() {
         maxDurationTimer?.invalidate()
         escapeInterceptor.stop()
         recordingStartTime = nil
-        pendingCommandSelection = nil
         pendingDictationStart = false
         audioRecorder.stopRecording()
 
         appState.reset()
         pillController.hide()
-    }
-
-    // MARK: - Command Mode
-
-    private func startCommand() {
-        guard !appState.isRecording else { return }
-        guard settings.commandModeEnabled, transcriptionService.modelState == .ready else {
-            commandHotkeyManager.deactivate()
-            return
-        }
-
-        // Capture the current selection up front (focus is about to be ours).
-        let selection = (try? textInserter.copySelection()) ?? nil
-        guard let selection, !selection.isEmpty else {
-            // Nothing selected — flash an error state instead of recording.
-            commandHotkeyManager.deactivate()
-            appState.setError(CommandError.noSelection)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
-                self?.appState.reset()
-            }
-            return
-        }
-
-        // Selection captured; show the pill before the audio-engine start so it
-        // appears immediately. The pill is non-activating, so focus is unaffected.
-        pendingCommandSelection = selection
-        appState.startRecording(mode: .command)
-        pillController.show()
-
-        guard audioRecorder.startRecording() else {
-            pendingCommandSelection = nil
-            appState.reset()
-            pillController.hide()
-            commandHotkeyManager.deactivate()
-            return
-        }
-
-        recordingStartTime = Date()
-        playFeedback(start: true)
-        armMaxDurationTimer { [weak self] in self?.finishCommand() }
-        escapeInterceptor.start()
-    }
-
-    private func finishCommand() {
-        guard appState.isRecording, appState.mode == .command else { return }
-        maxDurationTimer?.invalidate()
-        escapeInterceptor.stop()
-        recordingStartTime = nil
-
-        let samples = audioRecorder.stopRecording()
-        let selection = pendingCommandSelection ?? ""
-        pendingCommandSelection = nil
-
-        appState.stopRecording()
-        playFeedback(start: false)
-
-        Task { @MainActor [weak self] in
-            guard let self else { return }
-
-            // No spoken instruction → leave the selection untouched.
-            guard AudioRecorder.containsSpeech(samples) else {
-                self.appState.reset()
-                self.pillController.hide()
-                return
-            }
-
-            do {
-                let rawInstruction = try await self.transcriptionService.transcribe(samples)
-                // Only filler-stripping applies to a spoken instruction —
-                // numbers-as-words are fine for the LLM, and a literal line
-                // break would corrupt the prompt.
-                let instruction = self.settings.fillerRemovalEnabled
-                    ? FillerWordRemover.remove(rawInstruction)
-                    : rawInstruction
-                if let result = await self.cleanupCoordinator.runCommand(instruction: instruction, selection: selection),
-                   !result.isEmpty {
-                    try self.textInserter.insert(text: result)
-                    self.playSuccessFeedback()
-                    self.appState.setTranscription(result)
-                } else {
-                    // LM Studio unavailable or returned nothing — don't destroy
-                    // the user's selection; surface a brief error.
-                    self.appState.setError(CommandError.unavailable)
-                    try? await Task.sleep(nanoseconds: 1_000_000_000)
-                }
-            } catch {
-                self.appState.setError(error)
-            }
-            self.appState.reset()
-            self.pillController.hide()
-        }
-    }
-
-    private enum CommandError: LocalizedError {
-        case noSelection
-        case unavailable
-
-        var errorDescription: String? {
-            switch self {
-            case .noSelection: return "Select some text first, then use Command Mode."
-            case .unavailable: return "Command Mode returned no result. Your text was left unchanged."
-            }
-        }
     }
 
     /// Arms the safety timer that force-stops an over-long session.
@@ -662,7 +533,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             withTimeInterval: Constants.maxRecordingDuration, repeats: false
         ) { [weak self] _ in
             self?.hotkeyManager.deactivate()
-            self?.commandHotkeyManager.deactivate()
             stop()
         }
     }
@@ -739,11 +609,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(modeItem)
         modeMenuItem = modeItem
         rebuildModeMenu()
-
-        let transformsItem = NSMenuItem(title: "Transforms", action: nil, keyEquivalent: "")
-        menu.addItem(transformsItem)
-        transformsMenuItem = transformsItem
-        rebuildTransformsMenu()
 
         menu.addItem(NSMenuItem.separator())
         let updatesItem = NSMenuItem(title: "Check for Updates…",
@@ -863,71 +728,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if settings.adaptiveModeEnabled, !isAuto, let bundle = lastActiveBundleID {
             settings.appModeOverrides[bundle] = raw
         }
-    }
-
-    /// Rebuilds the Transforms submenu from the enabled transforms.
-    private func rebuildTransformsMenu() {
-        guard let transformsMenuItem else { return }
-        let submenu = NSMenu()
-        let enabled = transformStore.enabledTransforms
-        if enabled.isEmpty {
-            let item = NSMenuItem(title: "No transforms", action: nil, keyEquivalent: "")
-            item.isEnabled = false
-            submenu.addItem(item)
-        } else {
-            for transform in enabled {
-                let item = NSMenuItem(
-                    title: transform.name,
-                    action: #selector(runTransformFromMenu(_:)),
-                    keyEquivalent: ""
-                )
-                item.representedObject = transform.id.uuidString
-                item.target = self
-                submenu.addItem(item)
-            }
-        }
-        transformsMenuItem.submenu = submenu
-    }
-
-    @objc private func runTransformFromMenu(_ sender: NSMenuItem) {
-        guard let raw = sender.representedObject as? String,
-              let id = UUID(uuidString: raw),
-              let transform = transformStore.transforms.first(where: { $0.id == id }) else { return }
-        Task { @MainActor [weak self] in await self?.runTransform(transform) }
-    }
-
-    /// Runs a transform on the current selection in the frontmost app. Captures
-    /// the selection after the menu has dismissed (focus returns to the app),
-    /// then replaces it with the model's result. Leaves the selection untouched
-    /// on any failure, mirroring Command Mode.
-    @MainActor
-    private func runTransform(_ transform: Transform) async {
-        guard !appState.isRecording, !appState.isProcessing else { return }
-
-        // Let the status menu finish dismissing so focus returns to the target app.
-        try? await Task.sleep(nanoseconds: 150_000_000)
-
-        let selection = (try? textInserter.copySelection()) ?? nil
-        guard let selection, !selection.isEmpty else {
-            appState.setError(CommandError.noSelection)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in self?.appState.reset() }
-            return
-        }
-
-        appState.beginProcessing()
-        pillController.show()
-
-        if let result = await cleanupCoordinator.runTransform(prompt: transform.prompt, text: selection),
-           !result.isEmpty {
-            try? textInserter.insert(text: result)
-            playSuccessFeedback()
-            appState.setTranscription(result)
-        } else {
-            appState.setError(CommandError.unavailable)
-            try? await Task.sleep(nanoseconds: 1_000_000_000)
-        }
-        appState.reset()
-        pillController.hide()
     }
 
     private func bindStateToMenuBar() {
@@ -1114,35 +914,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             .store(in: &cancellables)
 
-        settings.$commandHotkeyOption
+        // Switch the active speech model when the user changes it. Updating
+        // activeModel unloads the previous model and resets modelState to
+        // .notLoaded; warmUp() then (down)loads the now-active model. dropFirst:
+        // the launch code already applied the initial value above.
+        settings.$transcriptionModel
+            .dropFirst()
             .removeDuplicates()
-            .sink { [weak self] option in
-                self?.commandHotkeyManager.updateMode(option)
+            .sink { [weak self] model in
+                guard let self else { return }
+                self.transcriptionService.activeModel = model
+                Task { @MainActor [weak self] in await self?.transcriptionService.warmUp() }
             }
             .store(in: &cancellables)
-
-        // Re-evaluate which taps run when command-mode toggles or a collision
-        // is introduced/resolved by changing either hotkey.
-        Publishers.CombineLatest3(
-            settings.$commandModeEnabled,
-            settings.$commandHotkeyOption,
-            settings.$hotkeyOption
-        )
-        .dropFirst()
-        .sink { [weak self] _, _, _ in
-            self?.startTaps()
-        }
-        .store(in: &cancellables)
-
 
         // Keep the menu-bar Mode submenu in sync with the list and selection.
         modeStore.$modes
             .sink { [weak self] _ in self?.rebuildModeMenu() }
-            .store(in: &cancellables)
-
-        // Keep the menu-bar Transforms submenu in sync with the list.
-        transformStore.$transforms
-            .sink { [weak self] _ in self?.rebuildTransformsMenu() }
             .store(in: &cancellables)
 
         // Rebuild the precompiled dictionary matcher only when terms change
@@ -1181,13 +969,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             .store(in: &cancellables)
 
-        // Warm up the on-device cleanup model the moment the user enables cleanup
-        // or selects Apple Intelligence, so it's "ready to work" without a cold
-        // start (self-gates to the on-device backends).
-        Publishers.CombineLatest(settings.$cleanupEnabled, settings.$cleanupBackend)
+        // Warm up the on-device cleanup model the moment the user enables cleanup,
+        // so it's "ready to work" without a cold start. prewarm() self-gates to a
+        // no-op when cleanup is off or no provider is available.
+        settings.$cleanupEnabled
             .dropFirst()
-            .removeDuplicates(by: { $0 == $1 })
-            .sink { [weak self] _, _ in self?.cleanupCoordinator.prewarm() }
+            .removeDuplicates()
+            .sink { [weak self] _ in self?.cleanupCoordinator.prewarm() }
             .store(in: &cancellables)
     }
 

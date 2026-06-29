@@ -9,17 +9,7 @@ import Combine
 /// Central state management for the Yappy application.
 /// Manages recording state, audio visualization, transcription results, and errors.
 final class AppState: ObservableObject {
-    /// What the current capture session is for.
-    enum Mode {
-        case dictation
-        case command
-    }
-
     // MARK: - Published Properties
-
-    /// What the active (or most recent) session is doing — dictation vs. an
-    /// AI command applied to the current selection.
-    @Published private(set) var mode: Mode = .dictation
 
     /// Indicates whether audio recording is currently active.
     @Published private(set) var isRecording: Bool = false
@@ -47,10 +37,9 @@ final class AppState: ObservableObject {
     // MARK: - Public Methods
 
     /// Starts the recording session.
-    func startRecording(mode: Mode = .dictation) {
+    func startRecording() {
         guard !isRecording else { return }
 
-        self.mode = mode
         isIdle = false
         isPreparing = false
         isRecording = true
@@ -79,24 +68,12 @@ final class AppState: ObservableObject {
         isProcessing = true
     }
 
-    /// Begins a processing-only session with no recording — e.g. running a
-    /// transform on selected text. The pill shows its processing state until reset.
-    func beginProcessing(mode: Mode = .command) {
-        self.mode = mode
-        isIdle = false
-        isRecording = false
-        isProcessing = true
-        error = nil
-        currentTranscription = ""
-    }
-
     /// Resets all state to initial values.
     func reset() {
         isIdle = true
         isRecording = false
         isProcessing = false
         isPreparing = false
-        mode = .dictation
         audioLevels = Array(repeating: 0.0, count: Constants.pillBarCount)
         currentTranscription = ""
         error = nil

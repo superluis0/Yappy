@@ -15,22 +15,11 @@ struct RecordingPillView: View {
     @State private var visible = false
     @State private var breathe = false
 
-    private var isCommand: Bool { appState.mode == .command }
-
-    /// Command Mode goes cool blue — the clearest contrast to the orange brand.
-    private var accent: Color {
-        isCommand ? Color(red: 0.45, green: 0.55, blue: 1.0) : .accentColor
-    }
+    private var accent: Color { .accentColor }
 
     /// Gradient for the waveform bars: bright molten tips fading into the accent.
     private var barStyle: AnyShapeStyle {
-        if isCommand {
-            return AnyShapeStyle(LinearGradient(
-                colors: [Color(red: 0.75, green: 0.82, blue: 1.0), accent],
-                startPoint: .top, endPoint: .bottom
-            ))
-        }
-        return AnyShapeStyle(LinearGradient(
+        AnyShapeStyle(LinearGradient(
             colors: [Color(red: 1.0, green: 0.75, blue: 0.55), Color.accentColor],
             startPoint: .top, endPoint: .bottom
         ))
@@ -59,13 +48,6 @@ struct RecordingPillView: View {
             }
 
             HStack(spacing: 8) {
-                if isCommand {
-                    Image(systemName: "wand.and.stars")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(accent)
-                        .shadow(color: accent.opacity(0.8), radius: 4)
-                }
-
                 if appState.isRecording {
                     WaveformBarsView(
                         levels: appState.audioLevels,
@@ -130,7 +112,7 @@ struct RecordingPillView: View {
         HStack(spacing: 5) {
             ForEach(0..<3, id: \.self) { index in
                 Circle()
-                    .fill(isCommand ? accent.opacity(0.9) : Color(red: 1.0, green: 0.8, blue: 0.62))
+                    .fill(Color(red: 1.0, green: 0.8, blue: 0.62))
                     .frame(width: 5, height: 5)
                     .scaleEffect(breathe ? 1.0 : 0.55)
                     .animation(

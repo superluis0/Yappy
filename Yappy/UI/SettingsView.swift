@@ -7,244 +7,34 @@ import SwiftUI
 import ServiceManagement
 
 /// Settings panel shown inside the main window's sidebar. Fully local — no API keys.
+/// Bespoke "liquid glass" layout: each setting is an icon + title + inline description
+/// + control, grouped into glass cards with breathing room (see `SettingsSection`).
 struct SettingsView: View {
     @ObservedObject var settings: Settings
     @ObservedObject var transcriptionService: ParakeetTranscriptionService
-    let lmStudio: LMStudioService
     @ObservedObject var updateChecker: UpdateChecker
 
-    @State private var lmStudioModels: [String] = []
-    @State private var lmStudioReachable: Bool?
     @State private var microphoneGranted = AudioRecorder.hasPermission
     @State private var accessibilityGranted = AXIsProcessTrusted()
 
-    /// LM Studio server config only matters when LM Studio can actually run a
-    /// request — i.e. the user picked it, or picked Automatic (which falls back to it).
-    private var usesLMStudio: Bool {
-        settings.cleanupBackend == .lmStudio || settings.cleanupBackend == .automatic
-    }
-
-    /// One-line explanation of the selected cleanup engine.
-    private var cleanupBackendHint: String {
-        switch settings.cleanupBackend {
-        case .automatic:
-            return "Uses Apple Intelligence when available, otherwise your LM Studio server."
-        case .appleIntelligence:
-            return "On-device Apple Intelligence — requires macOS 26+ with Apple Intelligence enabled."
-        case .lmStudio:
-            return "A model you run locally in LM Studio."
-        }
-    }
-
     var body: some View {
-        Form {
-            Section("Dictation") {
-                Picker("Hotkey", selection: $settings.hotkeyOption) {
-                    ForEach(HotkeyOption.allCases, id: \.self) { option in
-                        Text(option.displayName).tag(option)
-                    }
-                }
-
-                Toggle("Play sounds when recording starts and stops", isOn: $settings.audioFeedbackEnabled)
-
-                if settings.audioFeedbackEnabled {
-                    HStack {
-                        Text("Sound volume")
-                        Slider(value: $settings.audioFeedbackVolume, in: 0...1)
-                            .frame(width: 160)
-                    }
-                }
-
-                Toggle("Write spoken numbers as digits", isOn: $settings.numberFormattingEnabled)
-                Text("Turns \u{201c}eleven point six\u{201d} into \u{201c}11.6\u{201d}, \u{201c}twenty dollars\u{201d} into \u{201c}$20\u{201d}, and \u{201c}three thirty PM\u{201d} into \u{201c}3:30 PM.\u{201d}")
-                    .font(.caption).foregroundStyle(.secondary)
-
-                Toggle("Format spoken numbered lists", isOn: $settings.numberedListsEnabled)
-                Text("Counting off items \u{2014} \u{201c}one milk two eggs three bread\u{201d} \u{2014} becomes a 1./2./3. list. Works best with spoken numbers on.")
-                    .font(.caption).foregroundStyle(.secondary)
-
-                Toggle("Remove filler words", isOn: $settings.fillerRemovalEnabled)
-                Text("Strips standalone \u{201c}um\u{201d}, \u{201c}uh\u{201d}, \u{201c}erm\u{201d}, and \u{201c}hmm\u{201d} from transcripts.")
-                    .font(.caption).foregroundStyle(.secondary)
-
-                Toggle("Spoken formatting commands", isOn: $settings.spokenCommandsEnabled)
-                Text("Say \u{201c}new line\u{201d} or \u{201c}new paragraph\u{201d} to insert line breaks.")
-                    .font(.caption).foregroundStyle(.secondary)
-
-                Toggle("Spoken punctuation", isOn: $settings.spokenPunctuationEnabled)
-                Text("Say \u{201c}comma\u{201d}, \u{201c}period\u{201d}, or \u{201c}question mark\u{201d} to insert punctuation. Turn off if you dictate those words literally.")
-                    .font(.caption).foregroundStyle(.secondary)
-
-                Toggle("Voice editing commands", isOn: $settings.voiceEditingEnabled)
-                Text("Say \u{201c}scratch that\u{201d}, \u{201c}delete the last word\u{201d}, or \u{201c}all caps that\u{201d} to fix what you just dictated.")
-                    .font(.caption).foregroundStyle(.secondary)
-
-                Toggle("Voice commands", isOn: $settings.voiceControlEnabled)
-                Text("Say \u{201c}switch to <mode> mode\u{201d}, \u{201c}open scratchpad\u{201d}, or \u{201c}new note\u{201d} to control Yappy hands-free.")
-                    .font(.caption).foregroundStyle(.secondary)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 26) {
+                header
+                dictationSection
+                aiCleanupSection
+                generalSection
+                softwareUpdateSection
+                permissionsSection
             }
-
-            Section {
-                Toggle("Enable Command Mode", isOn: $settings.commandModeEnabled)
-                if settings.commandModeEnabled {
-                    Picker("Command hotkey", selection: $settings.commandHotkeyOption) {
-                        ForEach(HotkeyOption.allCases, id: \.self) { option in
-                            Text(option.displayName).tag(option)
-                        }
-                    }
-                    if settings.hotkeysCollide {
-                        Label("Command hotkey must differ from the dictation hotkey.", systemImage: "exclamationmark.triangle.fill")
-                            .font(.caption)
-                            .foregroundStyle(.orange)
-                    }
-                }
-            } header: {
-                Text("Command Mode")
-            } footer: {
-                Text("Select text in any app, hold the command hotkey, and speak an instruction (\u{201c}make this concise\u{201d}, \u{201c}translate to Spanish\u{201d}). Requires LM Studio running.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-
-            Section("General") {
-                Toggle("Launch Yappy at login", isOn: $settings.launchAtLogin)
-                ModelStatusRow(transcriptionService: transcriptionService)
-            }
-
-            Section {
-                LabeledContent("Current version", value: updateChecker.currentVersionDisplay)
-                Toggle("Check for updates automatically", isOn: $settings.autoUpdateChecksEnabled)
-                HStack {
-                    Button {
-                        updateChecker.checkForUpdates()
-                    } label: {
-                        if updateChecker.isChecking {
-                            HStack(spacing: 6) {
-                                ProgressView().controlSize(.small)
-                                Text("Checking\u{2026}")
-                            }
-                        } else {
-                            Text("Check Now")
-                        }
-                    }
-                    .disabled(updateChecker.isChecking)
-
-                    Spacer()
-
-                    if let release = updateChecker.available {
-                        Label("Version \(release.version) ready", systemImage: "arrow.down.circle.fill")
-                            .font(.callout)
-                            .foregroundStyle(Color.accentColor)
-                    }
-                }
-            } header: {
-                Text("Software Update")
-            } footer: {
-                Text("Updates are downloaded from GitHub and verified with a cryptographic signature before installing. Nothing about you is sent \u{2014} only a version check.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Section {
-                Toggle("Clean up transcripts with a local AI model", isOn: $settings.cleanupEnabled)
-
-                if settings.cleanupEnabled {
-                    Picker("Engine", selection: $settings.cleanupBackend) {
-                        Text(CleanupBackend.automatic.displayName).tag(CleanupBackend.automatic)
-                        Text(CleanupBackend.appleIntelligence.displayName).tag(CleanupBackend.appleIntelligence)
-                        Text(CleanupBackend.lmStudio.displayName).tag(CleanupBackend.lmStudio)
-                    }
-                    .listRowBackground(Color.accentColor.opacity(0.04))
-
-                    Text(cleanupBackendHint)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .listRowBackground(Color.accentColor.opacity(0.04))
-
-                    if usesLMStudio {
-                    LabeledContent("Status") {
-                        switch lmStudioReachable {
-                        case .some(true):
-                            Label("Connected", systemImage: "circle.fill")
-                                .foregroundStyle(.green)
-                        case .some(false):
-                            Label("Not running", systemImage: "circle.fill")
-                                .foregroundStyle(.orange)
-                        case .none:
-                            HStack(spacing: 6) {
-                                ProgressView().controlSize(.small)
-                                Text("Checking…").foregroundStyle(.secondary)
-                            }
-                        }
-                    }
-                    .listRowBackground(
-                        Group {
-                            switch lmStudioReachable {
-                            case .some(true): Color.green.opacity(0.07)
-                            case .some(false): Color.orange.opacity(0.09)
-                            case .none: Color.clear
-                            }
-                        }
-                    )
-
-                    Picker("Model", selection: modelBinding) {
-                        Text("First available").tag("")
-                        ForEach(lmStudioModels, id: \.self) { model in
-                            Text(model).tag(model)
-                        }
-                    }
-                    .listRowBackground(Color.accentColor.opacity(0.04))
-
-                    TextField("Server URL", text: $settings.lmStudioBaseURL)
-                        .textFieldStyle(.roundedBorder)
-                        .listRowBackground(Color.accentColor.opacity(0.04))
-                    }
-
-                    Toggle("Adapt tone to the app I'm typing in", isOn: $settings.contextAwareToneEnabled)
-                        .listRowBackground(Color.accentColor.opacity(0.04))
-
-                    if settings.contextAwareToneEnabled {
-                        ForEach(AppCategory.allCases, id: \.self) { category in
-                            Picker(category.displayName, selection: toneBinding(for: category)) {
-                                Text("Auto (\(category.defaultTone.displayName))").tag(Optional<ToneStyle>.none)
-                                ForEach(ToneStyle.allCases, id: \.self) { tone in
-                                    Text(tone.displayName).tag(Optional(tone))
-                                }
-                            }
-                            .listRowBackground(Color.accentColor.opacity(0.04))
-                        }
-                    }
-
-                    Toggle("Resolve spoken self-corrections", isOn: $settings.backtrackEnabled)
-                        .listRowBackground(Color.accentColor.opacity(0.04))
-                    Text("\u{201c}Let\u{2019}s meet at 2, actually 3\u{201d} becomes \u{201c}Let\u{2019}s meet at 3.\u{201d}")
-                        .font(.caption).foregroundStyle(.secondary)
-                        .listRowBackground(Color.accentColor.opacity(0.04))
-                }
-            } header: {
-                Text("AI Cleanup")
-            } footer: {
-                Text("Requires LM Studio running locally with its server enabled. If it isn't available, the raw transcript is inserted — dictation never breaks.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Section("Permissions") {
-                permissionRow(
-                    title: "Microphone",
-                    granted: microphoneGranted,
-                    pane: "Privacy_Microphone"
-                )
-                permissionRow(
-                    title: "Accessibility",
-                    granted: accessibilityGranted,
-                    pane: "Privacy_Accessibility"
-                )
-            }
+            .frame(maxWidth: 640, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .center)
+            .padding(.horizontal, 30)
+            .padding(.top, 26)
+            .padding(.bottom, 46)
         }
-        .formStyle(.grouped)
-        .task(id: "\(settings.cleanupEnabled)-\(settings.cleanupBackend.rawValue)") {
-            await refreshLMStudio()
-        }
+        .scrollContentBackground(.hidden)
+        .background(Color.clear)
         .onReceive(NotificationCenter.default.publisher(
             for: NSApplication.didBecomeActiveNotification)) { _ in
             microphoneGranted = AudioRecorder.hasPermission
@@ -252,7 +42,172 @@ struct SettingsView: View {
         }
     }
 
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text("Settings").font(.system(size: 24, weight: .bold)).foregroundStyle(Brand.ink)
+            Text("Tune how Yappy listens, formats, and writes — all on device.")
+                .font(.system(size: 13.5)).foregroundStyle(Brand.ink3)
+        }
+    }
+
+    // MARK: - Sections
+
+    private var dictationSection: some View {
+        SettingsSection(icon: "mic.fill", title: "Dictation") {
+            SettingRow(icon: "keyboard", title: "Activation hotkey",
+                       subtitle: "Hold to record, release to insert.") {
+                Picker("", selection: $settings.hotkeyOption) {
+                    ForEach(HotkeyOption.allCases, id: \.self) { Text($0.displayName).tag($0) }
+                }
+                .labelsHidden().fixedSize()
+            }
+            RowDivider()
+            SettingToggle(icon: "speaker.wave.2.fill", title: "Recording sounds",
+                          subtitle: "A soft chime when capture starts and stops.",
+                          isOn: $settings.audioFeedbackEnabled)
+            if settings.audioFeedbackEnabled {
+                RowDivider()
+                SettingRow(icon: "dial.medium", title: "Sound volume", active: true) {
+                    Slider(value: $settings.audioFeedbackVolume, in: 0...1)
+                        .frame(width: 150).tint(.accentColor)
+                }
+            }
+            RowDivider()
+            SettingToggle(icon: "number", title: "Spoken numbers as digits",
+                          subtitle: "“three thirty PM” becomes 3:30 PM, “twenty dollars” becomes $20.",
+                          isOn: $settings.numberFormattingEnabled)
+            RowDivider()
+            SettingToggle(icon: "list.number", title: "Spoken numbered lists",
+                          subtitle: "Count off items and Yappy lays them out as a 1. 2. 3. list.",
+                          isOn: $settings.numberedListsEnabled)
+            RowDivider()
+            SettingToggle(icon: "eraser", title: "Remove filler words",
+                          subtitle: "Strips stray “um”, “uh”, “erm”, and “hmm”.",
+                          isOn: $settings.fillerRemovalEnabled)
+            RowDivider()
+            SettingToggle(icon: "text.alignleft", title: "Spoken formatting commands",
+                          subtitle: "Say “new line” or “new paragraph” to insert line breaks.",
+                          isOn: $settings.spokenCommandsEnabled)
+            RowDivider()
+            SettingToggle(icon: "questionmark.circle", title: "Spoken punctuation",
+                          subtitle: "Say “comma”, “period”, or “question mark” to punctuate.",
+                          isOn: $settings.spokenPunctuationEnabled)
+            RowDivider()
+            SettingToggle(icon: "arrow.uturn.backward", title: "Voice editing commands",
+                          subtitle: "“scratch that”, “delete the last word”, or “all caps that”.",
+                          isOn: $settings.voiceEditingEnabled)
+            RowDivider()
+            SettingToggle(icon: "wand.and.rays", title: "Voice commands",
+                          subtitle: "“switch to <mode> mode”, “open scratchpad”, or “new note”.",
+                          isOn: $settings.voiceControlEnabled)
+        }
+    }
+
+    private var aiCleanupSection: some View {
+        SettingsSection(icon: "sparkles", title: "AI cleanup", tinted: true) {
+            SettingToggle(icon: "wand.and.stars", title: "Clean up transcripts",
+                          subtitle: "On-device polish for punctuation, casing, and phrasing. Runs with Apple Intelligence (macOS 26+); inserts the raw transcript if it isn’t available.",
+                          isOn: $settings.cleanupEnabled)
+            if settings.cleanupEnabled {
+                RowDivider()
+                SettingToggle(icon: "arrow.triangle.2.circlepath", title: "Adapt tone to the app",
+                              subtitle: "Match formality to where you’re typing.",
+                              isOn: $settings.contextAwareToneEnabled)
+                if settings.contextAwareToneEnabled {
+                    ForEach(AppCategory.allCases, id: \.self) { category in
+                        RowDivider()
+                        SettingRow(icon: "app", title: category.displayName) {
+                            Picker("", selection: toneBinding(for: category)) {
+                                Text("Auto (\(category.defaultTone.displayName))").tag(Optional<ToneStyle>.none)
+                                ForEach(ToneStyle.allCases, id: \.self) { Text($0.displayName).tag(Optional($0)) }
+                            }
+                            .labelsHidden().fixedSize()
+                        }
+                    }
+                }
+                RowDivider()
+                SettingToggle(icon: "arrow.uturn.left", title: "Resolve self-corrections",
+                              subtitle: "“meet at 2, actually 3” becomes “Let’s meet at 3.”",
+                              isOn: $settings.backtrackEnabled)
+            }
+        }
+    }
+
+    private var generalSection: some View {
+        SettingsSection(icon: "gearshape", title: "General") {
+            SettingToggle(icon: "power", title: "Launch Yappy at login", isOn: $settings.launchAtLogin)
+            RowDivider()
+            SettingRow(icon: "waveform", title: "Speech model",
+                       subtitle: "Parakeet — English, fastest. Nemotron — multilingual, ~670 MB on first use.") {
+                Picker("", selection: $settings.transcriptionModel) {
+                    ForEach(TranscriptionModel.allCases, id: \.self) { Text($0.displayName).tag($0) }
+                }
+                .labelsHidden().fixedSize()
+            }
+            RowDivider()
+            ModelStatusRow(settings: settings, transcriptionService: transcriptionService)
+                .padding(.horizontal, 16).padding(.vertical, 12)
+        }
+    }
+
+    private var softwareUpdateSection: some View {
+        SettingsSection(icon: "arrow.down.circle", title: "Software update") {
+            SettingRow(icon: "number.circle", title: "Current version") {
+                Text(updateChecker.currentVersionDisplay)
+                    .font(.system(size: 13)).foregroundStyle(Brand.ink3)
+            }
+            RowDivider()
+            SettingToggle(icon: "clock.arrow.circlepath", title: "Check automatically",
+                          subtitle: "Downloaded from GitHub and signature-verified before installing.",
+                          isOn: $settings.autoUpdateChecksEnabled)
+            RowDivider()
+            SettingRow(icon: "arrow.down.circle", title: "Check for updates") {
+                HStack(spacing: 10) {
+                    if let release = updateChecker.available {
+                        Label("v\(release.version) ready", systemImage: "arrow.down.circle.fill")
+                            .font(.system(size: 12, weight: .medium)).foregroundStyle(Color.accentColor)
+                    }
+                    Button {
+                        updateChecker.checkForUpdates()
+                    } label: {
+                        if updateChecker.isChecking {
+                            HStack(spacing: 6) { ProgressView().controlSize(.small); Text("Checking…") }
+                        } else {
+                            Text("Check now")
+                        }
+                    }
+                    .disabled(updateChecker.isChecking)
+                }
+            }
+        }
+    }
+
+    private var permissionsSection: some View {
+        SettingsSection(icon: "lock.shield", title: "Permissions") {
+            permissionRow(title: "Microphone", granted: microphoneGranted, pane: "Privacy_Microphone")
+            RowDivider()
+            permissionRow(title: "Accessibility", granted: accessibilityGranted, pane: "Privacy_Accessibility")
+        }
+    }
+
     // MARK: - Helpers
+
+    private func permissionRow(title: String, granted: Bool, pane: String) -> some View {
+        SettingRow(
+            icon: granted ? "checkmark.circle.fill" : "exclamationmark.triangle.fill",
+            title: title,
+            subtitle: granted ? "Granted." : "Required — open System Settings to enable.",
+            iconColor: granted ? Brand.ready : Brand.danger
+        ) {
+            if !granted {
+                Button("Open settings") {
+                    if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(pane)") {
+                        NSWorkspace.shared.open(url)
+                    }
+                }
+            }
+        }
+    }
 
     private func toneBinding(for category: AppCategory) -> Binding<ToneStyle?> {
         Binding(
@@ -266,40 +221,89 @@ struct SettingsView: View {
             }
         )
     }
+}
 
-    private var modelBinding: Binding<String> {
-        Binding(
-            get: { settings.lmStudioModelID ?? "" },
-            set: { settings.lmStudioModelID = $0.isEmpty ? nil : $0 }
-        )
-    }
+// MARK: - Bespoke setting components
 
-    private func refreshLMStudio() async {
-        guard settings.cleanupEnabled else { return }
-        lmStudioReachable = nil
-        let reachable = await lmStudio.isReachable()
-        lmStudioReachable = reachable
-        lmStudioModels = reachable ? await lmStudio.availableModels() : []
-    }
+/// A titled section: an accent icon + label header above a glass card of rows.
+private struct SettingsSection<Content: View>: View {
+    let icon: String
+    let title: String
+    var tinted: Bool = false
+    @ViewBuilder var content: () -> Content
 
-    @ViewBuilder
-    private func permissionRow(title: String, granted: Bool, pane: String) -> some View {
-        HStack {
-            Label {
-                Text(title)
-            } icon: {
-                Image(systemName: granted ? "checkmark.circle.fill" : "xmark.circle.fill")
-                    .foregroundStyle(granted ? .green : .red)
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 9) {
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(Color.accentColor.opacity(0.18))
+                    .frame(width: 23, height: 23)
+                    .overlay(Image(systemName: icon).font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Color.accentColor))
+                Text(title).font(.system(size: 13, weight: .semibold)).foregroundStyle(Brand.ink2)
+                Spacer()
             }
-            Spacer()
-            if !granted {
-                Button("Open System Settings") {
-                    let url = "x-apple.systempreferences:com.apple.preference.security?\(pane)"
-                    if let url = URL(string: url) {
-                        NSWorkspace.shared.open(url)
-                    }
+            .padding(.horizontal, 4).padding(.bottom, 11)
+
+            VStack(spacing: 0) { content() }
+                .glassPanel(cornerRadius: 16, tint: tinted ? Color.accentColor.opacity(0.32) : nil)
+        }
+    }
+}
+
+/// One setting: an icon chip, a title with optional inline description, and a
+/// trailing control. The chip tints to the accent when the setting is `active`.
+private struct SettingRow<Trailing: View>: View {
+    let icon: String
+    let title: String
+    var subtitle: String? = nil
+    var active: Bool = false
+    var iconColor: Color? = nil
+    @ViewBuilder var trailing: () -> Trailing
+
+    private var highlighted: Bool { active || iconColor != nil }
+    private var chip: Color { iconColor ?? Color.accentColor }
+
+    var body: some View {
+        HStack(spacing: 13) {
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .fill(highlighted ? chip.opacity(0.18) : Color.white.opacity(0.06))
+                .frame(width: 34, height: 34)
+                .overlay(Image(systemName: icon).font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(highlighted ? chip : Brand.ink3))
+                .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .strokeBorder(highlighted ? chip.opacity(0.25) : Color.white.opacity(0.06)))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.system(size: 14, weight: .medium)).foregroundStyle(Brand.ink)
+                if let subtitle {
+                    Text(subtitle).font(.system(size: 12)).foregroundStyle(Brand.ink4)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
+            Spacer(minLength: 12)
+            trailing()
         }
+        .padding(.horizontal, 16).padding(.vertical, 12)
+    }
+}
+
+/// A `SettingRow` whose trailing control is a switch bound to `isOn`.
+private struct SettingToggle: View {
+    let icon: String
+    let title: String
+    var subtitle: String? = nil
+    @Binding var isOn: Bool
+
+    var body: some View {
+        SettingRow(icon: icon, title: title, subtitle: subtitle, active: isOn) {
+            Toggle("", isOn: $isOn).labelsHidden().toggleStyle(.switch).tint(.accentColor)
+        }
+    }
+}
+
+/// Hairline between rows, inset to start under the row's text (past the icon chip).
+private struct RowDivider: View {
+    var body: some View {
+        Rectangle().fill(Color.white.opacity(0.07)).frame(height: 1).padding(.leading, 63)
     }
 }

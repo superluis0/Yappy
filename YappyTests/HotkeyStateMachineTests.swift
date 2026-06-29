@@ -54,6 +54,16 @@ final class HotkeyStateMachineTests: XCTestCase {
         XCTAssertEqual(machine.handle(.up, at: 0.5), .stop)
     }
 
+    func testRightControlHoldBehavesLikeCommandHold() {
+        var machine = HotkeyStateMachine(mode: .rightControlHold)
+        XCTAssertEqual(machine.handle(.down, at: 0.0), .start)
+        XCTAssertEqual(machine.handle(.up, at: 0.5), .stop)
+        // A press shorter than the minimum is treated as an accidental tap.
+        var quick = HotkeyStateMachine(mode: .rightControlHold)
+        XCTAssertEqual(quick.handle(.down, at: 0.0), .start)
+        XCTAssertEqual(quick.handle(.up, at: 0.01), .cancel)
+    }
+
     // MARK: - Double-Tap Mode
 
     private func tap(_ machine: inout HotkeyStateMachine, at time: TimeInterval,

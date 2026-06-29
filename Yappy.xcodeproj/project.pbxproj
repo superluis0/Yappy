@@ -11,14 +11,10 @@
 		B100006000000000000000A1 /* HistoryInsightsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200006000000000000000A1 /* HistoryInsightsTests.swift */; };
 		B100005F00000000000000A1 /* VoiceControlCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200005F00000000000000A1 /* VoiceControlCommand.swift */; };
 		B100005E00000000000000A1 /* HistoryInsights.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200005E00000000000000A1 /* HistoryInsights.swift */; };
-		B100005D00000000000000A1 /* LMStudioPromptTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200005D00000000000000A1 /* LMStudioPromptTests.swift */; };
 		B100005C00000000000000A1 /* NotesStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200005C00000000000000A1 /* NotesStoreTests.swift */; };
-		B100005B00000000000000A1 /* TransformStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200005B00000000000000A1 /* TransformStoreTests.swift */; };
 		B100005800000000000000A1 /* ScratchpadController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200005800000000000000A1 /* ScratchpadController.swift */; };
 		B100005700000000000000A1 /* ScratchpadView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200005700000000000000A1 /* ScratchpadView.swift */; };
 		B100005600000000000000A1 /* NotesStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200005600000000000000A1 /* NotesStore.swift */; };
-		B100005500000000000000A1 /* TransformsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200005500000000000000A1 /* TransformsView.swift */; };
-		B100005400000000000000A1 /* TransformStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200005400000000000000A1 /* TransformStore.swift */; };
 		B100005A00000000000000A1 /* SpokenPunctuationFormatterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200005A00000000000000A1 /* SpokenPunctuationFormatterTests.swift */; };
 		B100005900000000000000A1 /* SpokenListFormatterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200005900000000000000A1 /* SpokenListFormatterTests.swift */; };
 		B100005300000000000000A1 /* BuiltInDictionary.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200005300000000000000A1 /* BuiltInDictionary.swift */; };
@@ -32,7 +28,6 @@
 		B100000600000000000000A1 /* Constants.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200000600000000000000A1 /* Constants.swift */; };
 		B100000700000000000000A1 /* HistoryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200000700000000000000A1 /* HistoryStore.swift */; };
 		B100000800000000000000A1 /* ParakeetTranscriptionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200000800000000000000A1 /* ParakeetTranscriptionService.swift */; };
-		B100000900000000000000A1 /* LMStudioService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200000900000000000000A1 /* LMStudioService.swift */; };
 		B100009200000000000000A1 /* CleanupCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200009200000000000000A1 /* CleanupCoordinator.swift */; };
 		B100009300000000000000A1 /* FoundationModelsCleanupProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200009300000000000000A1 /* FoundationModelsCleanupProvider.swift */; };
 		B100009400000000000000A1 /* UpdateChecker.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200009400000000000000A1 /* UpdateChecker.swift */; };
@@ -119,14 +114,10 @@
 		B200006000000000000000A1 /* HistoryInsightsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryInsightsTests.swift; sourceTree = "<group>"; };
 		B200005F00000000000000A1 /* VoiceControlCommand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceControlCommand.swift; sourceTree = "<group>"; };
 		B200005E00000000000000A1 /* HistoryInsights.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryInsights.swift; sourceTree = "<group>"; };
-		B200005D00000000000000A1 /* LMStudioPromptTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LMStudioPromptTests.swift; sourceTree = "<group>"; };
 		B200005C00000000000000A1 /* NotesStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotesStoreTests.swift; sourceTree = "<group>"; };
-		B200005B00000000000000A1 /* TransformStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransformStoreTests.swift; sourceTree = "<group>"; };
 		B200005800000000000000A1 /* ScratchpadController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScratchpadController.swift; sourceTree = "<group>"; };
 		B200005700000000000000A1 /* ScratchpadView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScratchpadView.swift; sourceTree = "<group>"; };
 		B200005600000000000000A1 /* NotesStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotesStore.swift; sourceTree = "<group>"; };
-		B200005500000000000000A1 /* TransformsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransformsView.swift; sourceTree = "<group>"; };
-		B200005400000000000000A1 /* TransformStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransformStore.swift; sourceTree = "<group>"; };
 		B200005A00000000000000A1 /* SpokenPunctuationFormatterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpokenPunctuationFormatterTests.swift; sourceTree = "<group>"; };
 		B200005900000000000000A1 /* SpokenListFormatterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpokenListFormatterTests.swift; sourceTree = "<group>"; };
 		B200005300000000000000A1 /* BuiltInDictionary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BuiltInDictionary.swift; sourceTree = "<group>"; };
@@ -140,7 +131,6 @@
 		B200000600000000000000A1 /* Constants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Constants.swift; sourceTree = "<group>"; };
 		B200000700000000000000A1 /* HistoryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryStore.swift; sourceTree = "<group>"; };
 		B200000800000000000000A1 /* ParakeetTranscriptionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ParakeetTranscriptionService.swift; sourceTree = "<group>"; };
-		B200000900000000000000A1 /* LMStudioService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LMStudioService.swift; sourceTree = "<group>"; };
 		B200009200000000000000A1 /* CleanupCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CleanupCoordinator.swift; sourceTree = "<group>"; };
 		B200009300000000000000A1 /* FoundationModelsCleanupProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FoundationModelsCleanupProvider.swift; sourceTree = "<group>"; };
 		B200009400000000000000A1 /* UpdateChecker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateChecker.swift; sourceTree = "<group>"; };
@@ -283,7 +273,6 @@
 			children = (
 				B200005E00000000000000A1 /* HistoryInsights.swift */,
 				B200005600000000000000A1 /* NotesStore.swift */,
-				B200005400000000000000A1 /* TransformStore.swift */,
 				B200005300000000000000A1 /* BuiltInDictionary.swift */,
 				B200000400000000000000A1 /* AppState.swift */,
 				B200000500000000000000A1 /* Settings.swift */,
@@ -311,7 +300,6 @@
 				B200005200000000000000A1 /* SpokenPunctuationFormatter.swift */,
 				B200005100000000000000A1 /* SpokenListFormatter.swift */,
 				B200000800000000000000A1 /* ParakeetTranscriptionService.swift */,
-				B200000900000000000000A1 /* LMStudioService.swift */,
 				B200009200000000000000A1 /* CleanupCoordinator.swift */,
 				B200009300000000000000A1 /* FoundationModelsCleanupProvider.swift */,
 				B200009400000000000000A1 /* UpdateChecker.swift */,
@@ -337,7 +325,6 @@
 			children = (
 				B200005800000000000000A1 /* ScratchpadController.swift */,
 				B200005700000000000000A1 /* ScratchpadView.swift */,
-				B200005500000000000000A1 /* TransformsView.swift */,
 				B200000C00000000000000A1 /* RecordingPillController.swift */,
 				B200000D00000000000000A1 /* RecordingPillView.swift */,
 				B200000E00000000000000A1 /* MainWindow.swift */,
@@ -362,9 +349,7 @@
 			children = (
 				B200006100000000000000A1 /* VoiceControlCommandParserTests.swift */,
 				B200006000000000000000A1 /* HistoryInsightsTests.swift */,
-				B200005D00000000000000A1 /* LMStudioPromptTests.swift */,
 				B200005C00000000000000A1 /* NotesStoreTests.swift */,
-				B200005B00000000000000A1 /* TransformStoreTests.swift */,
 				B200005A00000000000000A1 /* SpokenPunctuationFormatterTests.swift */,
 				B200005900000000000000A1 /* SpokenListFormatterTests.swift */,
 				B200001400000000000000A1 /* AppStateTests.swift */,
@@ -508,8 +493,6 @@
 				B100005800000000000000A1 /* ScratchpadController.swift in Sources */,
 				B100005700000000000000A1 /* ScratchpadView.swift in Sources */,
 				B100005600000000000000A1 /* NotesStore.swift in Sources */,
-				B100005500000000000000A1 /* TransformsView.swift in Sources */,
-				B100005400000000000000A1 /* TransformStore.swift in Sources */,
 				B100005300000000000000A1 /* BuiltInDictionary.swift in Sources */,
 				B100005200000000000000A1 /* SpokenPunctuationFormatter.swift in Sources */,
 				B100005100000000000000A1 /* SpokenListFormatter.swift in Sources */,
@@ -521,7 +504,6 @@
 				B100000600000000000000A1 /* Constants.swift in Sources */,
 				B100000700000000000000A1 /* HistoryStore.swift in Sources */,
 				B100000800000000000000A1 /* ParakeetTranscriptionService.swift in Sources */,
-				B100000900000000000000A1 /* LMStudioService.swift in Sources */,
 				B100009200000000000000A1 /* CleanupCoordinator.swift in Sources */,
 				B100009300000000000000A1 /* FoundationModelsCleanupProvider.swift in Sources */,
 				B100009400000000000000A1 /* UpdateChecker.swift in Sources */,
@@ -573,9 +555,7 @@
 			files = (
 				B100006100000000000000A1 /* VoiceControlCommandParserTests.swift in Sources */,
 				B100006000000000000000A1 /* HistoryInsightsTests.swift in Sources */,
-				B100005D00000000000000A1 /* LMStudioPromptTests.swift in Sources */,
 				B100005C00000000000000A1 /* NotesStoreTests.swift in Sources */,
-				B100005B00000000000000A1 /* TransformStoreTests.swift in Sources */,
 				B100005A00000000000000A1 /* SpokenPunctuationFormatterTests.swift in Sources */,
 				B100005900000000000000A1 /* SpokenListFormatterTests.swift in Sources */,
 				B100001400000000000000A1 /* AppStateTests.swift in Sources */,
@@ -758,7 +738,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 2.2;
+				MARKETING_VERSION = 2.3;
 				PRODUCT_BUNDLE_IDENTIFIER = com.yappy.app.debug;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -790,7 +770,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 2.2;
+				MARKETING_VERSION = 2.3;
 				PRODUCT_BUNDLE_IDENTIFIER = com.yappy.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;

@@ -1,7 +1,6 @@
 //
 //  HomeView.swift
 //  Yappy
-//
 
 import SwiftUI
 
@@ -24,13 +23,13 @@ struct HomeView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: 22) {
                 header
                 timeSavedCard
                 milestoneLine
                 statsGrid
                 if !history.entries.isEmpty {
-                    HeatmapView(rows: history.cachedHeatmapRows)
+                    heatmapCard
                     topAppsCard
                     recordsCard
                     recapButton
@@ -39,9 +38,14 @@ struct HomeView: View {
                 privacyCard
                 historySection
             }
-            .padding(24)
+            .frame(maxWidth: 640, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .center)
+            .padding(.horizontal, 30)
+            .padding(.top, 26)
+            .padding(.bottom, 46)
         }
-        .background(Color(nsColor: .windowBackgroundColor))
+        .scrollContentBackground(.hidden)
+        .background(Color.clear)
         .sheet(isPresented: $showRecap) { RecapView(history: history) }
         .sheet(item: $editingSuggestion) { suggestion in
             ShortcutEditor(shortcut: VoiceShortcut(trigger: "", expansion: suggestion.phrase)) { result in
@@ -78,11 +82,13 @@ struct HomeView: View {
     // MARK: - Header
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Welcome to Yappy")
-                .font(.largeTitle.bold())
+        VStack(alignment: .leading, spacing: 3) {
+            Text("Home")
+                .font(.system(size: 24, weight: .bold))
+                .foregroundStyle(Brand.ink)
             Text("Hold \(hotkeyHint) and start talking — your words appear wherever your cursor is.")
-                .foregroundStyle(.secondary)
+                .font(.system(size: 13.5))
+                .foregroundStyle(Brand.ink3)
         }
     }
 
@@ -91,6 +97,7 @@ struct HomeView: View {
         case .rightCommandHold: return "Right ⌘"
         case .rightCommandDoubleTap: return "Right ⌘ (double-tap)"
         case .rightOptionHold: return "Right ⌥"
+        case .rightControlHold: return "Right ⌃"
         }
     }
 
@@ -101,22 +108,28 @@ struct HomeView: View {
     private var timeSavedCard: some View {
         let minutes = history.timeSavedMinutes
         if minutes > 0 {
-            HStack(spacing: 16) {
-                Image(systemName: "clock.arrow.circlepath")
-                    .font(.system(size: 28))
-                    .foregroundStyle(.tint)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(HistoryStore.formatTimeSaved(minutes: statsAppeared ? minutes : 0))
-                        .font(.system(size: 34, weight: .bold, design: .rounded))
-                        .contentTransition(.numericText(value: Double(statsAppeared ? minutes : 0)))
-                    Text("Saved vs typing it out")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+            GlassCard(tint: Color.accentColor.opacity(0.14)) {
+                HStack(spacing: 16) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(Color.accentColor.opacity(0.18))
+                            .frame(width: 48, height: 48)
+                        Image(systemName: "clock.arrow.circlepath")
+                            .font(.system(size: 22, weight: .semibold))
+                            .foregroundStyle(Color.accentColor)
+                    }
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(HistoryStore.formatTimeSaved(minutes: statsAppeared ? minutes : 0))
+                            .font(.system(size: 34, weight: .bold, design: .rounded))
+                            .foregroundStyle(Brand.ink)
+                            .contentTransition(.numericText(value: Double(statsAppeared ? minutes : 0)))
+                        Text("Saved vs typing it out")
+                            .font(.caption)
+                            .foregroundStyle(Brand.ink4)
+                    }
+                    Spacer()
                 }
-                Spacer()
             }
-            .padding(20)
-            .background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
         }
     }
 
@@ -151,7 +164,18 @@ struct HomeView: View {
         if let milestone = StatFraming.wordsMilestone(history.totalWords) {
             Text("That's \(milestone).")
                 .font(.callout)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Brand.ink3)
+        }
+    }
+
+    // MARK: - Heatmap
+
+    private var heatmapCard: some View {
+        VStack(alignment: .leading, spacing: 11) {
+            SectionLabel(icon: "calendar", title: "When you dictate")
+            GlassCard {
+                HeatmapView(rows: history.cachedHeatmapRows)
+            }
         }
     }
 
@@ -161,28 +185,30 @@ struct HomeView: View {
     private var recordsCard: some View {
         let r = history.personalRecords
         if r.hasAny {
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Personal records")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                HStack(spacing: 20) {
-                    if r.fastestWPM > 0 { recordItem("speedometer", "\(r.fastestWPM)", "Top WPM") }
-                    if r.longestStreakDays > 0 { recordItem("flame.fill", "\(r.longestStreakDays)d", "Best streak") }
-                    if r.biggestDayWords > 0 { recordItem("calendar", "\(r.biggestDayWords)", "Biggest day") }
-                    if r.longestDictationWords > 0 { recordItem("text.alignleft", "\(r.longestDictationWords)", "Longest") }
-                    Spacer(minLength: 0)
+            VStack(alignment: .leading, spacing: 11) {
+                SectionLabel(icon: "trophy", title: "Personal records")
+                GlassCard {
+                    HStack(spacing: 20) {
+                        if r.fastestWPM > 0 { recordItem("speedometer", "\(r.fastestWPM)", "Top WPM") }
+                        if r.longestStreakDays > 0 { recordItem("flame.fill", "\(r.longestStreakDays)d", "Best streak") }
+                        if r.biggestDayWords > 0 { recordItem("calendar", "\(r.biggestDayWords)", "Biggest day") }
+                        if r.longestDictationWords > 0 { recordItem("text.alignleft", "\(r.longestDictationWords)", "Longest") }
+                        Spacer(minLength: 0)
+                    }
                 }
             }
-            .padding(16)
-            .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 12))
         }
     }
 
     private func recordItem(_ icon: String, _ value: String, _ label: String) -> some View {
         VStack(alignment: .leading, spacing: 3) {
-            Image(systemName: icon).font(.callout).foregroundStyle(.tint)
-            Text(value).font(.system(size: 18, weight: .bold, design: .rounded))
-            Text(label).font(.caption2).foregroundStyle(.secondary)
+            Image(systemName: icon).font(.callout).foregroundStyle(Color.accentColor)
+            Text(value)
+                .font(.system(size: 18, weight: .bold, design: .rounded))
+                .foregroundStyle(Brand.ink)
+            Text(label)
+                .font(.caption2)
+                .foregroundStyle(Brand.ink4)
         }
     }
 
@@ -190,7 +216,7 @@ struct HomeView: View {
         Button { showRecap = true } label: {
             Label("Your Year in Voice", systemImage: "sparkles")
                 .font(.callout.weight(.medium))
-                .foregroundStyle(recapHover ? Color.accentColor : .secondary)
+                .foregroundStyle(recapHover ? Color.accentColor : Brand.ink3)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
                 .background(
@@ -215,26 +241,28 @@ struct HomeView: View {
     // MARK: - Privacy
 
     private var privacyCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Label("Private by design", systemImage: "lock.shield")
-                .font(.callout.weight(.semibold))
-            privacyLine("Audio is transcribed on this Mac and never written to disk.")
-            privacyLine("No telemetry, no account, no analytics.")
-            privacyLine(settings.cleanupEnabled
-                ? "AI cleanup talks only to LM Studio on this Mac (localhost)."
-                : "Nothing you say leaves this Mac.")
+        VStack(alignment: .leading, spacing: 11) {
+            SectionLabel(icon: "lock.shield", title: "Privacy")
+            GlassCard(tint: Brand.ready.opacity(0.10)) {
+                VStack(alignment: .leading, spacing: 8) {
+                    privacyLine("Audio is transcribed on this Mac and never written to disk.")
+                    privacyLine("No telemetry, no account, no analytics.")
+                    privacyLine(settings.cleanupEnabled
+                        ? "AI cleanup runs on-device with Apple Intelligence \u{2014} nothing leaves this Mac."
+                        : "Nothing you say leaves this Mac.")
+                }
+            }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(16)
-        .background(Color.green.opacity(0.07), in: RoundedRectangle(cornerRadius: 12))
     }
 
     private func privacyLine(_ text: String) -> some View {
         HStack(spacing: 8) {
             Image(systemName: "checkmark.seal.fill")
                 .font(.caption)
-                .foregroundStyle(.green)
-            Text(text).font(.caption).foregroundStyle(.secondary)
+                .foregroundStyle(Brand.ready)
+            Text(text)
+                .font(.caption)
+                .foregroundStyle(Brand.ink3)
         }
     }
 
@@ -244,50 +272,48 @@ struct HomeView: View {
     private var topAppsCard: some View {
         let apps = history.topApps(limit: 5)
         if !apps.isEmpty {
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Top apps")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-
-                let maxCount = apps.map(\.count).max() ?? 1
-                ForEach(apps) { app in
-                    HStack(spacing: 8) {
-                        if let icon = IconCache.shared.icon(forBundleID: app.bundleID) {
-                            Image(nsImage: icon)
-                                .resizable()
-                                .frame(width: 16, height: 16)
-                        } else {
-                            Image(systemName: "app.badge")
-                                .font(.system(size: 12))
-                                .frame(width: 16, height: 16)
-                                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 11) {
+                SectionLabel(icon: "chart.bar", title: "Top apps")
+                GlassCard {
+                    let maxCount = apps.map(\.count).max() ?? 1
+                    VStack(spacing: 10) {
+                        ForEach(apps) { app in
+                            HStack(spacing: 8) {
+                                if let icon = IconCache.shared.icon(forBundleID: app.bundleID) {
+                                    Image(nsImage: icon)
+                                        .resizable()
+                                        .frame(width: 16, height: 16)
+                                } else {
+                                    Image(systemName: "app.badge")
+                                        .font(.system(size: 12))
+                                        .frame(width: 16, height: 16)
+                                        .foregroundStyle(Brand.ink4)
+                                }
+                                Text(app.appName)
+                                    .font(.callout)
+                                    .foregroundStyle(Brand.ink)
+                                    .lineLimit(1)
+                                    .truncationMode(.tail)
+                                    .frame(width: 110, alignment: .leading)
+                                GeometryReader { geo in
+                                    Capsule()
+                                        .fill(Color.accentColor.opacity(0.7))
+                                        .frame(width: max(8, geo.size.width * CGFloat(app.count) / CGFloat(maxCount)),
+                                               height: 6)
+                                        .frame(maxHeight: .infinity, alignment: .center)
+                                }
+                                .frame(height: 16)
+                                Text("\(app.count)")
+                                    .font(.caption.monospacedDigit())
+                                    .foregroundStyle(Brand.ink4)
+                                    .lineLimit(1)
+                                    .fixedSize()
+                                    .frame(width: 36, alignment: .trailing)
+                            }
                         }
-                        Text(app.appName)
-                            .font(.callout)
-                            .lineLimit(1)
-                            .truncationMode(.tail)
-                            .frame(width: 110, alignment: .leading)
-                        GeometryReader { geo in
-                            Capsule()
-                                .fill(.tint)
-                                .frame(width: max(8, geo.size.width * CGFloat(app.count) / CGFloat(maxCount)),
-                                       height: 6)
-                                .frame(maxHeight: .infinity, alignment: .center)
-                        }
-                        .frame(height: 16)
-                        Text("\(app.count)")
-                            .font(.caption.monospacedDigit())
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                            .fixedSize()
-                            .frame(width: 36, alignment: .trailing)
                     }
                 }
-                Spacer(minLength: 0)
             }
-            .padding(16)
-            .frame(maxHeight: .infinity, alignment: .topLeading)
-            .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 12))
         }
     }
 
@@ -300,6 +326,7 @@ struct HomeView: View {
                 .symbolEffect(.pulse, options: .repeating, isActive: pulse)
             animatedValue(value)
                 .font(.system(size: 26, weight: .bold, design: .rounded))
+                .foregroundStyle(Brand.ink)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
             // Single line so all four cards stay the same height and aligned,
@@ -307,7 +334,7 @@ struct HomeView: View {
             // wrapping to a second line.
             Text(label)
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Brand.ink4)
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
             if let delta = trend, delta != 0 {
@@ -316,15 +343,12 @@ struct HomeView: View {
                     Text("\(abs(delta))")
                 }
                 .font(.caption2.weight(.semibold))
-                .foregroundStyle(delta > 0 ? Color.green : Color.red)
+                .foregroundStyle(delta > 0 ? Brand.ready : Brand.danger)
             }
         }
         .frame(maxWidth: .infinity, minHeight: 96, alignment: .topLeading)
         .padding(16)
-        .background {
-            RoundedRectangle(cornerRadius: 12)
-                .fill(.quaternary.opacity(0.5))
-        }
+        .glassPanel(cornerRadius: 12)
         .overlay(alignment: .leading) {
             Rectangle()
                 .fill(accent)
@@ -349,36 +373,41 @@ struct HomeView: View {
     @ViewBuilder
     private var suggestionsCard: some View {
         if !suggestions.isEmpty {
-            VStack(alignment: .leading, spacing: 10) {
-                Label("Suggestions", systemImage: "wand.and.stars")
-                    .font(.title3.bold())
-                Text("You dictate these a lot — turn them into a shortcut you can speak.")
-                    .font(.caption).foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 11) {
+                SectionLabel(icon: "wand.and.stars", title: "Suggestions")
+                GlassCard(tint: Color.accentColor.opacity(0.10)) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("You dictate these a lot — turn them into a shortcut you can speak.")
+                            .font(.caption)
+                            .foregroundStyle(Brand.ink3)
 
-                ForEach(suggestions) { suggestion in
-                    HStack(alignment: .top, spacing: 12) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("\u{201c}\(suggestion.phrase)\u{201d}")
-                                .font(.callout).lineLimit(2)
-                            Text("dictated \(suggestion.count) times")
-                                .font(.caption2).foregroundStyle(.tertiary)
+                        ForEach(suggestions) { suggestion in
+                            HStack(alignment: .top, spacing: 12) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("\u{201c}\(suggestion.phrase)\u{201d}")
+                                        .font(.callout)
+                                        .foregroundStyle(Brand.ink)
+                                        .lineLimit(2)
+                                    Text("dictated \(suggestion.count) times")
+                                        .font(.caption2)
+                                        .foregroundStyle(Brand.ink4)
+                                }
+                                Spacer()
+                                Button("Add shortcut") { editingSuggestion = suggestion }
+                                    .controlSize(.small)
+                                Button {
+                                    settings.dismissedSuggestions.insert(suggestion.id)
+                                } label: { Image(systemName: "xmark") }
+                                    .buttonStyle(.borderless)
+                                    .help("Dismiss")
+                            }
+                            .padding(10)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 10))
                         }
-                        Spacer()
-                        Button("Add shortcut") { editingSuggestion = suggestion }
-                            .controlSize(.small)
-                        Button {
-                            settings.dismissedSuggestions.insert(suggestion.id)
-                        } label: { Image(systemName: "xmark") }
-                            .buttonStyle(.borderless)
-                            .help("Dismiss")
                     }
-                    .padding(10)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 10))
                 }
             }
-            .padding(16)
-            .background(Color.accentColor.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
         }
     }
 
@@ -415,10 +444,9 @@ struct HomeView: View {
     }
 
     private var historySection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 11) {
             HStack {
-                Text("Recent dictations")
-                    .font(.title3.bold())
+                SectionLabel(icon: "clock", title: "Recent dictations")
                 Spacer()
                 if !history.entries.isEmpty {
                     Button("Clear All", role: .destructive) {
@@ -454,24 +482,27 @@ struct HomeView: View {
     }
 
     private var emptyState: some View {
-        VStack(spacing: 8) {
-            Image(systemName: "waveform.badge.mic")
-                .font(.system(size: 36))
-                .foregroundStyle(.tertiary)
-            Text("No dictations yet")
-                .foregroundStyle(.secondary)
-            Text("Hold \(hotkeyHint) anywhere and start speaking.")
-                .font(.caption)
-                .foregroundStyle(.tertiary)
+        GlassCard {
+            VStack(spacing: 8) {
+                Image(systemName: "waveform.badge.mic")
+                    .font(.system(size: 36))
+                    .foregroundStyle(Brand.ink4)
+                Text("No dictations yet")
+                    .foregroundStyle(Brand.ink3)
+                Text("Hold \(hotkeyHint) anywhere and start speaking.")
+                    .font(.caption)
+                    .foregroundStyle(Brand.ink4)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 24)
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 40)
     }
 
     private func historyRow(_ entry: DictationEntry) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(entry.text)
                 .lineLimit(3)
+                .foregroundStyle(Brand.ink)
                 .textSelection(.enabled)
 
             HStack(spacing: 12) {
@@ -520,11 +551,11 @@ struct HomeView: View {
                 .animation(.easeOut(duration: 0.12), value: hoveredEntryID == entry.id)
             }
             .font(.caption)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(Brand.ink3)
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 10))
+        .glassPanel(cornerRadius: 10)
         .opacity(pendingDeleteEntry?.id == entry.id ? 0.4 : 1)
         .grayscale(pendingDeleteEntry?.id == entry.id ? 0.4 : 0)
         .animation(.easeOut(duration: 0.2), value: pendingDeleteEntry?.id == entry.id)

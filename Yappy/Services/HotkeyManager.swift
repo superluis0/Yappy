@@ -72,7 +72,7 @@ struct HotkeyStateMachine {
 
     private mutating func handleDown() -> Action {
         switch mode {
-        case .rightCommandHold, .rightOptionHold:
+        case .rightCommandHold, .rightOptionHold, .rightControlHold:
             guard !isActive else { return .none }
             isActive = true
             return .start
@@ -83,7 +83,7 @@ struct HotkeyStateMachine {
 
     private mutating func handleUp(at time: TimeInterval) -> Action {
         switch mode {
-        case .rightCommandHold, .rightOptionHold:
+        case .rightCommandHold, .rightOptionHold, .rightControlHold:
             guard isActive else { return .none }
             isActive = false
             // A press shorter than the minimum is an accidental tap.
@@ -130,6 +130,7 @@ final class HotkeyManager {
     private enum DeviceFlag {
         static let rightCommand: UInt64 = 0x0000_0010
         static let rightOption: UInt64 = 0x0000_0040
+        static let rightControl: UInt64 = 0x0000_2000
     }
 
     init(mode: HotkeyOption) {
@@ -224,6 +225,9 @@ final class HotkeyManager {
         case .rightOptionHold:
             guard keycode == 61 else { return }
             deviceFlag = DeviceFlag.rightOption
+        case .rightControlHold:
+            guard keycode == 62 else { return }
+            deviceFlag = DeviceFlag.rightControl
         }
 
         let isDown = event.flags.rawValue & deviceFlag != 0

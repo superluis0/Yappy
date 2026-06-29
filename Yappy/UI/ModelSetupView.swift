@@ -5,7 +5,7 @@
 
 import SwiftUI
 
-/// First-run experience while the Parakeet model downloads/loads.
+/// First-run experience while the speech model downloads/loads.
 /// Also reused as a status row inside Settings.
 struct ModelSetupView: View {
     @ObservedObject var transcriptionService: ParakeetTranscriptionService
@@ -22,9 +22,14 @@ struct ModelSetupView: View {
             switch transcriptionService.modelState {
             case .downloading(let progress):
                 VStack(spacing: 8) {
-                    ProgressView(value: progress)
-                        .frame(width: 260)
-                    Text("Downloading speech model (443 MB, one time)…")
+                    if let progress {
+                        ProgressView(value: progress)
+                            .frame(width: 260)
+                    } else {
+                        ProgressView()
+                            .frame(width: 260)
+                    }
+                    Text("Downloading speech model (one time)…")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }
@@ -63,12 +68,13 @@ struct ModelSetupView: View {
 
 /// Compact model status row for Settings.
 struct ModelStatusRow: View {
+    @ObservedObject var settings: Settings
     @ObservedObject var transcriptionService: ParakeetTranscriptionService
 
     var body: some View {
         HStack {
             Label {
-                Text("Speech model (Parakeet)")
+                Text("Speech model (\(settings.transcriptionModel.displayName))")
             } icon: {
                 Image(systemName: iconName)
                     .foregroundStyle(iconColor)

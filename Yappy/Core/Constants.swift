@@ -59,14 +59,6 @@ enum Constants {
     /// Key-down events arriving within this interval of the previous key-up are ignored.
     static let hotkeyDebounceInterval: TimeInterval = 0.1
 
-    // MARK: - LM Studio
-
-    /// Default base URL for LM Studio's local OpenAI-compatible server.
-    static let defaultLMStudioBaseURL = "http://localhost:1234/v1"
-
-    /// Timeout for LM Studio cleanup requests; on expiry the raw transcript is inserted.
-    static let lmStudioTimeout: TimeInterval = 8.0
-
     // MARK: - History
 
     /// Maximum number of dictation history entries kept on disk.

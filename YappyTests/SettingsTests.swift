@@ -32,13 +32,9 @@ final class SettingsTests: XCTestCase {
     func testDefaultValues() {
         XCTAssertEqual(settings.hotkeyOption, .rightCommandHold)
         XCTAssertFalse(settings.launchAtLogin)
-        XCTAssertFalse(settings.cleanupEnabled, "LM Studio cleanup should be off by default")
+        XCTAssertTrue(settings.cleanupEnabled, "AI cleanup is on by default")
         XCTAssertTrue(settings.audioFeedbackEnabled)
         XCTAssertEqual(settings.audioFeedbackVolume, 0.5)
-        XCTAssertNil(settings.lmStudioModelID)
-        XCTAssertEqual(settings.lmStudioBaseURL, Constants.defaultLMStudioBaseURL)
-        XCTAssertTrue(settings.commandModeEnabled)
-        XCTAssertEqual(settings.commandHotkeyOption, .rightOptionHold)
         XCTAssertTrue(settings.contextAwareToneEnabled)
         XCTAssertTrue(settings.backtrackEnabled)
         XCTAssertTrue(settings.adaptiveModeEnabled)
@@ -47,12 +43,19 @@ final class SettingsTests: XCTestCase {
         XCTAssertTrue(settings.customDictionaryEnabled, "On by default so built-in dev terms apply out of the box")
         XCTAssertFalse(settings.onboardingComplete)
         XCTAssertTrue(settings.autoUpdateChecksEnabled, "Automatic update checks should be on by default")
+        XCTAssertEqual(settings.transcriptionModel, .parakeet, "Parakeet (English) is the default STT model")
     }
 
     func testAutoUpdateChecksEnabledPersists() {
         settings.autoUpdateChecksEnabled = false
         let reloaded = Settings(defaults: defaults)
         XCTAssertFalse(reloaded.autoUpdateChecksEnabled)
+    }
+
+    func testTranscriptionModelPersists() {
+        settings.transcriptionModel = .nemotron
+        let reloaded = Settings(defaults: defaults)
+        XCTAssertEqual(reloaded.transcriptionModel, .nemotron, "A chosen STT model survives relaunch on the same suite")
     }
 
     func testToneResolution() {
@@ -81,14 +84,6 @@ final class SettingsTests: XCTestCase {
         XCTAssertEqual(reloaded.toneOverrides[.code], .formal)
     }
 
-    func testHotkeyCollisionDetection() {
-        settings.hotkeyOption = .rightCommandHold
-        settings.commandHotkeyOption = .rightOptionHold
-        XCTAssertFalse(settings.hotkeysCollide)
-        settings.commandHotkeyOption = .rightCommandHold
-        XCTAssertTrue(settings.hotkeysCollide)
-    }
-
     // MARK: - Persistence
 
     func testPersistence() {
@@ -97,8 +92,6 @@ final class SettingsTests: XCTestCase {
         settings.cleanupEnabled = true
         settings.audioFeedbackEnabled = false
         settings.audioFeedbackVolume = 0.8
-        settings.lmStudioModelID = "qwen2.5-7b-instruct"
-        settings.lmStudioBaseURL = "http://localhost:9999/v1"
 
         let reloaded = Settings(defaults: defaults)
         XCTAssertEqual(reloaded.hotkeyOption, .rightOptionHold)
@@ -106,8 +99,6 @@ final class SettingsTests: XCTestCase {
         XCTAssertTrue(reloaded.cleanupEnabled)
         XCTAssertFalse(reloaded.audioFeedbackEnabled)
         XCTAssertEqual(reloaded.audioFeedbackVolume, 0.8)
-        XCTAssertEqual(reloaded.lmStudioModelID, "qwen2.5-7b-instruct")
-        XCTAssertEqual(reloaded.lmStudioBaseURL, "http://localhost:9999/v1")
     }
 
     func testPersistenceWithHotkeyOption() {
@@ -156,19 +147,18 @@ final class SettingsTests: XCTestCase {
     func testReset() {
         settings.hotkeyOption = .rightCommandDoubleTap
         settings.launchAtLogin = true
-        settings.cleanupEnabled = true
+        settings.cleanupEnabled = false
         settings.audioFeedbackVolume = 1.0
-        settings.lmStudioModelID = "some-model"
+        settings.transcriptionModel = .nemotron
 
         settings.reset()
 
         XCTAssertEqual(settings.hotkeyOption, .rightCommandHold)
         XCTAssertFalse(settings.launchAtLogin)
-        XCTAssertFalse(settings.cleanupEnabled)
+        XCTAssertTrue(settings.cleanupEnabled, "AI cleanup is on by default")
         XCTAssertTrue(settings.audioFeedbackEnabled)
         XCTAssertEqual(settings.audioFeedbackVolume, 0.5)
-        XCTAssertNil(settings.lmStudioModelID)
-        XCTAssertEqual(settings.lmStudioBaseURL, Constants.defaultLMStudioBaseURL)
+        XCTAssertEqual(settings.transcriptionModel, .parakeet, "Reset returns the STT model to Parakeet")
     }
 
     // MARK: - Migration
@@ -177,8 +167,6 @@ final class SettingsTests: XCTestCase {
         defaults.set("sk-old-key", forKey: "com.yappy.openAIAPIKey")
         defaults.set("or-old-key", forKey: "com.yappy.openRouterAPIKey")
         defaults.set(true, forKey: "com.yappy.streamingTextEnabled")
-        // The legacy cloud cleanup flag defaulted to on; it must not carry over.
-        defaults.set(true, forKey: "com.yappy.cleanupEnabled")
         defaults.removeObject(forKey: "com.yappy.legacyCleanupMigrated")
 
         let migrated = Settings(defaults: defaults)
@@ -186,15 +174,34 @@ final class SettingsTests: XCTestCase {
         XCTAssertNil(defaults.string(forKey: "com.yappy.openAIAPIKey"))
         XCTAssertNil(defaults.string(forKey: "com.yappy.openRouterAPIKey"))
         XCTAssertNil(defaults.object(forKey: "com.yappy.streamingTextEnabled"))
-        XCTAssertFalse(migrated.cleanupEnabled, "Legacy cleanup flag must reset to off")
+        // The legacy block wipes the old cleanup flag, then the one-time default-on
+        // migration force-enables on-device cleanup for new and existing users.
+        XCTAssertTrue(migrated.cleanupEnabled, "AI cleanup is on by default after migration")
     }
 
-    func testMigrationRunsOnlyOnce() {
-        _ = Settings(defaults: defaults)
-        settings.cleanupEnabled = true
+    func testCleanupDefaultOnIsOneTime() {
+        // A fresh suite: the first Settings force-enables cleanup once.
+        let suite = "com.yappy.tests.cleanupMigration"
+        let migrationDefaults = UserDefaults(suiteName: suite)!
+        migrationDefaults.removePersistentDomain(forName: suite)
+        defer { migrationDefaults.removePersistentDomain(forName: suite) }
+
+        let first = Settings(defaults: migrationDefaults)
+        XCTAssertTrue(first.cleanupEnabled, "AI cleanup is on by default on first launch")
+
+        // The user turns it off; a relaunch on the SAME suite must respect that.
+        first.cleanupEnabled = false
+        let second = Settings(defaults: migrationDefaults)
+        XCTAssertFalse(second.cleanupEnabled, "Default-on migration is one-time; a later toggle sticks")
+    }
+
+    func testCleanupToggleSurvivesRelaunch() {
+        // The default-on migration already ran in setUp(); a user-set false must
+        // persist and the migration must not re-enable it on the same suite.
+        settings.cleanupEnabled = false
 
         let reloaded = Settings(defaults: defaults)
-        XCTAssertTrue(reloaded.cleanupEnabled, "User's LM Studio cleanup choice must survive relaunch")
+        XCTAssertFalse(reloaded.cleanupEnabled, "User's cleanup choice must survive relaunch")
     }
 
     // MARK: - HotkeyOption
@@ -203,10 +210,11 @@ final class SettingsTests: XCTestCase {
         XCTAssertEqual(HotkeyOption.rightCommandHold.displayName, "Right Command (Hold)")
         XCTAssertEqual(HotkeyOption.rightCommandDoubleTap.displayName, "Right Command (Double Tap)")
         XCTAssertEqual(HotkeyOption.rightOptionHold.displayName, "Right Option (Hold)")
+        XCTAssertEqual(HotkeyOption.rightControlHold.displayName, "Right Control (Hold)")
     }
 
     func testHotkeyOptionCaseIterable() {
-        XCTAssertEqual(HotkeyOption.allCases.count, 3)
+        XCTAssertEqual(HotkeyOption.allCases.count, 4)
     }
 
     func testHotkeyOptionCodable() throws {
@@ -214,6 +222,25 @@ final class SettingsTests: XCTestCase {
             let data = try JSONEncoder().encode(option)
             let decoded = try JSONDecoder().decode(HotkeyOption.self, from: data)
             XCTAssertEqual(decoded, option)
+        }
+    }
+
+    // MARK: - TranscriptionModel
+
+    func testTranscriptionModelDisplayName() {
+        XCTAssertEqual(TranscriptionModel.parakeet.displayName, "Parakeet (English)")
+        XCTAssertEqual(TranscriptionModel.nemotron.displayName, "Nemotron (Multilingual)")
+    }
+
+    func testTranscriptionModelCaseIterable() {
+        XCTAssertEqual(TranscriptionModel.allCases.count, 2)
+    }
+
+    func testTranscriptionModelCodable() throws {
+        for model in TranscriptionModel.allCases {
+            let data = try JSONEncoder().encode(model)
+            let decoded = try JSONDecoder().decode(TranscriptionModel.self, from: data)
+            XCTAssertEqual(decoded, model)
         }
     }
 }

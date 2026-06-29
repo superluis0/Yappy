@@ -11,6 +11,7 @@ enum HotkeyOption: String, CaseIterable, Codable {
     case rightCommandHold = "Right Command (Hold)"
     case rightCommandDoubleTap = "Right Command (Double Tap)"
     case rightOptionHold = "Right Option (Hold)"
+    case rightControlHold = "Right Control (Hold)"
 
     /// Display name for UI presentation.
     var displayName: String {
@@ -18,39 +19,36 @@ enum HotkeyOption: String, CaseIterable, Codable {
     }
 }
 
-/// Which backend runs AI cleanup, Command Mode, and Transforms. `automatic`
-/// prefers an on-device model when available, then falls back to LM Studio.
-enum CleanupBackend: String, CaseIterable, Codable {
-    case automatic
-    case appleIntelligence
-    case lmStudio
+/// Selectable on-device speech-to-text model. Both are FluidAudio CoreML models
+/// used in batch mode (transcribe the full recorded buffer on hotkey release).
+enum TranscriptionModel: String, CaseIterable, Codable {
+    /// English-only Parakeet TDT (~443 MB). The default — fastest, no new download.
+    case parakeet
+    /// NVIDIA Nemotron multilingual (~670 MB). Handles many languages.
+    case nemotron
 
+    /// Display name for UI presentation.
     var displayName: String {
         switch self {
-        case .automatic: return "Automatic"
-        case .appleIntelligence: return "Apple Intelligence"
-        case .lmStudio: return "LM Studio"
+        case .parakeet: return "Parakeet (English)"
+        case .nemotron: return "Nemotron (Multilingual)"
         }
     }
 }
 
 /// Application settings with UserDefaults persistence.
-/// Fully local — no API keys. The optional LLM cleanup talks to LM Studio on localhost.
+/// Fully local — no API keys. AI cleanup runs on-device via Apple Intelligence
+/// (Foundation Models, macOS 26+); nothing leaves the Mac.
 final class Settings: ObservableObject {
     // MARK: - UserDefaults Keys
 
     private enum Keys {
         static let hotkeyOption = "com.yappy.hotkeyOption"
+        static let transcriptionModel = "com.yappy.transcriptionModel"
         static let launchAtLogin = "com.yappy.launchAtLogin"
         static let cleanupEnabled = "com.yappy.cleanupEnabled"
-        static let cleanupBackend = "com.yappy.cleanupBackend"
         static let audioFeedbackEnabled = "com.yappy.audioFeedbackEnabled"
         static let audioFeedbackVolume = "com.yappy.audioFeedbackVolume"
-        static let lmStudioModelID = "com.yappy.lmStudioModelID"
-        static let lmStudioBaseURL = "com.yappy.lmStudioBaseURL"
-        static let commandModeEnabled = "com.yappy.commandModeEnabled"
-        static let commandHotkeyOption = "com.yappy.commandHotkeyOption"
-        static let autoTransformID = "com.yappy.autoTransformID"
         static let dismissedSuggestions = "com.yappy.dismissedSuggestions"
         static let contextAwareToneEnabled = "com.yappy.contextAwareToneEnabled"
         static let backtrackEnabled = "com.yappy.backtrackEnabled"
@@ -69,6 +67,7 @@ final class Settings: ObservableObject {
         static let onboardingComplete = "com.yappy.onboardingComplete"
         static let autoUpdateChecksEnabled = "com.yappy.autoUpdateChecksEnabled"
         static let legacyCleanupMigrated = "com.yappy.legacyCleanupMigrated"
+        static let cleanupDefaultOnMigrated = "com.yappy.cleanupDefaultOnMigrated"
 
         /// Keys from the cloud-based versions of Yappy; removed on first launch.
         static let staleKeys = [
@@ -87,18 +86,20 @@ final class Settings: ObservableObject {
         didSet { if !isLoading { save() } }
     }
 
+    /// On-device speech-to-text model used for dictation. Default Parakeet
+    /// (English); switching to Nemotron downloads the multilingual model.
+    @Published var transcriptionModel: TranscriptionModel = .parakeet {
+        didSet { if !isLoading { save() } }
+    }
+
     /// Whether the app should launch automatically at login.
     @Published var launchAtLogin: Bool = false {
         didSet { if !isLoading { save() } }
     }
 
-    /// Whether to clean up transcripts with a local LM Studio model. Off by default.
-    @Published var cleanupEnabled: Bool = false {
-        didSet { if !isLoading { save() } }
-    }
-
-    /// Which backend performs AI cleanup / Command Mode / Transforms.
-    @Published var cleanupBackend: CleanupBackend = .automatic {
+    /// Whether to clean up transcripts with on-device Apple Intelligence.
+    /// On by default (set once via a one-time migration; see `removeStaleKeys`).
+    @Published var cleanupEnabled: Bool = true {
         didSet { if !isLoading { save() } }
     }
 
@@ -109,31 +110,6 @@ final class Settings: ObservableObject {
 
     /// Volume level for audio feedback (0.0 - 1.0).
     @Published var audioFeedbackVolume: Float = 0.5 {
-        didSet { if !isLoading { save() } }
-    }
-
-    /// Identifier of the LM Studio model used for cleanup (nil = first available).
-    @Published var lmStudioModelID: String? {
-        didSet { if !isLoading { save() } }
-    }
-
-    /// Base URL of LM Studio's OpenAI-compatible server.
-    @Published var lmStudioBaseURL: String = Constants.defaultLMStudioBaseURL {
-        didSet { if !isLoading { save() } }
-    }
-
-    /// Whether Command Mode (select text + speak an instruction) is active.
-    @Published var commandModeEnabled: Bool = true {
-        didSet { if !isLoading { save() } }
-    }
-
-    /// Hotkey that triggers Command Mode. Should differ from `hotkeyOption`.
-    @Published var commandHotkeyOption: HotkeyOption = .rightOptionHold {
-        didSet { if !isLoading { save() } }
-    }
-
-    /// Transform (UUID string) run automatically after every dictation; nil = none.
-    @Published var autoTransformID: String? {
         didSet { if !isLoading { save() } }
     }
 
@@ -237,11 +213,6 @@ final class Settings: ObservableObject {
         toneOverrides[category] ?? category.defaultTone
     }
 
-    /// True if the command hotkey collides with the dictation hotkey.
-    var hotkeysCollide: Bool {
-        commandHotkeyOption == hotkeyOption
-    }
-
     // MARK: - Private Properties
 
     private let defaults: UserDefaults
@@ -261,16 +232,11 @@ final class Settings: ObservableObject {
     /// Saves all settings to UserDefaults.
     func save() {
         defaults.set(hotkeyOption.rawValue, forKey: Keys.hotkeyOption)
+        defaults.set(transcriptionModel.rawValue, forKey: Keys.transcriptionModel)
         defaults.set(launchAtLogin, forKey: Keys.launchAtLogin)
         defaults.set(cleanupEnabled, forKey: Keys.cleanupEnabled)
-        defaults.set(cleanupBackend.rawValue, forKey: Keys.cleanupBackend)
         defaults.set(audioFeedbackEnabled, forKey: Keys.audioFeedbackEnabled)
         defaults.set(audioFeedbackVolume, forKey: Keys.audioFeedbackVolume)
-        defaults.set(lmStudioModelID, forKey: Keys.lmStudioModelID)
-        defaults.set(lmStudioBaseURL, forKey: Keys.lmStudioBaseURL)
-        defaults.set(commandModeEnabled, forKey: Keys.commandModeEnabled)
-        defaults.set(commandHotkeyOption.rawValue, forKey: Keys.commandHotkeyOption)
-        defaults.set(autoTransformID, forKey: Keys.autoTransformID)
         defaults.set(Array(dismissedSuggestions), forKey: Keys.dismissedSuggestions)
         defaults.set(contextAwareToneEnabled, forKey: Keys.contextAwareToneEnabled)
         defaults.set(backtrackEnabled, forKey: Keys.backtrackEnabled)
@@ -302,11 +268,16 @@ final class Settings: ObservableObject {
             hotkeyOption = loadedHotkey
         }
 
+        if let modelRawValue = defaults.string(forKey: Keys.transcriptionModel),
+           let loadedModel = TranscriptionModel(rawValue: modelRawValue) {
+            transcriptionModel = loadedModel
+        }
+
         launchAtLogin = defaults.bool(forKey: Keys.launchAtLogin)
-        cleanupEnabled = defaults.bool(forKey: Keys.cleanupEnabled)
-        if let raw = defaults.string(forKey: Keys.cleanupBackend),
-           let backend = CleanupBackend(rawValue: raw) {
-            cleanupBackend = backend
+        if defaults.object(forKey: Keys.cleanupEnabled) != nil {
+            cleanupEnabled = defaults.bool(forKey: Keys.cleanupEnabled)
+        } else {
+            cleanupEnabled = true
         }
 
         if defaults.object(forKey: Keys.audioFeedbackEnabled) != nil {
@@ -321,26 +292,6 @@ final class Settings: ObservableObject {
             audioFeedbackVolume = 0.5
         }
 
-        lmStudioModelID = defaults.string(forKey: Keys.lmStudioModelID)
-
-        if let baseURL = defaults.string(forKey: Keys.lmStudioBaseURL), !baseURL.isEmpty {
-            lmStudioBaseURL = baseURL
-        } else {
-            lmStudioBaseURL = Constants.defaultLMStudioBaseURL
-        }
-
-        if defaults.object(forKey: Keys.commandModeEnabled) != nil {
-            commandModeEnabled = defaults.bool(forKey: Keys.commandModeEnabled)
-        } else {
-            commandModeEnabled = true
-        }
-
-        if let raw = defaults.string(forKey: Keys.commandHotkeyOption),
-           let option = HotkeyOption(rawValue: raw) {
-            commandHotkeyOption = option
-        }
-
-        autoTransformID = defaults.string(forKey: Keys.autoTransformID)
         dismissedSuggestions = Set(defaults.stringArray(forKey: Keys.dismissedSuggestions) ?? [])
 
         if defaults.object(forKey: Keys.contextAwareToneEnabled) != nil {
@@ -437,16 +388,11 @@ final class Settings: ObservableObject {
     /// Resets all settings to default values.
     func reset() {
         hotkeyOption = .rightCommandHold
+        transcriptionModel = .parakeet
         launchAtLogin = false
-        cleanupEnabled = false
-        cleanupBackend = .automatic
+        cleanupEnabled = true
         audioFeedbackEnabled = true
         audioFeedbackVolume = 0.5
-        lmStudioModelID = nil
-        lmStudioBaseURL = Constants.defaultLMStudioBaseURL
-        commandModeEnabled = true
-        commandHotkeyOption = .rightOptionHold
-        autoTransformID = nil
         dismissedSuggestions = []
         contextAwareToneEnabled = true
         backtrackEnabled = true
@@ -466,9 +412,8 @@ final class Settings: ObservableObject {
         // onboardingComplete intentionally not reset — it tracks lifetime state.
 
         for key in [
-            Keys.hotkeyOption, Keys.launchAtLogin, Keys.cleanupEnabled,
-            Keys.audioFeedbackEnabled, Keys.audioFeedbackVolume, Keys.lmStudioModelID,
-            Keys.lmStudioBaseURL, Keys.commandModeEnabled, Keys.commandHotkeyOption, Keys.autoTransformID,
+            Keys.hotkeyOption, Keys.transcriptionModel, Keys.launchAtLogin, Keys.cleanupEnabled,
+            Keys.audioFeedbackEnabled, Keys.audioFeedbackVolume,
             Keys.dismissedSuggestions,
             Keys.contextAwareToneEnabled, Keys.backtrackEnabled, Keys.adaptiveModeEnabled,
             Keys.appModeOverrides, Keys.toneOverrides, Keys.customDictionaryEnabled,
@@ -481,9 +426,15 @@ final class Settings: ObservableObject {
         }
     }
 
-    /// Removes settings left over from the cloud-based versions of the app.
+    /// Removes settings left over from the cloud-based versions of the app, then
+    /// applies the one-time "cleanup on by default" migration.
+    ///
     /// The old `cleanupEnabled` flag controlled cloud cleanup and defaulted to on,
-    /// so it is reset once rather than carried over to LM Studio cleanup.
+    /// so the legacy block clears it once rather than carrying that intent over to
+    /// on-device cleanup. The default-on block (which must run AFTER the legacy one,
+    /// since that can `removeObject` the key) then force-enables on-device Apple
+    /// Intelligence cleanup a single time for new and existing users. A later
+    /// explicit toggle is written to `cleanupEnabled` and respected on next launch.
     private func removeStaleKeys() {
         for key in Keys.staleKeys {
             defaults.removeObject(forKey: key)
@@ -491,6 +442,10 @@ final class Settings: ObservableObject {
         if !defaults.bool(forKey: Keys.legacyCleanupMigrated) {
             defaults.removeObject(forKey: Keys.cleanupEnabled)
             defaults.set(true, forKey: Keys.legacyCleanupMigrated)
+        }
+        if !defaults.bool(forKey: Keys.cleanupDefaultOnMigrated) {
+            defaults.set(true, forKey: Keys.cleanupEnabled)
+            defaults.set(true, forKey: Keys.cleanupDefaultOnMigrated)
         }
     }
 }

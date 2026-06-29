@@ -34,10 +34,7 @@ struct HeatmapView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 0) {
-                Text("When you dictate")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                Spacer()
+                Spacer(minLength: 0)
                 if let label = hoveredCellLabel {
                     Text(label)
                         .font(.caption)
@@ -45,6 +42,7 @@ struct HeatmapView: View {
                         .transition(.opacity)
                 }
             }
+            .frame(height: 13)
             .animation(.easeOut(duration: 0.12), value: hoveredCellLabel)
 
             VStack(alignment: .leading, spacing: spacing) {
