@@ -327,6 +327,12 @@ private struct GlassPanelModifier: ViewModifier {
     @ViewBuilder
     func body(content: Content) -> some View {
         let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        // `Glass` / `glassEffect` are macOS 26 SDK symbols, so they must be gated at
+        // COMPILE time, not just runtime (`#available` alone fails to build on an older
+        // SDK). `canImport(FoundationModels)` is the project's existing proxy for
+        // "building against the macOS 26 SDK" (both ship together) — older SDKs (e.g.
+        // CI on macos-latest) compile the material fallback instead.
+        #if canImport(FoundationModels)
         if #available(macOS 26.0, *) {
             content.glassEffect(glassConfig, in: shape)
         } else {
@@ -334,8 +340,14 @@ private struct GlassPanelModifier: ViewModifier {
                 .background(.regularMaterial, in: shape)
                 .overlay(shape.strokeBorder(Color.white.opacity(0.10), lineWidth: 1))
         }
+        #else
+        content
+            .background(.regularMaterial, in: shape)
+            .overlay(shape.strokeBorder(Color.white.opacity(0.10), lineWidth: 1))
+        #endif
     }
 
+    #if canImport(FoundationModels)
     /// Builds the `Glass` config imperatively, outside any `@ViewBuilder` context.
     @available(macOS 26.0, *)
     private var glassConfig: Glass {
@@ -344,6 +356,7 @@ private struct GlassPanelModifier: ViewModifier {
         if interactive { g = g.interactive() }
         return g
     }
+    #endif
 }
 
 /// Soft branded backdrop the glass surfaces refract — warm orange + cool blooms over
