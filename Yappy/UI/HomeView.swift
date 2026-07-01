@@ -26,6 +26,7 @@ struct HomeView: View {
             VStack(alignment: .leading, spacing: 22) {
                 header
                 timeSavedCard
+                gettingStartedCard
                 milestoneLine
                 statsGrid
                 if !history.entries.isEmpty {
@@ -130,6 +131,96 @@ struct HomeView: View {
                     Spacer()
                 }
             }
+        }
+    }
+
+    // MARK: - Getting started
+
+    /// The four onboarding-discovery items, each with whether it's done. "Dictate
+    /// your first words" and "Add a dictionary term" derive from live state; the
+    /// other two read persisted flags set when the user first does the action.
+    private var gettingStartedItems: [GettingStartedItem] {
+        [
+            GettingStartedItem(
+                title: "Dictate your first words",
+                subtitle: nil,
+                done: !history.entries.isEmpty
+            ),
+            GettingStartedItem(
+                title: "Try a mode",
+                subtitle: "Switch tone per app",
+                done: settings.hasTriedMode
+            ),
+            GettingStartedItem(
+                title: "Add a dictionary term",
+                subtitle: "Teach it your jargon",
+                done: settings.hasAddedDictionaryTerm
+            ),
+            GettingStartedItem(
+                title: "Open the scratchpad",
+                subtitle: "\u{2325}\u{21E7}S",
+                done: settings.hasOpenedScratchpad
+            ),
+        ]
+    }
+
+    /// A guided "getting started" checklist that keeps nudging discovery after
+    /// onboarding closes. Disappears entirely once every item is done.
+    @ViewBuilder
+    private var gettingStartedCard: some View {
+        let items = gettingStartedItems
+        if !items.allSatisfy(\.done) {
+            VStack(alignment: .leading, spacing: 11) {
+                SectionLabel(icon: "checklist", title: "Getting started")
+                GlassCard {
+                    VStack(spacing: 0) {
+                        ForEach(Array(items.enumerated()), id: \.offset) { index, item in
+                            if index > 0 {
+                                Divider().overlay(Color.white.opacity(0.07))
+                            }
+                            checklistRow(item)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func checklistRow(_ item: GettingStartedItem) -> some View {
+        HStack(spacing: 11) {
+            checklistMark(done: item.done)
+            HStack(spacing: 5) {
+                Text(item.title)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(item.done ? Brand.ink3 : Brand.ink)
+                if let subtitle = item.subtitle {
+                    Text(subtitle)
+                        .font(.system(size: 12.5))
+                        .foregroundStyle(Brand.ink4)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 9)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// The 19pt circular status mark: a filled green check when done, a hollow
+    /// hairline circle when still to do (mirrors the mockup `.ci .mark`).
+    @ViewBuilder
+    private func checklistMark(done: Bool) -> some View {
+        if done {
+            ZStack {
+                Circle().fill(Brand.ready)
+                Image(systemName: "checkmark")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(.white)
+            }
+            .frame(width: 19, height: 19)
+        } else {
+            Circle()
+                .strokeBorder(Color.white.opacity(0.22), lineWidth: 1.5)
+                .frame(width: 19, height: 19)
         }
     }
 
@@ -563,4 +654,15 @@ struct HomeView: View {
             hoveredEntryID = hovering ? entry.id : nil
         }
     }
+}
+
+// MARK: - Getting-started checklist model
+
+/// One row of the Home getting-started checklist: a title, an optional subtitle,
+/// and whether the user has completed it. Rows are informational for now (no tap
+/// navigation — that needs sidebar selection state and is a deliberate follow-up).
+private struct GettingStartedItem {
+    let title: String
+    let subtitle: String?
+    let done: Bool
 }

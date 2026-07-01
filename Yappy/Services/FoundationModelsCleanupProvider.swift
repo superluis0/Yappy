@@ -41,6 +41,12 @@ actor FoundationModelsCleanupProvider: CleanupProvider {
     /// macOS-14-available type; the cast is guarded by `#available`.
     private var keepWarmSession: Any?
 
+    /// A fresh base-prompt session, pre-created and prewarmed during transcription
+    /// (`prepareSession()`) so the imminent cleanup skips the ~60–90 ms system-prompt
+    /// prefill. Consumed by the next base-path `cleanup` — one `respond`, so it stays
+    /// history-free — then discarded. `Any?` for the same macOS-26 reason as above.
+    private var pendingSession: Any?
+
     /// The guardrails model, created once and reused for every session. Building it
     /// (and reading availability) can decode the on-device model manifest, which is
     /// wasteful to repeat on every dictation. Typed `Any?` for the same macOS-26
@@ -98,6 +104,22 @@ actor FoundationModelsCleanupProvider: CleanupProvider {
         session.prewarm()
     }
 
+    /// Pre-creates and warms the exact session the next (common, non-correcting)
+    /// cleanup will use, so its system-prompt prefill overlaps transcription rather
+    /// than adding latency after it. Call only at an audio-idle moment — by the time
+    /// transcription runs the audio engine has stopped (see `CleanupCoordinator`).
+    /// Re-warms an already-pending session; the correcting path builds its own.
+    func prepareSession() async {
+        guard #available(macOS 26.0, *) else { return }
+        if let existing = pendingSession as? LanguageModelSession {
+            existing.prewarm()
+            return
+        }
+        let session = LanguageModelSession(model: sharedModel(), instructions: Self.cleanupInstructionsBase)
+        session.prewarm()
+        pendingSession = session
+    }
+
     /// Cleans a voice-dictation transcript using the on-device model.
     ///
     /// The system instructions cover the full cleanup contract:
@@ -128,15 +150,35 @@ actor FoundationModelsCleanupProvider: CleanupProvider {
         // turn — a bare turn pulls the model into answering a dictated question.
         let userMessage = correcting ? Self.correctingUserMessage(for: text)
                                      : Self.cleanupUserMessage(for: text)
-        guard let raw = await generate(instructions: instructions, userMessage: userMessage) else {
+
+        // Reuse the session warmed during transcription for the common (base) path so
+        // its system-prompt prefill is already done. Consume it either way — one
+        // `respond` per session keeps cleanup history-free — and let the rare
+        // correcting path (different instructions) build its own.
+        let warmed = pendingSession as? LanguageModelSession
+        pendingSession = nil
+        let presession = correcting ? nil : warmed
+
+        // Bound the output so a model that ignores the rules and runs away aborts after
+        // ~2× the input instead of grinding to the 2000-token ceiling — seconds of
+        // latency — before the guards below reject it. A genuine cleanup never exceeds
+        // the input by more than the retention/ratio guards already allow, so this
+        // never truncates a result we'd keep.
+        let maxTokens = min(2000, max(8, text.count / 3) * 2 + 64)
+
+        guard let raw = await generate(instructions: instructions, userMessage: userMessage,
+                                       reusing: presession, maxResponseTokens: maxTokens) else {
             return text
         }
 
-        // Strip any echoed transcript markers.
-        let cleaned = raw
+        // Strip any echoed transcript markers, then a leaked meta-preamble: the small
+        // model sometimes ignores "no preamble" and prepends a line like
+        // "Sure, here is the cleaned transcript:" before the real output.
+        let unwrapped = raw
             .replacingOccurrences(of: "⟦", with: "")
             .replacingOccurrences(of: "⟧", with: "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleaned = Self.stripLeadingPreamble(unwrapped)
         guard !cleaned.isEmpty else { return text }
 
         // Runaway guard: cleanup output is roughly input-length, so reject a result
@@ -153,6 +195,30 @@ actor FoundationModelsCleanupProvider: CleanupProvider {
         let minRetention: Double = correcting ? 0.2 : 0.34
         guard Self.preservesInput(text, cleaned: cleaned, minRetention: minRetention) else { return text }
 
+        // Performed-task guard: cleanup removes fillers and fixes punctuation, so its
+        // output has about as many words as the input — never markedly more, and almost
+        // all of them from what the speaker said. When the small on-device model instead
+        // PERFORMS a dictated instruction (answers it, or pastes a bullet list of its own
+        // "edits"), the word count balloons. The retention check above misses this because
+        // such a list quotes the input words and so "preserves" them; word-count ratio and
+        // novelty don't get fooled. Either way, fall back to the clean transcript.
+        let inWords = Self.words(in: text)
+        let outWords = Self.words(in: cleaned)
+        if !inWords.isEmpty, Double(outWords.count) / Double(inWords.count) > 1.5 { return text }
+        if !outWords.isEmpty {
+            let inputSet = Set(inWords)
+            let novelFraction = Double(outWords.filter { !inputSet.contains($0) }.count) / Double(outWords.count)
+            if novelFraction > 0.5 { return text }
+        }
+
+        // Hallucination guard: cleanup only fixes punctuation, casing, and fillers —
+        // it never legitimately introduces a number. The small model sometimes
+        // "completes" a dictated label like "word count:" by inventing a value
+        // ("word count: 1000"); reject any output that adds a digit run absent from
+        // the input. (The retention guard misses this: inputs under 4 words auto-pass,
+        // and a tiny addition still keeps every input word.)
+        guard Self.digitRuns(of: cleaned).isSubset(of: Self.digitRuns(of: text)) else { return text }
+
         return cleaned
     }
 
@@ -166,16 +232,20 @@ actor FoundationModelsCleanupProvider: CleanupProvider {
     /// A new session per call is intentional: we don't want earlier conversation
     /// turns leaking into unrelated cleanup calls.
     @available(macOS 26.0, *)
-    private func generate(instructions: String, userMessage: String) async -> String? {
+    private func generate(instructions: String, userMessage: String,
+                          reusing presession: LanguageModelSession? = nil,
+                          maxResponseTokens: Int = 2000) async -> String? {
         do {
-            // Reuse the cached guardrails model (created once); only the session is
-            // per-call, kept fresh so earlier turns never leak into this cleanup.
-            let session = LanguageModelSession(model: sharedModel(), instructions: instructions)
+            // Prefer the session warmed during transcription; otherwise build one now.
+            // Either way it serves a single `respond`, so earlier turns never leak into
+            // this cleanup. Reuse the cached guardrails model (created once).
+            let session = presession
+                ?? LanguageModelSession(model: sharedModel(), instructions: instructions)
 
             // Greedy sampling + a response cap keep the small on-device model from
             // running away — default random sampling turned a one-word input into a
             // 100-line hallucination that leaked these instructions into the output.
-            let options = GenerationOptions(sampling: .greedy, maximumResponseTokens: 2000)
+            let options = GenerationOptions(sampling: .greedy, maximumResponseTokens: maxResponseTokens)
             let response = try await session.respond(to: userMessage, options: options)
 
             let trimmed = response.content.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -313,6 +383,41 @@ actor FoundationModelsCleanupProvider: CleanupProvider {
         text.lowercased()
             .components(separatedBy: CharacterSet.alphanumerics.inverted)
             .filter { !$0.isEmpty }
+    }
+
+    /// Removes a leaked meta-preamble the small model sometimes prepends despite the
+    /// "no preamble" instruction — e.g. "Sure, here is the cleaned transcript:" on its
+    /// own line before the real output. Conservative: only strips a FIRST line that
+    /// ends in a colon AND names the transcript/cleanup, phrasing a genuine dictation
+    /// would not open with. A real colon-line like "Shopping list:" is left intact
+    /// because it carries none of the meta signals.
+    static func stripLeadingPreamble(_ text: String) -> String {
+        guard let newline = text.firstIndex(of: "\n") else { return text }
+        let firstLine = text[text.startIndex..<newline].trimmingCharacters(in: .whitespaces)
+        guard firstLine.hasSuffix(":") else { return text }
+        let lower = firstLine.lowercased()
+        let metaSignals = [
+            "transcript", "cleaned text", "corrected text", "cleaned version",
+            "corrected version", "cleaned up", "cleaned-up", "here is the clean",
+            "here's the clean", "here is the corrected", "here's the corrected",
+        ]
+        guard metaSignals.contains(where: { lower.contains($0) }) else { return text }
+        let rest = text[text.index(after: newline)...]
+            .drop(while: { $0 == "\n" || $0 == " " || $0 == "\t" })
+        return String(rest)
+    }
+
+    /// The set of maximal digit runs in `text` ("v2 build 67" -> ["2", "67"]). Used
+    /// to detect numbers the cleanup model invented — it must never add one.
+    private static func digitRuns(of text: String) -> Set<String> {
+        var runs = Set<String>()
+        var current = ""
+        for ch in text {
+            if ch.isNumber { current.append(ch) }
+            else if !current.isEmpty { runs.insert(current); current = "" }
+        }
+        if !current.isEmpty { runs.insert(current) }
+        return runs
     }
 }
 

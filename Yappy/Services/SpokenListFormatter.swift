@@ -152,3 +152,104 @@ enum SpokenListFormatter {
         return slice.contains { $0.isLetter }
     }
 }
+
+/// Turns a spoken bulleted enumeration into a Markdown bullet list — the "bullet"
+/// cue Willow and Dragon use, which Wispr Flow paywalls behind Command Mode:
+///
+///   "bring the following. Bullet milk. Bullet eggs. Bullet bread"
+///     → "bring the following.\n- Milk\n- Eggs\n- Bread"
+///
+/// Conservative like SpokenListFormatter: fires only on **at least two** "bullet"
+/// (or "bullet point") markers, each set off from the prior item by the start of
+/// the utterance or sentence punctuation. "The bullet hit the wall" or a lone
+/// "add a bullet point here" is left alone.
+enum SpokenBulletFormatter {
+
+    private static let markerRegex = try! NSRegularExpression(
+        pattern: "(?<![\\p{L}])bullets?(?:\\s+points?)?",
+        options: [.caseInsensitive])
+
+    private static let anchors: Set<Character> = [".", ",", ";", ":", "!", "?", "\n"]
+    private static let separators: Set<Character> = [" ", "\t", "\n", ",", ".", ":"]
+
+    private struct Marker {
+        let matchStart: Int
+        let contentStart: Int
+        let anchored: Bool
+    }
+
+    static func format(_ text: String) -> String {
+        guard text.lowercased().contains("bullet") else { return text }
+        let ns = text as NSString
+        let markers = allMarkers(in: ns)
+        // A list starts at the first marker sitting at a clause boundary (utterance
+        // start or after sentence punctuation); every "bullet" after it continues the
+        // list. This fires on "bullet milk bullet eggs" yet leaves prose like "the
+        // bullet hit and the bullet missed" — which has no anchored marker — alone.
+        guard let start = markers.firstIndex(where: { $0.anchored }) else { return text }
+        let run = Array(markers[start...])
+        guard run.count >= 2 else { return text }
+        return render(ns: ns, markers: run)
+    }
+
+    private static func allMarkers(in ns: NSString) -> [Marker] {
+        let full = NSRange(location: 0, length: ns.length)
+        return markerRegex.matches(in: ns as String, range: full).map { match in
+            var contentStart = match.range.location + match.range.length
+            while contentStart < ns.length,
+                  let scalar = Unicode.Scalar(ns.character(at: contentStart)),
+                  separators.contains(Character(scalar)) {
+                contentStart += 1
+            }
+            return Marker(matchStart: match.range.location,
+                          contentStart: contentStart,
+                          anchored: isAnchored(ns: ns, before: match.range.location))
+        }
+    }
+
+    /// Valid only when, scanning back over spaces, we reach the start of the
+    /// utterance or a sentence-punctuation anchor.
+    private static func isAnchored(ns: NSString, before location: Int) -> Bool {
+        var i = location - 1
+        while i >= 0, let scalar = Unicode.Scalar(ns.character(at: i)),
+              scalar == " " || scalar == "\t" {
+            i -= 1
+        }
+        guard i >= 0 else { return true }
+        guard let scalar = Unicode.Scalar(ns.character(at: i)) else { return false }
+        return anchors.contains(Character(scalar))
+    }
+
+    private static func render(ns: NSString, markers: [Marker]) -> String {
+        let prefix = ns.substring(to: markers[0].matchStart)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        var lines: [String] = []
+        for (index, marker) in markers.enumerated() {
+            let end = index + 1 < markers.count ? markers[index + 1].matchStart : ns.length
+            guard marker.contentStart < end else { continue }
+            let raw = ns.substring(with: NSRange(location: marker.contentStart, length: end - marker.contentStart))
+            let item = capitalizeFirst(trimItem(raw))
+            guard !item.isEmpty else { continue }
+            lines.append("- \(item)")
+        }
+        guard lines.count >= 2 else { return ns as String }
+
+        let list = lines.joined(separator: "\n")
+        return prefix.isEmpty ? list : prefix + "\n" + list
+    }
+
+    private static func trimItem(_ s: String) -> String {
+        var result = s.trimmingCharacters(in: .whitespacesAndNewlines)
+        while let last = result.last, last == "," || last == ";" || last == "." {
+            result.removeLast()
+            result = result.trimmingCharacters(in: .whitespaces)
+        }
+        return result
+    }
+
+    private static func capitalizeFirst(_ s: String) -> String {
+        guard let first = s.first else { return s }
+        return first.uppercased() + s.dropFirst()
+    }
+}

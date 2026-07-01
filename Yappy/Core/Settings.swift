@@ -64,7 +64,11 @@ final class Settings: ObservableObject {
         static let voiceEditingEnabled = "com.yappy.voiceEditingEnabled"
         static let voiceControlEnabled = "com.yappy.voiceControlEnabled"
         static let activeModeID = "com.yappy.activeModeID"
+        static let useCases = "com.yappy.useCases"
         static let onboardingComplete = "com.yappy.onboardingComplete"
+        static let hasTriedMode = "com.yappy.hasTriedMode"
+        static let hasAddedDictionaryTerm = "com.yappy.hasAddedDictionaryTerm"
+        static let hasOpenedScratchpad = "com.yappy.hasOpenedScratchpad"
         static let autoUpdateChecksEnabled = "com.yappy.autoUpdateChecksEnabled"
         static let legacyCleanupMigrated = "com.yappy.legacyCleanupMigrated"
         static let cleanupDefaultOnMigrated = "com.yappy.cleanupDefaultOnMigrated"
@@ -195,8 +199,34 @@ final class Settings: ObservableObject {
         didSet { if !isLoading { save() } }
     }
 
+    /// Use cases the user picked during onboarding (raw values of `UseCase`).
+    /// Drives the preset Modes + seeded dictionary terms; purely informational
+    /// afterward, since the user can change Modes and the dictionary freely.
+    @Published var useCases: Set<String> = [] {
+        didSet { if !isLoading { save() } }
+    }
+
     /// Whether the first-run onboarding flow has been completed.
     @Published var onboardingComplete: Bool = false {
+        didSet { if !isLoading { save() } }
+    }
+
+    /// Whether the user has ever activated a non-Auto Mode. Backs the Home
+    /// getting-started checklist; remembers "ever" since the current mode can
+    /// be switched back to Auto. Set once at the mode-switch site.
+    @Published var hasTriedMode: Bool = false {
+        didSet { if !isLoading { save() } }
+    }
+
+    /// Whether the user has ever added their own dictionary term (not a built-in
+    /// or onboarding-seeded one). Backs the Home getting-started checklist.
+    @Published var hasAddedDictionaryTerm: Bool = false {
+        didSet { if !isLoading { save() } }
+    }
+
+    /// Whether the user has ever opened the Scratchpad (⌥⇧S). Backs the Home
+    /// getting-started checklist.
+    @Published var hasOpenedScratchpad: Bool = false {
         didSet { if !isLoading { save() } }
     }
 
@@ -251,7 +281,11 @@ final class Settings: ObservableObject {
         defaults.set(voiceEditingEnabled, forKey: Keys.voiceEditingEnabled)
         defaults.set(voiceControlEnabled, forKey: Keys.voiceControlEnabled)
         defaults.set(activeModeID, forKey: Keys.activeModeID)
+        defaults.set(Array(useCases), forKey: Keys.useCases)
         defaults.set(onboardingComplete, forKey: Keys.onboardingComplete)
+        defaults.set(hasTriedMode, forKey: Keys.hasTriedMode)
+        defaults.set(hasAddedDictionaryTerm, forKey: Keys.hasAddedDictionaryTerm)
+        defaults.set(hasOpenedScratchpad, forKey: Keys.hasOpenedScratchpad)
         defaults.set(autoUpdateChecksEnabled, forKey: Keys.autoUpdateChecksEnabled)
 
         let overrides = Dictionary(uniqueKeysWithValues: toneOverrides.map { ($0.key.rawValue, $0.value.rawValue) })
@@ -364,7 +398,14 @@ final class Settings: ObservableObject {
 
         activeModeID = defaults.string(forKey: Keys.activeModeID)
 
+        useCases = Set(defaults.stringArray(forKey: Keys.useCases) ?? [])
+
         onboardingComplete = defaults.bool(forKey: Keys.onboardingComplete)
+
+        // Checklist progress flags default to false (absent key → false).
+        hasTriedMode = defaults.bool(forKey: Keys.hasTriedMode)
+        hasAddedDictionaryTerm = defaults.bool(forKey: Keys.hasAddedDictionaryTerm)
+        hasOpenedScratchpad = defaults.bool(forKey: Keys.hasOpenedScratchpad)
 
         if defaults.object(forKey: Keys.autoUpdateChecksEnabled) != nil {
             autoUpdateChecksEnabled = defaults.bool(forKey: Keys.autoUpdateChecksEnabled)
@@ -408,8 +449,11 @@ final class Settings: ObservableObject {
         voiceEditingEnabled = true
         voiceControlEnabled = true
         activeModeID = nil
+        useCases = []
         autoUpdateChecksEnabled = true
-        // onboardingComplete intentionally not reset — it tracks lifetime state.
+        // onboardingComplete and the has* checklist flags are intentionally not
+        // reset — like onboarding completion, they track lifetime "ever did this"
+        // state, so a settings reset shouldn't resurrect the getting-started card.
 
         for key in [
             Keys.hotkeyOption, Keys.transcriptionModel, Keys.launchAtLogin, Keys.cleanupEnabled,
@@ -420,7 +464,7 @@ final class Settings: ObservableObject {
             Keys.numberFormattingEnabled, Keys.numberedListsEnabled, Keys.fillerRemovalEnabled,
             Keys.spokenCommandsEnabled, Keys.spokenPunctuationEnabled,
             Keys.voiceEditingEnabled, Keys.voiceControlEnabled, Keys.activeModeID,
-            Keys.autoUpdateChecksEnabled,
+            Keys.useCases, Keys.autoUpdateChecksEnabled,
         ] {
             defaults.removeObject(forKey: key)
         }

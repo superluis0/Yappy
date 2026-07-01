@@ -43,6 +43,8 @@ enum VoiceEditCommandParser {
 
         "capitalize that": .capitalizeThat,
         "capitalize this": .capitalizeThat,
+        "cap that": .capitalizeThat,
+        "cap this": .capitalizeThat,
 
         "all caps that": .allCapsThat,
         "all caps this": .allCapsThat,
@@ -81,6 +83,35 @@ enum VoiceEditCommandParser {
         case .lowercaseThat: return chunk.lowercased()
         case .deleteLast, .deleteLastWord, .deleteLastSentence, .deleteLastLine: return nil
         }
+    }
+}
+
+/// Detects a trailing "press enter" / "press return" — Wispr Flow's and Dragon's
+/// gesture for submitting after dictation (it sends a real Return so a message,
+/// search box, or cell commits). Returns the dictation with the command stripped
+/// and whether to send Return. Conservative: only matches the phrase as the whole
+/// utterance or at the very end, set off by a space — so "press enter to continue",
+/// dictated as prose, is left intact because it isn't trailing.
+enum SubmitCommandParser {
+    private static let triggers = ["press enter", "press return", "hit enter", "hit return"]
+
+    static func parse(_ raw: String) -> (text: String, submit: Bool) {
+        // Match against a copy with trailing sentence punctuation and spaces removed.
+        let core = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "[.!?]+$", with: "", options: .regularExpression)
+            .trimmingCharacters(in: .whitespaces)
+        let lower = core.lowercased()
+        for trigger in triggers {
+            if lower == trigger {
+                return ("", true)
+            }
+            if lower.hasSuffix(" " + trigger) {
+                let kept = String(core.dropLast(trigger.count))
+                    .trimmingCharacters(in: CharacterSet(charactersIn: " ,;"))
+                return (kept, true)
+            }
+        }
+        return (raw, false)
     }
 }
 

@@ -31,30 +31,39 @@ enum SpokenPunctuationFormatter {
         "semicolon": ";",
         "hyphen": "-",
         "dash": "-",
+        "apostrophe": "'",
+        "ellipsis": "…",
     ]
 
-    /// First word → (second word → symbol), for two-word marks.
+    /// First word → (second word → symbol), for two-word marks. Quotes and the
+    /// forward slash are intentionally two-word only: a bare "quote" or "slash"
+    /// collides with ordinary prose ("the famous quote", "slash the budget").
     private static let double: [String: [String: String]] = [
         "question": ["mark": "?"],
         "exclamation": ["mark": "!", "point": "!"],
         "full": ["stop": "."],
-        "open": ["paren": "(", "parenthesis": "(", "parentheses": "(", "bracket": "["],
-        "close": ["paren": ")", "parenthesis": ")", "parentheses": ")", "bracket": "]"],
-        "closed": ["paren": ")", "parenthesis": ")"],
+        "open": ["paren": "(", "parenthesis": "(", "parentheses": "(", "bracket": "[", "quote": "“"],
+        "close": ["paren": ")", "parenthesis": ")", "parentheses": ")", "bracket": "]", "quote": "”"],
+        "closed": ["paren": ")", "parenthesis": ")", "quote": "”"],
+        "end": ["quote": "”"],
+        "forward": ["slash": "/"],
+        "em": ["dash": "—"],
     ]
 
     /// Cheap substrings that gate the whole pass.
     private static let triggers = [
         "comma", "period", "colon", "semicolon", "hyphen", "dash",
         "question", "exclamation", "full stop", "paren", "bracket",
+        "apostrophe", "ellipsis", "open quote", "close quote", "end quote",
+        "forward slash", "em dash",
     ]
 
     /// Marks that hug the preceding word and take a space after.
-    private static let attachBefore: Set<String> = [",", ".", ";", ":", "!", "?", ")", "]"]
+    private static let attachBefore: Set<String> = [",", ".", ";", ":", "!", "?", ")", "]", "…", "”"]
     /// Marks that take a space before and hug the following word.
-    private static let openers: Set<String> = ["(", "["]
+    private static let openers: Set<String> = ["(", "[", "“"]
     /// Marks that hug words on both sides.
-    private static let glue: Set<String> = ["-"]
+    private static let glue: Set<String> = ["-", "'", "/", "—"]
     /// Marks that start a new sentence after them.
     private static let sentenceEnders: Set<String> = [".", "!", "?"]
 

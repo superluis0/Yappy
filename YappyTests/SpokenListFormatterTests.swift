@@ -96,3 +96,31 @@ final class SpokenListFormatterTests: XCTestCase {
         XCTAssertEqual(f("milk, eggs, bread"), "milk, eggs, bread")
     }
 }
+
+final class SpokenBulletFormatterTests: XCTestCase {
+
+    private func b(_ s: String) -> String { SpokenBulletFormatter.format(s) }
+
+    func testBulletsNoPunctuation() {
+        XCTAssertEqual(b("bullet milk bullet eggs bullet bread"), "- Milk\n- Eggs\n- Bread")
+    }
+
+    func testBulletsWithLeadInAndPunctuation() {
+        XCTAssertEqual(b("bring the following. Bullet milk. Bullet eggs."),
+                       "bring the following.\n- Milk\n- Eggs")
+    }
+
+    func testBulletPointPhrase() {
+        XCTAssertEqual(b("bullet point computer, bullet point charger"),
+                       "- Computer\n- Charger")
+    }
+
+    func testProseBulletUntouched() {
+        XCTAssertEqual(b("the bullet hit and the bullet missed"),
+                       "the bullet hit and the bullet missed")
+    }
+
+    func testSingleBulletUntouched() {
+        XCTAssertEqual(b("add a bullet point here please"), "add a bullet point here please")
+    }
+}

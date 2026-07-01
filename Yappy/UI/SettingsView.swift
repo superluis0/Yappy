@@ -13,6 +13,8 @@ struct SettingsView: View {
     @ObservedObject var settings: Settings
     @ObservedObject var transcriptionService: ParakeetTranscriptionService
     @ObservedObject var updateChecker: UpdateChecker
+    /// Re-shows the "What's New" card; wired by MainWindowView to the presenter.
+    var onShowReleaseNotes: () -> Void = {}
 
     @State private var microphoneGranted = AudioRecorder.hasPermission
     @State private var accessibilityGranted = AXIsProcessTrusted()
@@ -155,6 +157,11 @@ struct SettingsView: View {
             SettingRow(icon: "number.circle", title: "Current version") {
                 Text(updateChecker.currentVersionDisplay)
                     .font(.system(size: 13)).foregroundStyle(Brand.ink3)
+            }
+            RowDivider()
+            SettingRow(icon: "sparkles", title: "What’s new",
+                       subtitle: "See the release notes for this version.") {
+                Button("View") { onShowReleaseNotes() }
             }
             RowDivider()
             SettingToggle(icon: "clock.arrow.circlepath", title: "Check automatically",

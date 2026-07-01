@@ -95,6 +95,16 @@ enum WhatsNew {
             ]),
     ]
 
+    /// The running version's release notes, if any — for re-viewing the card on
+    /// demand (the menu bar and Settings), separate from the once-after-update flow.
+    static var current: Entry? { entries[currentVersion] }
+
+    /// The highest-versioned entry, as a fallback when the running version has no
+    /// notes of its own — so "What's New" always has something to show.
+    static var latest: Entry? {
+        entries.values.max { $0.version.compare($1.version, options: .numeric) == .orderedAscending }
+    }
+
     // MARK: - Decision
 
     /// Pure decision: which card (if any) to show, given the current version, the

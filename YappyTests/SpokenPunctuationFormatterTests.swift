@@ -60,4 +60,31 @@ final class SpokenPunctuationFormatterTests: XCTestCase {
     func testNoTriggerIsIdentity() {
         XCTAssertEqual(f("just a normal sentence"), "just a normal sentence")
     }
+
+    // MARK: - Extended marks
+
+    func testApostropheGlues() {
+        XCTAssertEqual(f("it apostrophe s working"), "it's working")
+    }
+
+    func testEllipsis() {
+        XCTAssertEqual(f("wait ellipsis really"), "wait… really")
+    }
+
+    func testEmDashGlues() {
+        XCTAssertEqual(f("yes em dash no"), "yes—no")
+    }
+
+    func testForwardSlashGlues() {
+        XCTAssertEqual(f("a forward slash b"), "a/b")
+    }
+
+    func testQuotes() {
+        XCTAssertEqual(f("he said open quote hi close quote"), "he said \u{201C}hi\u{201D}")
+    }
+
+    // A bare "quote" / "slash" stays prose — only the two-word forms convert.
+    func testBareQuoteWordIsNotConverted() {
+        XCTAssertEqual(f("the famous quote is here"), "the famous quote is here")
+    }
 }

@@ -21,7 +21,10 @@ struct TranscriptPipeline {
         var text = raw
         if removeFillers { text = FillerWordRemover.remove(text) }
         if formatNumbers { text = SpokenNumberFormatter.format(text) }
-        if formatLists { text = SpokenListFormatter.format(text) }
+        if formatLists {
+            text = SpokenListFormatter.format(text)
+            text = SpokenBulletFormatter.format(text)
+        }
         if applyCommands { text = SpokenCommandFormatter.apply(text) }
         if applyPunctuation { text = SpokenPunctuationFormatter.apply(text) }
         return text

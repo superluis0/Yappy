@@ -125,7 +125,8 @@ struct MainWindowView: View {
         case .modes:
             ModesView(store: modeStore, settings: settings)
         case .settings:
-            SettingsView(settings: settings, transcriptionService: transcriptionService, updateChecker: updateChecker)
+            SettingsView(settings: settings, transcriptionService: transcriptionService, updateChecker: updateChecker,
+                         onShowReleaseNotes: { whatsNewPresenter.entry = WhatsNew.current ?? WhatsNew.latest })
         }
     }
 }

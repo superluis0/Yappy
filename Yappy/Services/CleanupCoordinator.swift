@@ -22,11 +22,19 @@ protocol CleanupProvider: AnyObject {
     /// Asks the provider to load its model into memory ahead of use, so the first
     /// real request doesn't pay a cold-start. Best-effort and idempotent.
     func prewarm() async
+
+    /// Pre-creates/warms the exact session the next cleanup will use, so its setup
+    /// (system-prompt prefill) overlaps transcription instead of delaying the cleanup
+    /// that follows. Best-effort; default no-op.
+    func prepareSession() async
 }
 
 extension CleanupProvider {
     /// Default: nothing to warm up.
     func prewarm() async {}
+
+    /// Default: nothing to pre-create.
+    func prepareSession() async {}
 }
 
 /// Routes the app's transcript-cleanup calls to the on-device AI provider (Apple
@@ -53,7 +61,25 @@ final class CleanupCoordinator {
         guard (cleanupEnabled ?? settings.cleanupEnabled), !text.isEmpty else { return text }
         guard tone != .verbatim else { return text }
         guard let provider else { return text }
-        return await provider.cleanup(text, tone: tone, backtrack: backtrack)
+
+        // Clean each line independently so spoken "new line" / "next line" breaks
+        // survive. Given the whole block, the on-device model reflows them — turning a
+        // single break into a paragraph break, or dropping a trailing one — even though
+        // the prompt says to keep them. Splitting on "\n" and rejoining on "\n" preserves
+        // the exact structure (blank lines and a trailing break included) because the
+        // model never sees the breaks. Single-line dictations keep the fast one-call path.
+        guard text.contains("\n") else {
+            return await provider.cleanup(text, tone: tone, backtrack: backtrack)
+        }
+        var cleanedLines: [String] = []
+        for line in text.components(separatedBy: "\n") {
+            if line.trimmingCharacters(in: .whitespaces).isEmpty {
+                cleanedLines.append(line)
+            } else {
+                cleanedLines.append(await provider.cleanup(line, tone: tone, backtrack: backtrack))
+            }
+        }
+        return cleanedLines.joined(separator: "\n")
     }
 
     /// Warms up the on-device model so the first cleanup doesn't pay the
@@ -73,6 +99,21 @@ final class CleanupCoordinator {
         // at audio-idle moments (enabling cleanup; after a cleanup completes).
         Task { [provider] in
             await provider.prewarm()
+        }
+    }
+
+    /// Pre-creates and warms the session the next cleanup will use, so its setup runs
+    /// while the transcript is still being produced and the cleanup itself starts
+    /// generating sooner. Fire-and-forget. No-op when cleanup is off or no provider
+    /// exists.
+    ///
+    /// Call at the start of transcription. Like `prewarm`, this loads model resources
+    /// on a background thread, so it must only run at an audio-idle moment — by the
+    /// time transcription begins the audio engine has already stopped.
+    func prepareSession() {
+        guard settings.cleanupEnabled, let provider else { return }
+        Task { [provider] in
+            await provider.prepareSession()
         }
     }
 }

@@ -219,7 +219,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         escapeInterceptor.onEscape = { [weak self] in self?.escapeCancel() }
 
-        scratchpadHotkey.onTrigger = { [weak self] in self?.scratchpadController.toggle() }
+        scratchpadHotkey.onTrigger = { [weak self] in self?.toggleScratchpad() }
     }
 
     /// Esc pressed mid-session: deactivate the hotkey state machine first so the
@@ -346,6 +346,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
 
             do {
+                // Warm the cleanup session now — the audio engine has already stopped,
+                // so this is audio-idle — so its system-prompt prefill overlaps
+                // transcription instead of adding latency to the cleanup that follows.
+                self.cleanupCoordinator.prepareSession()
                 let raw = try await self.transcriptionService.transcribe(samples)
 
                 // Nothing usable (too short, or discarded as low confidence).
@@ -379,6 +383,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     return
                 }
 
+                // "Press enter" / "press return" at the end submits after typing:
+                // strip the command now (so cleanup never sees it) and remember to
+                // send a real Return once the dictated text has landed.
+                let submit = SubmitCommandParser.parse(raw)
+                let dictation = submit.text
+                if dictation.isEmpty {
+                    // The whole utterance was just the submit command.
+                    if submit.submit {
+                        self.textInserter.sendReturn()
+                        self.playSuccessFeedback()
+                    }
+                    self.appState.reset()
+                    self.pillController.hide()
+                    return
+                }
+
                 // The session mode dictates cleanup/formatting; Auto defers to the
                 // global settings + per-app tone (byte-identical to no modes).
                 let mode = self.sessionMode
@@ -388,7 +408,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     formatLists: mode.isAuto ? self.settings.numberedListsEnabled : mode.numberedLists,
                     applyCommands: mode.isAuto ? self.settings.spokenCommandsEnabled : mode.spokenCommands,
                     applyPunctuation: mode.isAuto ? self.settings.spokenPunctuationEnabled : mode.spokenPunctuation
-                ).process(raw)
+                ).process(dictation)
 
                 // Custom-dictionary corrections: rewrite known mishearings
                 // (manual + voice-trained aliases) back to the canonical spelling.
@@ -405,10 +425,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     if !canned.isEmpty {
                         try self.textInserter.insert(text: canned, allowLeadingSpace: false)
                         self.playSuccessFeedback()
+                        self.appState.lastDictationAt = Date()
                         self.history.add(DictationEntry(
                             text: canned, durationSeconds: duration,
                             appName: targetAppName, bundleID: bundleID))
                     }
+                    if submit.submit { self.textInserter.sendReturn() }
                     self.appState.setTranscription(canned)
                     self.appState.reset()
                     self.pillController.hide()
@@ -442,6 +464,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 if !finalText.isEmpty {
                     try self.textInserter.insert(text: finalText)
                     self.playSuccessFeedback()
+                    self.appState.lastDictationAt = Date()
                     self.history.add(DictationEntry(
                         text: finalText,
                         durationSeconds: duration,
@@ -449,6 +472,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         bundleID: bundleID
                     ))
                 }
+                if submit.submit { self.textInserter.sendReturn() }
                 self.appState.setTranscription(finalText)
             } catch {
                 self.appState.setError(error)
@@ -489,11 +513,54 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .selectAutoMode:
             settings.activeModeID = nil
         case .openScratchpad:
-            scratchpadController.show()
+            showScratchpad()
         case .newNote:
             notesStore.create()
-            scratchpadController.show()
+            showScratchpad()
         }
+    }
+
+    // MARK: - Home getting-started checklist hooks
+    //
+    // These flip the persisted `Settings` flags that back the Home checklist so
+    // it reflects "ever did this", independent of current state. Each is set at
+    // the single point an action funnels through, and each writes at most once.
+
+    /// Shows the Scratchpad and records that it has been opened at least once.
+    /// All in-app open paths funnel through here so the checklist stays accurate.
+    private func showScratchpad() {
+        scratchpadController.show()
+        if !settings.hasOpenedScratchpad { settings.hasOpenedScratchpad = true }
+    }
+
+    /// Marks the "try a mode" checklist item once a non-Auto Mode becomes active,
+    /// regardless of how it was selected (menu bar, voice command, or the Modes
+    /// tab) — they all publish through `settings.activeModeID`.
+    private func markModeTriedIfNeeded(_ activeModeID: String?) {
+        guard !settings.hasTriedMode,
+              let activeModeID,
+              activeModeID != Mode.autoID.uuidString else { return }
+        settings.hasTriedMode = true
+    }
+
+    /// Onboarding-seeded dictionary terms (per use case), which are added with
+    /// `isBuiltIn == false` just like a hand-entered term. The checklist's "add a
+    /// dictionary term" item should count only genuine user additions, so these
+    /// are excluded. Derived from the seed source so it can't drift.
+    private static let onboardingSeededTerms: Set<String> = Set(
+        UseCase.allCases
+            .flatMap { dictionaryTerms(for: $0) }
+            .map { $0.lowercased() }
+    )
+
+    /// Marks the "add a dictionary term" checklist item once the user has a term
+    /// of their own — i.e. a non-built-in term that wasn't seeded by onboarding.
+    private func markDictionaryTermAddedIfNeeded(_ terms: [DictionaryTerm]) {
+        guard !settings.hasAddedDictionaryTerm else { return }
+        let hasUserTerm = terms.contains { term in
+            !term.isBuiltIn && !Self.onboardingSeededTerms.contains(term.text.lowercased())
+        }
+        if hasUserTerm { settings.hasAddedDictionaryTerm = true }
     }
 
     /// The mode in effect for a session: the explicit selection, or an
@@ -616,6 +683,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                      keyEquivalent: "")
         updatesItem.target = self
         menu.addItem(updatesItem)
+        let whatsNewItem = NSMenuItem(title: "What's New in Yappy", action: #selector(showWhatsNew), keyEquivalent: "")
+        whatsNewItem.target = self
+        menu.addItem(whatsNewItem)
         menu.addItem(NSMenuItem(title: "About Yappy", action: #selector(showAbout), keyEquivalent: ""))
         menu.addItem(NSMenuItem.separator())
         menu.addItem(NSMenuItem(title: "Quit Yappy", action: #selector(quit), keyEquivalent: "q"))
@@ -934,13 +1004,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .store(in: &cancellables)
 
         // Rebuild the precompiled dictionary matcher only when terms change
-        // (fires immediately with the current terms, then on every edit).
+        // (fires immediately with the current terms, then on every edit). Also
+        // marks the Home checklist's "add a dictionary term" item once the user
+        // has a term of their own.
         dictionaryStore.$terms
-            .sink { [weak self] terms in self?.dictionaryReplacer = DictionaryReplacer(terms: terms) }
+            .sink { [weak self] terms in
+                self?.dictionaryReplacer = DictionaryReplacer(terms: terms)
+                self?.markDictionaryTermAddedIfNeeded(terms)
+            }
             .store(in: &cancellables)
         settings.$activeModeID
             .removeDuplicates()
-            .sink { [weak self] _ in self?.rebuildModeMenu() }
+            .sink { [weak self] id in
+                self?.rebuildModeMenu()
+                self?.markModeTriedIfNeeded(id)
+            }
             .store(in: &cancellables)
 
         settings.$launchAtLogin
@@ -989,9 +1067,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let view = OnboardingView(
                 transcriptionService: transcriptionService,
                 levelModel: levelModel,
+                appState: appState,
                 requestMicrophone: { await AudioRecorder.requestPermission() },
                 startLevelPreview: { [weak self] in self?.audioRecorder.startLevelPreview() ?? false },
                 stopLevelPreview: { [weak self] in self?.audioRecorder.stopLevelPreview() },
+                applyUseCase: { [weak self] picks in self?.applyUseCasePresets(picks) },
                 onFinish: { [weak self] in
                     guard let self else { return }
                     self.audioRecorder.stopLevelPreview()
@@ -1014,6 +1094,57 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
     }
 
+    /// Turns the onboarding use-case picks into starter Modes + dictionary terms.
+    /// These are conveniences the user can change later, so it's idempotent: a Mode
+    /// is created only when one with that name doesn't already exist, and
+    /// `DictionaryStore.add` dedupes seeded terms.
+    private func applyUseCasePresets(_ picks: Set<UseCase>) {
+        settings.useCases = Set(picks.map { $0.rawValue })
+
+        for useCase in picks {
+            let preset = Self.presetMode(for: useCase)
+            if !modeStore.modes.contains(where: { $0.name == preset.name }) {
+                modeStore.add(preset)
+            }
+            for term in Self.dictionaryTerms(for: useCase) {
+                dictionaryStore.add(term)
+            }
+        }
+    }
+
+    /// The starter Mode for a use case. Tone + auto-trigger category match how the
+    /// app classifies that kind of destination; formatting bools use the `Mode`
+    /// defaults so behavior matches a hand-created mode.
+    private static func presetMode(for useCase: UseCase) -> Mode {
+        switch useCase {
+        case .code:
+            return Mode(name: "Code", symbolName: "chevron.left.forwardslash.chevron.right",
+                        tone: .verbatim, autoTriggerCategory: .code)
+        case .email:
+            return Mode(name: "Email", symbolName: "envelope",
+                        tone: .formal, autoTriggerCategory: .email)
+        case .chat:
+            return Mode(name: "Chat", symbolName: "bubble.left.and.bubble.right",
+                        tone: .casual, autoTriggerCategory: .personalChat)
+        case .writing:
+            return Mode(name: "Writing", symbolName: "pencil",
+                        tone: .formal, autoTriggerCategory: nil)
+        case .notes:
+            return Mode(name: "Notes", symbolName: "note.text",
+                        tone: .casual, autoTriggerCategory: nil)
+        }
+    }
+
+    /// A small set of clearly-relevant dictionary terms to seed per use case.
+    /// Only "Code" has obvious mishearing-prone vocabulary; the prose-oriented
+    /// cases seed nothing rather than guessing.
+    private static func dictionaryTerms(for useCase: UseCase) -> [String] {
+        switch useCase {
+        case .code: return ["API", "JSON", "OAuth", "async"]
+        case .writing, .email, .chat, .notes: return []
+        }
+    }
+
     // MARK: - Window & Menu Actions
 
     private func showMainWindow() {
@@ -1024,7 +1155,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         showMainWindow()
     }
 
+    /// Re-show the "What's New" card on demand (menu bar + Settings → Software Update).
+    /// Falls back to the latest entry if the running version has no notes of its own.
+    @objc private func showWhatsNew() {
+        whatsNewPresenter.entry = WhatsNew.current ?? WhatsNew.latest
+        showMainWindow()
+    }
+
     @objc private func toggleScratchpad() {
+        // A toggle from hidden → visible counts as opening it for the checklist.
+        if !scratchpadController.isVisible, !settings.hasOpenedScratchpad {
+            settings.hasOpenedScratchpad = true
+        }
         scratchpadController.toggle()
     }
 

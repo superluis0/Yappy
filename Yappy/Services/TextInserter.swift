@@ -61,6 +61,12 @@ final class TextInserter {
         try pasteText(payload)
     }
 
+    /// Sends a Return keystroke — used by the "press enter" voice command to submit
+    /// (send a message, run a search, commit a cell) after the dictated text lands.
+    func sendReturn() {
+        postKey(0x24) // Return / Enter
+    }
+
     private func recordInsertion(of payload: String) {
         lastInsertedTrailingCharacter = payload.last
         lastInsertedText = payload

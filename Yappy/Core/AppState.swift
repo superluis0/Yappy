@@ -34,6 +34,13 @@ final class AppState: ObservableObject {
     /// Current error state, if any.
     @Published private(set) var error: Error?
 
+    /// Timestamp of the most recent real *voice* dictation that landed (text
+    /// transcribed and inserted via the hotkey path). Set by `AppDelegate` on
+    /// each successful insertion; nil until the user has dictated at least once.
+    /// Onboarding observes this to confirm the try-it text came from speech, not
+    /// the keyboard.
+    @Published var lastDictationAt: Date?
+
     // MARK: - Public Methods
 
     /// Starts the recording session.

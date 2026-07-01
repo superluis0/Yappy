@@ -98,4 +98,43 @@ final class VoiceEditCommandParserTests: XCTestCase {
         XCTAssertEqual(TextEditMath.trailingLineLength(of: "line1\nline2"), 6)   // "\nline2"
         XCTAssertEqual(TextEditMath.trailingLineLength(of: "single line"), 11)
     }
+
+    // MARK: - "cap that" shorthand
+
+    func testCapThatShorthand() {
+        XCTAssertEqual(p("cap that"), .capitalizeThat)
+        XCTAssertEqual(p("cap this"), .capitalizeThat)
+    }
+
+    // MARK: - Submit ("press enter") parsing
+
+    func testSubmitWholeUtterance() {
+        let r = SubmitCommandParser.parse("press enter")
+        XCTAssertEqual(r.text, "")
+        XCTAssertTrue(r.submit)
+    }
+
+    func testSubmitTrailing() {
+        let r = SubmitCommandParser.parse("send this to the team press enter")
+        XCTAssertEqual(r.text, "send this to the team")
+        XCTAssertTrue(r.submit)
+    }
+
+    func testSubmitTrailingWithPunctuation() {
+        let r = SubmitCommandParser.parse("Looks good. Press return.")
+        XCTAssertEqual(r.text, "Looks good.")
+        XCTAssertTrue(r.submit)
+    }
+
+    func testSubmitProseNotTrailingIgnored() {
+        let r = SubmitCommandParser.parse("press enter to continue the setup")
+        XCTAssertEqual(r.text, "press enter to continue the setup")
+        XCTAssertFalse(r.submit)
+    }
+
+    func testNoSubmitCommand() {
+        let r = SubmitCommandParser.parse("just a normal sentence")
+        XCTAssertEqual(r.text, "just a normal sentence")
+        XCTAssertFalse(r.submit)
+    }
 }

@@ -49,4 +49,35 @@ final class SpokenCommandFormatterTests: XCTestCase {
     func testNoCommandIsIdentity() {
         XCTAssertEqual(f("Nothing here at all."), "Nothing here at all.")
     }
+
+    // "next line" / "next paragraph" are synonyms for "new line" / "new paragraph".
+    func testNextLineCommand() {
+        XCTAssertEqual(f("Hello, next line, thanks"), "Hello\nThanks")
+    }
+
+    func testNextParagraphCommand() {
+        XCTAssertEqual(f("done. Next paragraph. Next topic"), "done.\n\nNext topic")
+    }
+
+    func testProseNextLineUntouched() {
+        XCTAssertEqual(f("go to the next line of code"), "go to the next line of code")
+    }
+
+    // "line break", "insert line", "skip a line" — the remaining common phrasings
+    // shared with Apple Dictation/Voice Control, Dragon, and Wispr Flow.
+    func testLineBreakCommand() {
+        XCTAssertEqual(f("first item, line break, second item"), "first item\nSecond item")
+    }
+
+    func testInsertLineCommand() {
+        XCTAssertEqual(f("name, insert line, address"), "name\nAddress")
+    }
+
+    func testSkipALineCommand() {
+        XCTAssertEqual(f("intro. Skip a line. Body"), "intro.\n\nBody")
+    }
+
+    func testProseInsertLineUntouched() {
+        XCTAssertEqual(f("please insert line 5 here"), "please insert line 5 here")
+    }
 }
