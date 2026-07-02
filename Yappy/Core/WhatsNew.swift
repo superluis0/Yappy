@@ -76,6 +76,23 @@ enum WhatsNew {
                           title: "Sharper cleanup",
                           detail: "Dictating a question now types the question instead of answering it, and on-device cleanup is quicker and more reliable."),
             ]),
+        "2.4": Entry(
+            version: "2.4",
+            headline: "It hears you better — and shows its work.",
+            highlights: [
+                Highlight(icon: "waveform.badge.plus",
+                          title: "Boost your words in the speech model",
+                          detail: "One toggle in Dictionary makes recognition itself prefer your names and jargon while you dictate (Parakeet, English)."),
+                Highlight(icon: "wand.and.stars",
+                          title: "Learns from your corrections",
+                          detail: "Say “scratch that” and redo a word, and Yappy offers to remember the fix — one tap to teach it, never applied silently."),
+                Highlight(icon: "arrow.uturn.backward.circle",
+                          title: "See and revert AI cleanup",
+                          detail: "Every dictation keeps what you actually said — reveal or copy it in History, or say “use what I said” to swap it back in place."),
+                Highlight(icon: "escape",
+                          title: "Escape, polish, and real tone",
+                          detail: "Esc now aborts before text lands, the pill shows when cleanup is polishing, and Formal/Casual tones genuinely shape the result."),
+            ]),
         "2.3": Entry(
             version: "2.3",
             headline: "A fresh liquid-glass look, and multilingual dictation.",

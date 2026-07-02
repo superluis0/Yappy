@@ -73,11 +73,13 @@ Everything is configurable in one place — hotkey, sounds, number formatting, n
 
 **Backtrack** — change your mind mid-sentence and Yappy keeps the correction: *"let's meet at 2, actually 3"* lands as *"Let's meet at 3."* Part of the optional AI cleanup, so it rides along with whatever else cleanup is doing.
 
-**On-device AI cleanup** — polish transcripts with a fix-up pass for punctuation, capitalization, and filler. It runs entirely on-device with **Apple Intelligence** (macOS 26+) and is **on by default**; where Apple Intelligence isn't available it degrades to the raw transcript. The same engine powers backtrack.
+**On-device AI cleanup** — polish transcripts with a fix-up pass for punctuation, capitalization, and filler. It runs entirely on-device with **Apple Intelligence** (macOS 26+) and is **on by default**; where Apple Intelligence isn't available it degrades to the raw transcript. The same engine powers backtrack. A battery of output guards keeps it honest: a dictated question is *typed*, never answered; invented content is rejected in favor of your raw words; and spoken numbers render the way a typist would (*"two point four"* → `2.4`, *"three thirty pm"* → `3:30 PM`). Multi-line dictations are cleaned in a single validated pass, so long dictations stay fast.
+
+**See what the AI changed — and take it back** — every dictation keeps the pre-cleanup transcript. Reveal or copy *"what you said"* from History, or say **"use what I said"** and Yappy swaps the raw words back in place. Trust the cleanup because you can always see past it.
 
 **Automatic updates** — Yappy keeps itself current via [Sparkle](https://sparkle-project.org), with EdDSA-signed releases verified before they're applied. No surprise dialogs: when a new version is ready a calm banner slides in over the window, an *Update to Yappy …* item appears at the top of the menu bar, and a dot marks the menu-bar icon — install on your own schedule with one click. After an update, a short *What's New* card recaps what changed. Check manually any time from the menu bar or **Settings → Software Update**.
 
-**Voice editing** — fix what you just said, hands-free: *"scratch that"* undoes the last insertion, *"delete the last word"* trims it, *"all caps that"* / *"capitalize that"* recases it. It only fires on a whole-utterance command (so *"scratch that idea"* stays prose) and won't delete the wrong thing if your cursor has moved on.
+**Voice editing** — fix what you just said, hands-free: *"scratch that"* undoes the last insertion, *"delete the last word"* trims it, *"all caps that"* / *"capitalize that"* recases it, *"use what I said"* reverts the AI cleanup. It only fires on a whole-utterance command (so *"scratch that idea"* stays prose) and won't delete the wrong thing if your cursor has moved on.
 
 **Voice commands** — drive the app by voice, spoken as their own utterance: *"switch to email mode"*, *"open scratchpad"*, *"new note."* Exact-match only (like voice editing), so a real dictation is never swallowed. A toggle.
 
@@ -89,15 +91,19 @@ Everything is configurable in one place — hotkey, sounds, number formatting, n
 
 **Scratchpad** — a floating notepad a keystroke away (**⌥⇧S**), always on top like a sticky note. Jot or dictate into it without leaving whatever app you're in; notes are kept locally with a simple sidebar, and sync nowhere.
 
-**Context-aware tone** — optional cleanup adapts to the app you're typing in: formal in Mail, casual in Messages, and strictly verbatim in code editors so nothing gets reworded.
+**Context-aware tone** — cleanup adapts to the app you're typing in, with tones that do exactly what they say: **Formal** expands contractions and guarantees full sentences, **Casual** drops the trailing period on short messages, and **Verbatim** skips cleanup entirely so nothing in a code editor gets reworded. Deterministic transforms, not AI improvisation — validated so they never change your meaning. Dictating into a one-line field (a search box, a URL bar)? Yappy notices and lands your words as one clean line.
 
 **Custom dictionary** — teach Yappy your names, jargon, and acronyms. It comes pre-loaded with common developer and tool names — Supabase, Vercel, Cloudflare, Kubernetes, and more — so they transcribe right the first time. Add your own by typing the spellings it tends to mishear, or **train them by voice** — say a word a few times and Yappy learns how *it* hears you, then corrects those mishearings back to your spelling automatically. Deterministic and fully on-device; recordings are analyzed in memory and never saved.
 
+**Boost your terms in the speech model** — one toggle makes recognition *itself* prefer your dictionary while you dictate (Parakeet/English; a one-time ~98 MB helper model). Not find-and-replace after the fact — the recognizer is steered toward your vocabulary as it decodes.
+
+**Learns from your corrections** — say *"scratch that"*, re-dictate the word you meant, and Yappy notices the difference and offers to remember it — a one-tap suggestion card in Dictionary, never applied silently. The more you correct it, the better it hears you, entirely on-device.
+
 **Activity at a glance** — a "time saved versus typing" headline, words-per-minute, streaks and personal records, a day-by-hour heatmap of when you dictate, the apps you use it in most, and a shareable *"Year in Voice"* recap.
 
-**Polished hotkeys** — hold Right ⌘, double-tap Right ⌘, hold Right ⌥, or hold Right ⌃. A debounced state machine ignores key repeats and accidental taps, so it never fires when you don't mean it. Press **Esc** mid-dictation to cancel cleanly.
+**Polished hotkeys** — hold Right ⌘, double-tap Right ⌘, hold Right ⌥, or hold Right ⌃. A debounced state machine ignores key repeats and accidental taps, so it never fires when you don't mean it. Press **Esc** to cancel while recording — or while Yappy is still transcribing, to stop the text *before* it lands.
 
-**Considered details** — a molten-glass recording pill whose glow breathes with your voice, a menu bar icon that animates while recording, and subtle custom start/stop/done sounds.
+**Considered details** — a molten-glass recording pill whose glow breathes with your voice and shifts into a quiet *Polishing* state while AI cleanup runs, a menu bar icon that animates while recording, and subtle custom start/stop/done sounds — including a distinct cue when something goes wrong, so failure never sounds like success.
 
 **Private by design** — audio is transcribed on-device and never written to disk; no telemetry, no account. After the one-time model download, Yappy runs fully offline — nothing you say leaves your Mac. A privacy panel on the home screen reflects this state at a glance.
 
@@ -145,7 +151,8 @@ It's **on by default** and everything stays on your machine — no API keys, no 
 ## Privacy
 
 - Audio is transcribed on-device and held only in memory — the recording itself is never written to disk.
-- Your dictation history, shortcuts, and custom dictionary are stored locally in plain JSON under `~/Library/Application Support/Yappy/`, readable only by your macOS account. Clear your history anytime from the home window.
+- Your dictation history, shortcuts, and custom dictionary are stored locally under `~/Library/Application Support/Yappy/`, written with owner-only file permissions. Clear your history anytime from the home window or Settings.
+- History is under your control: turn it off entirely, or set a retention window (7/30/90 days) and older entries prune themselves. Nothing is ever recorded while a password field (secure input) is focused.
 - No telemetry, no analytics, no account.
 - The single one-time network request is the model download from Hugging Face. After that, Yappy runs fully offline.
 
@@ -169,7 +176,7 @@ It's **on by default** and everything stays on your machine — no API keys, no 
 xcodebuild -project Yappy.xcodeproj -scheme Yappy test
 ```
 
-Covers the hotkey state machine, settings persistence and migration, the transcript pipeline (numbers, lists, spoken punctuation), the custom dictionary and its built-in dev terms, the notes store, AI-cleanup prompt assembly, history-based shortcut suggestions, voice-command parsing, adaptive per-app mode resolution, dictation history and stats, voice-shortcut expansion, and app-context classification.
+Covers the hotkey state machine, settings persistence and migration, the transcript pipeline (numbers, lists, spoken punctuation, cross-stage interactions), the AI-cleanup accept/reject guard policy (never answer, never invent, never drop), deterministic tone transforms, the custom dictionary with speech-model term boosting and correction mining, the notes store, history-based shortcut suggestions, voice-command parsing, adaptive per-app mode resolution, dictation history and stats, voice-shortcut expansion, and app-context classification.
 
 ## Built with
 
