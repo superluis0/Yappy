@@ -494,7 +494,8 @@ extension FoundationModelsCleanupProvider {
     ///   the abandoned clause.
     /// - Performed-task guards (word-count ratio and novel-word fraction) — catch the
     ///   model answering or pasting a bullet list of its own edits.
-    /// - Hallucinated-digit guard (no digit run absent from the input).
+    /// - Hallucinated-digit guard (no digit content that isn't derivable from the
+    ///   input — as dictated, or as the deterministic number formatter renders it).
     /// - F08 wrong-half guard (correcting path only): reject if the model kept the
     ///   retracted half of a self-correction and dropped the final choice.
     /// - F09 length-floor guard (base path only): reject if the output shrank below
@@ -525,10 +526,15 @@ extension FoundationModelsCleanupProvider {
             if novelFraction > 0.5 { return false }
         }
 
-        // Hallucination guard: cleanup only fixes punctuation, casing, and fillers — it
-        // never legitimately introduces a number. Reject any output that adds a digit
-        // run absent from the input.
-        guard digitRuns(of: cleaned).isSubset(of: digitRuns(of: input)) else { return false }
+        // Hallucination guard: reject digit content the speaker didn't dictate.
+        // "Dictated" includes spoken number words — the model legitimately renders
+        // "two point four" as "2.4" and "three thirty pm" as "3:30 PM", and the raw
+        // run-set comparison used to reject exactly those good cleanups (measured:
+        // 2 of 33 baseline eval outputs were thrown away for it). Derivability is
+        // checked against the input AND the deterministic number formatter's
+        // rendering of it; invented values ("word count" -> "word count: 1000") and
+        // unspoken specificity ("nine" -> "9:00") still fail.
+        guard digitsDerivable(input: input, cleaned: cleaned) else { return false }
 
         // F08 wrong-half guard: the aggressive correcting prompt sometimes deletes the
         // speaker's FINAL choice and keeps the abandoned one. Only relevant on the
@@ -697,5 +703,45 @@ extension FoundationModelsCleanupProvider {
         }
         if !current.isEmpty { runs.insert(current) }
         return runs
+    }
+
+    /// The set of "digit words" in `text`: maximal digit spans that may be joined
+    /// across a single `,`/`.`/`:` separator flanked by digits, with the separators
+    /// stripped — so "$3,200" -> ["3200"], "3:30" -> ["330"], "2.4" -> ["24"].
+    /// Separator-insensitive on purpose: regrouping and time/decimal punctuation are
+    /// formatting, not new digit content.
+    static func digitWords(of text: String) -> Set<String> {
+        var words = Set<String>()
+        var current = ""
+        let chars = Array(text)
+        var i = 0
+        while i < chars.count {
+            let ch = chars[i]
+            if ch.isNumber {
+                current.append(ch)
+            } else if !current.isEmpty, ",.:".contains(ch),
+                      i + 1 < chars.count, chars[i + 1].isNumber {
+                // A separator INSIDE a number ("3,200", "3:30", "2.4") — skip it and
+                // keep accumulating the same digit word.
+            } else if !current.isEmpty {
+                words.insert(current); current = ""
+            }
+            i += 1
+        }
+        if !current.isEmpty { words.insert(current) }
+        return words
+    }
+
+    /// Whether every digit word in `cleaned` is derivable from the input — present
+    /// verbatim, or produced by rendering the input's SPOKEN numbers with the
+    /// deterministic `SpokenNumberFormatter` ("two point four" -> "2.4",
+    /// "three thirty pm" -> "3:30 PM"). This is what lets the cleanup model format
+    /// dictated numbers like a typist while still rejecting values it invented.
+    static func digitsDerivable(input: String, cleaned: String) -> Bool {
+        let cleanedWords = digitWords(of: cleaned)
+        guard !cleanedWords.isEmpty else { return true }
+        var allowed = digitWords(of: input)
+        allowed.formUnion(digitWords(of: SpokenNumberFormatter.format(input)))
+        return cleanedWords.isSubset(of: allowed)
     }
 }

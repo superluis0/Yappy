@@ -398,8 +398,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self else { return }
 
             // Discard near-silent clips (e.g. an instant key tap) so the model
-            // can't hallucinate filler words from nothing.
+            // can't hallucinate filler words from nothing. Notice-level (persisted)
+            // breadcrumb: a dictation that vanishes here is otherwise invisible in
+            // the logs, which made the device-change-teardown regression hard to
+            // diagnose. Counts only — never transcript content.
             guard AudioRecorder.containsSpeech(samples) else {
+                Self.logger.notice("Discarded clip without speech (\(samples.count, privacy: .public) samples, \(duration, format: .fixed(precision: 1), privacy: .public)s held)")
                 self.ifCurrent(generation) {
                     self.appState.reset()
                     self.pillController.hide()
@@ -416,6 +420,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
                 // Nothing usable (too short, or discarded as low confidence).
                 guard !raw.isEmpty else {
+                    Self.logger.notice("Discarded empty transcript (\(samples.count, privacy: .public) samples, \(duration, format: .fixed(precision: 1), privacy: .public)s held)")
                     self.ifCurrent(generation) {
                         self.appState.reset()
                         self.pillController.hide()

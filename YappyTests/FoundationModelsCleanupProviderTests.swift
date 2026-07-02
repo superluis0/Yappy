@@ -300,6 +300,52 @@ final class FoundationModelsCleanupProviderTests: XCTestCase {
         XCTAssertEqual(Provider.digitRuns(of: "no digits here"), [])
     }
 
+    // MARK: - digitWords / digitsDerivable (spoken-number-aware digit guard)
+
+    func testDigitWordsJoinAcrossInNumberSeparators() {
+        XCTAssertEqual(Provider.digitWords(of: "$3,200"), ["3200"])
+        XCTAssertEqual(Provider.digitWords(of: "at 3:30 PM"), ["330"])
+        XCTAssertEqual(Provider.digitWords(of: "version 2.4"), ["24"])
+        XCTAssertEqual(Provider.digitWords(of: "v2 build 67"), ["2", "67"])
+    }
+
+    func testDigitWordsTrailingSeparatorEndsTheWord() {
+        // A separator NOT flanked by digits is sentence punctuation, not grouping.
+        XCTAssertEqual(Provider.digitWords(of: "it shipped in 2."), ["2"])
+    }
+
+    func testAllowsSpokenNumberRendering() {
+        // "two point four" is dictated digit content — rendering it as "2.4"
+        // is typist formatting, not hallucination.
+        XCTAssertTrue(Provider.acceptsCleanedOutput(
+            input: "the fix shipped in two point four",
+            cleaned: "The fix shipped in 2.4.",
+            correcting: false))
+    }
+
+    func testAllowsSpokenTimeRendering() {
+        XCTAssertTrue(Provider.acceptsCleanedOutput(
+            input: "my flight lands at three thirty pm gate b twelve",
+            cleaned: "My flight lands at 3:30 PM, gate B12.",
+            correcting: false))
+    }
+
+    func testAllowsDigitRegrouping() {
+        // "$3200" -> "$3,200" is the same digit word; grouping commas are formatting.
+        XCTAssertTrue(Provider.acceptsCleanedOutput(
+            input: "the total comes to $3200 due on march fifteenth",
+            cleaned: "The total comes to $3,200, due on March 15th.",
+            correcting: false))
+    }
+
+    func testRejectsUnspokenTimeSpecificity() {
+        // "nine" renders as "9"; "9:00" adds digits the speaker never said.
+        XCTAssertFalse(Provider.acceptsCleanedOutput(
+            input: "remind me to call the dentist at nine tomorrow morning",
+            cleaned: "Remind me to call the dentist at 9:00 tomorrow morning.",
+            correcting: false))
+    }
+
     // MARK: - words
 
     func testWordsLowercasesAndSplitsOnNonAlphanumerics() {

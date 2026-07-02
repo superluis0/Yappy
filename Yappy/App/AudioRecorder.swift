@@ -5,12 +5,17 @@
 
 import AVFoundation
 import Foundation
+import os
 
 /// Captures microphone input with AVAudioEngine into an in-memory buffer of
 /// 16 kHz mono Float32 samples — the format Parakeet expects — so transcription
 /// can start the instant recording stops, with no temp files.
 final class AudioRecorder {
     // MARK: - Properties
+
+    /// Notice-level so device-change teardowns are persisted to the log store —
+    /// a dictation that silently vanishes must leave a diagnosable trace.
+    private static let logger = Logger(subsystem: "com.yappy.app", category: "audio")
 
     private let audioEngine = AVAudioEngine()
     private var converter: AVAudioConverter?
@@ -289,7 +294,14 @@ final class AudioRecorder {
         samplesLock.lock()
         let wasRecording = isRecording
         samplesLock.unlock()
-        guard wasRecording else { return }
+        // Only act when the change actually STOPPED the engine (a real device
+        // switch). This notification also fires benignly — including around the
+        // engine's own start/format renegotiation — while audio keeps flowing;
+        // tearing down on those killed every recording moments after it began
+        // (the pill kept "listening" while the mic was dead). The engine-stopped
+        // check is what distinguishes the two.
+        guard wasRecording, !audioEngine.isRunning else { return }
+        Self.logger.notice("Input device changed mid-recording; preserving captured audio")
 
         // Tear the engine down cleanly. `removeTap` blocks until any in-flight tap
         // callback returns, so no further samples are appended past this point —
@@ -309,8 +321,11 @@ final class AudioRecorder {
 
         // Flip the flag where the main thread reads it. The sample handoff above
         // is already visible via the lock, so ordering here doesn't lose audio.
+        // Skip the write if a NEW session has already restarted the engine by the
+        // time this lands — clearing its flag would silently kill that recording.
         DispatchQueue.main.async { [weak self] in
-            self?.isRecording = false
+            guard let self, !self.audioEngine.isRunning else { return }
+            self.isRecording = false
         }
     }
 
