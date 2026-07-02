@@ -3,13 +3,22 @@
 //  Yappy
 //
 
+import Carbon.HIToolbox
 import Cocoa
 import CoreGraphics
+import os
 
 /// Inserts text at the cursor of the frontmost app by pasting (Cmd+V), then
 /// restores the user's clipboard. Pasting works in Electron apps, web views,
 /// and terminals where direct accessibility insertion does not.
 final class TextInserter {
+
+    /// Notice-level (persisted) breadcrumbs for the paste path. A posted Cmd+V
+    /// that never lands is otherwise invisible — it either reaches the frontmost
+    /// app or silently evaporates (secure input, a TCC edge, focus elsewhere),
+    /// and only a stage-by-stage log can tell those apart in the field. Lengths,
+    /// stages, and app names only — never the text being inserted.
+    private static let logger = Logger(subsystem: "com.yappy.app", category: "insertion")
     enum InsertionError: LocalizedError {
         case accessibilityPermissionDenied
         case eventCreationFailed
@@ -81,6 +90,8 @@ final class TextInserter {
         // flush against the previous word ("box.that"). Add a separating space
         // when the cursor sits right after a word.
         let payload = (allowLeadingSpace && needsLeadingSpace(before: text)) ? " " + text : text
+        let frontmost = NSWorkspace.shared.frontmostApplication?.localizedName ?? "unknown"
+        Self.logger.notice("Insert: \(payload.count, privacy: .public) chars -> frontmost '\(frontmost, privacy: .public)'; secureInput=\(IsSecureEventInputEnabled(), privacy: .public)")
         recordInsertion(of: payload)
         try pasteText(payload)
     }
@@ -120,6 +131,7 @@ final class TextInserter {
         let ourChangeCount = pasteboard.changeCount
 
         try postCommandV()
+        Self.logger.notice("Cmd+V posted (pasteboard changeCount \(ourChangeCount, privacy: .public))")
 
         scheduleClipboardRestore(snapshot,
                                  to: pasteboard,
@@ -436,6 +448,7 @@ final class TextInserter {
 
             switch self.pasteLanded(payload) {
             case .confirmed:
+                Self.logger.notice("Paste CONFIRMED landed (poll \(attempt, privacy: .public)); restoring clipboard")
                 self.restoreClipboard(snapshot, to: pasteboard)
                 self.pendingClipboardRestore = nil
             case .notYet where attempt + 1 < self.maxRestorePolls:
@@ -446,12 +459,16 @@ final class TextInserter {
                                          attempt: attempt + 1)
             case .notYet:
                 // Polled to the ceiling without confirmation — restore anyway so
-                // we don't strand the user's clipboard.
+                // we don't strand the user's clipboard. This is the smoking-gun
+                // line for a swallowed paste: the target IS AX-readable, we
+                // watched for ~1.2 s, and the pasted text never appeared.
+                Self.logger.notice("Paste NEVER CONFIRMED after \(attempt + 1, privacy: .public) polls; restoring clipboard anyway")
                 self.restoreClipboard(snapshot, to: pasteboard)
                 self.pendingClipboardRestore = nil
             case .opaque:
                 // Can't verify; give the app a generous fixed window (measured
                 // from now) before restoring, rather than re-polling forever.
+                Self.logger.notice("Paste target opaque to AX (poll \(attempt, privacy: .public)); restoring clipboard in \(self.opaqueRestoreDelay, format: .fixed(precision: 1), privacy: .public)s")
                 self.scheduleOpaqueRestore(snapshot, to: pasteboard, ourChangeCount: ourChangeCount)
             }
         }

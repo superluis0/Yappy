@@ -15,19 +15,25 @@ struct DictationEntry: Identifiable, Codable, Equatable {
     let appName: String?
     /// Bundle identifier of the app dictated into (nil for legacy entries).
     let bundleID: String?
+    /// The transcript as it stood *before* AI cleanup (the user's raw words).
+    /// Nil when cleanup didn't run or didn't change anything, and nil for legacy
+    /// entries written before this field existed — the optional lets synthesized
+    /// Codable decode old history.json blobs that lack the key.
+    let rawTranscript: String?
 
     var wordCount: Int {
         text.split(whereSeparator: \.isWhitespace).count
     }
 
     init(id: UUID = UUID(), date: Date = Date(), text: String, durationSeconds: Double,
-         appName: String? = nil, bundleID: String? = nil) {
+         appName: String? = nil, bundleID: String? = nil, rawTranscript: String? = nil) {
         self.id = id
         self.date = date
         self.text = text
         self.durationSeconds = durationSeconds
         self.appName = appName
         self.bundleID = bundleID
+        self.rawTranscript = rawTranscript
     }
 }
 

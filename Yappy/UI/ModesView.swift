@@ -363,12 +363,16 @@ private struct ModeEditor: View {
     var body: some View {
         VStack(spacing: 0) {
             Form {
-                Section("Mode") {
+                Section {
                     TextField("Name", text: $mode.name)
                     TextField("SF Symbol", text: $mode.symbolName)
                     Picker("Tone", selection: $mode.tone) {
                         ForEach(ToneStyle.allCases, id: \.self) { Text($0.displayName).tag($0) }
                     }
+                } header: {
+                    Text("Mode")
+                } footer: {
+                    Text("Formal expands contractions and ensures full sentences. Casual drops the trailing period on short messages. Verbatim skips cleanup entirely.")
                 }
                 Section("Cleanup & formatting") {
                     Picker("AI cleanup", selection: cleanupBinding) {

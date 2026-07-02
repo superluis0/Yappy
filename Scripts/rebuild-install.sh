@@ -95,8 +95,25 @@ xcodebuild -project Yappy.xcodeproj -scheme "$SCHEME" \
   CODE_SIGN_IDENTITY="$EXPECTED_IDENTITY" \
   DEVELOPMENT_TEAM="$TEAM_ID" \
   ENABLE_HARDENED_RUNTIME=YES \
-  OTHER_CODE_SIGN_FLAGS="--timestamp=none" \
+  CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO \
+  OTHER_CODE_SIGN_FLAGS="--timestamp" \
   || die "Build failed."
+# --timestamp (secure timestamp from Apple's server, needs network) instead of
+# --timestamp=none: an untimestamped signature is another dev/release difference
+# suspected of making TCC pin the Accessibility grant to the per-build hash
+# instead of the stable Developer ID requirement. Release/notarized builds have
+# always kept their grants; timestamping is the cheap half of that gap.
+
+# TCC-identity guard: Xcode injects the get-task-allow (debug) entitlement into
+# non-distribution builds unless CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO above.
+# With get-task-allow present, macOS keys the app's Accessibility grant to the
+# PER-BUILD binary hash instead of the stable Developer ID — so every rebuild
+# showed up as a brand-new "Yappy" in System Settings and the grant never stuck.
+# Fail closed if it ever sneaks back in.
+if codesign -d --entitlements - "$BUILD_DIR/Build/Products/Release/Yappy.app" 2>/dev/null \
+    | grep -q "get-task-allow"; then
+  die "Built app contains get-task-allow — TCC grants would not persist. Aborting."
+fi
 
 APP_SRC="$BUILD_DIR/Build/Products/Release/Yappy.app"
 [[ -d "$APP_SRC" ]] || die "Built app not found at $APP_SRC"
@@ -121,8 +138,15 @@ pkill -f "$APP_DEST/Contents/MacOS/Yappy" 2>/dev/null || true
 sleep 1
 
 log "Installing to $APP_DEST …"
-rm -rf "$APP_DEST"
-cp -R "$APP_SRC" "$APP_DEST"
+# Update the bundle IN PLACE — never `rm -rf` it. A full delete makes the app
+# momentarily absent from disk, and macOS drops its Accessibility (and Input
+# Monitoring) TCC grant when the granted app disappears — so every rebuild came
+# up untrusted and re-prompted. rsync --delete overwrites the destination to
+# match the freshly-signed source exactly (pruning any files removed across
+# builds) while the bundle keeps its on-disk identity, so the grant persists.
+# The app was already quit + pkilled above, so nothing is overwriting a live
+# process. On first install the dest doesn't exist yet; rsync creates it.
+rsync -a --delete "$APP_SRC/" "$APP_DEST/"
 # Clear any extended-attribute detritus that can fail Gatekeeper/codesign checks.
 xattr -cr "$APP_DEST" 2>/dev/null || true
 

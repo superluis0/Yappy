@@ -96,6 +96,54 @@ final class AppStateTests: XCTestCase {
         )
     }
 
+    // MARK: - Polishing Sub-Phase Tests
+
+    func testPolishingLifecycle() {
+        XCTAssertFalse(state.isPolishing, "isPolishing should be false initially")
+
+        state.beginPolishing()
+        XCTAssertTrue(state.isPolishing, "isPolishing should be true after beginPolishing()")
+
+        state.endPolishing()
+        XCTAssertFalse(state.isPolishing, "isPolishing should be false after endPolishing()")
+    }
+
+    func testEndPolishingIsIdempotent() {
+        // endPolishing() is called from a defer on every exit path, so it must be
+        // safe even when polishing was never begun.
+        state.endPolishing()
+        XCTAssertFalse(state.isPolishing, "endPolishing() without a prior begin should be a no-op")
+    }
+
+    func testResetClearsPolishing() {
+        state.startRecording()
+        state.stopRecording()
+        state.beginPolishing()
+        XCTAssertTrue(state.isPolishing, "precondition: polishing after beginPolishing()")
+
+        state.reset()
+        XCTAssertFalse(state.isPolishing, "isPolishing should be cleared by reset()")
+    }
+
+    /// `isPolishing` is a strict sub-phase of `isProcessing` and must never
+    /// perturb it: entering/leaving polishing leaves the processing flag alone.
+    func testPolishingDoesNotDisturbProcessing() {
+        state.startRecording()
+        state.stopRecording()
+        XCTAssertTrue(state.isProcessing, "precondition: processing after stopRecording()")
+
+        state.beginPolishing()
+        XCTAssertTrue(state.isProcessing, "beginPolishing() must not change isProcessing")
+
+        state.endPolishing()
+        XCTAssertTrue(state.isProcessing, "endPolishing() must not change isProcessing")
+
+        // And it doesn't spuriously turn processing on when idle.
+        state.reset()
+        state.beginPolishing()
+        XCTAssertFalse(state.isProcessing, "beginPolishing() must not turn on isProcessing while idle")
+    }
+
     // MARK: - Reset Tests
 
     func testReset() {

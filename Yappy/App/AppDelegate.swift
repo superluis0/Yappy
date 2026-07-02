@@ -94,6 +94,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// backstop to the `isProcessing` guard in `startDictation`.
     private var dictationGeneration = 0
 
+    /// The in-flight transcription+cleanup Task spawned by `finishDictation`.
+    /// Retained so Escape pressed DURING the processing window (not just while
+    /// recording) can cancel it before the text lands (see `escapeCancel`). Set
+    /// when the Task starts, cleared in its own `defer` on every exit path.
+    private var processingTask: Task<Void, Never>?
+
     /// Errors on the dictation hot path (transcription/insertion failures). The
     /// user hears the failure cue; this records the cause for `log stream` /
     /// Console triage. Matches the `Logger` convention in the transcription layer.
@@ -115,6 +121,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// How fresh a `pendingCorrection` must be to pair with a re-dictation.
     private static let correctionPairingWindow: TimeInterval = 30
+
+    /// The pre-cleanup transcript of the last insertion, when AI cleanup changed
+    /// the words — the safety net behind "use what I said". Nil when cleanup
+    /// didn't run or didn't change anything. Consumed one-shot: cleared when the
+    /// user reverts to it, and when a "scratch that" deletes the last insertion.
+    private var lastRawTranscript: String?
 
     // Dictionary-boosted final via the sliding-window manager.
 
@@ -264,22 +276,51 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         scratchpadHotkey.onTrigger = { [weak self] in self?.toggleScratchpad() }
     }
 
-    /// Esc pressed mid-session: deactivate the hotkey state machine first so the
-    /// eventual modifier key-up doesn't fire a spurious stop, then cancel.
+    /// Esc pressed mid-session. Two cases:
+    ///   • While recording/preparing: deactivate the hotkey state machine first so
+    ///     the eventual modifier key-up doesn't fire a spurious stop, then cancel.
+    ///   • While processing: the audio has already stopped and the transcription
+    ///     Task is in flight, so cancel THAT — the Task's cooperative checks then
+    ///     drop the result before it's inserted (the "abort before text lands"
+    ///     path). The hotkey isn't active during processing, so no deactivate.
     private func escapeCancel() {
-        guard appState.isRecording || appState.isPreparing else { return }
-        hotkeyManager.deactivate()
-        cancelDictation()
+        if appState.isRecording || appState.isPreparing {
+            hotkeyManager.deactivate()
+            cancelDictation()
+        } else if appState.isProcessing {
+            processingTask?.cancel()
+        }
     }
 
-    /// Starts the CGEvent tap(s), prompting for accessibility permission and
-    /// polling until it's granted (the tap can't be created without it).
+    /// Starts the CGEvent tap(s) once Accessibility is trusted, polling silently
+    /// until it is. This method NEVER opens System Settings itself — trust is
+    /// checked with the non-prompting `AXIsProcessTrusted()`. The app is granted
+    /// through its OWN UI instead: onboarding's Accessibility step and Settings ->
+    /// Permissions, both user-initiated "Open System Settings" buttons.
+    ///
+    /// Why silent, not the prompting `AXIsProcessTrustedWithOptions([prompt:true])`:
+    /// that call yanks the user into System Settings on EVERY launch of an
+    /// untrusted binary. The Debug build (bundle id `com.yappy.app.debug`, ad-hoc
+    /// signed, still displayed as "Yappy") is untrusted on *every* rebuild —
+    /// ad-hoc signatures key the TCC grant to the per-build code hash, so it can't
+    /// persist — so each Build & Run popped Settings and spawned a fresh "Yappy"
+    /// row. Checking silently + polling removes that for every build config; the
+    /// release install keeps its grant across updates (stable Developer ID), so it
+    /// launches already-trusted and starts the taps here with no UI at all.
     private func startHotkeyMonitoring() {
-        let options: NSDictionary = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true]
-        _ = AXIsProcessTrustedWithOptions(options)
+        // Tests never need the hotkey taps and must not touch TCC. `xcodebuild
+        // test` launches the debug app as the test host on this same path.
+        guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
+
+        // Persisted breadcrumb: whether THIS binary launched already trusted — the
+        // definitive read on whether the grant survived an update, from `log show`
+        // with no user interaction. Never prompts.
+        Self.logger.notice("Launch trust check: AXIsProcessTrusted=\(AXIsProcessTrusted(), privacy: .public)")
 
         if startTaps() { return }
 
+        // Not trusted yet: poll silently so the taps start the moment the user
+        // grants access (via onboarding or Settings) — no relaunch, no nag.
         accessibilityPollTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
             guard let self else { return }
             if self.startTaps() {
@@ -375,7 +416,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         guard appState.isRecording else { return }
         maxDurationTimer?.invalidate()
-        escapeInterceptor.stop()
+        // NOTE: the Escape interceptor is deliberately NOT stopped here. It stays
+        // live through the processing window so Esc can abort the dictation before
+        // the text lands (see `escapeCancel`). It's stopped in the Task's `defer`
+        // below, on every exit path (including cancellation), gated on the session
+        // still being current — leaving it running would swallow Esc system-wide.
 
         let samples = audioRecorder.stopRecording()
         let duration = recordingStartTime.map { Date().timeIntervalSince($0) } ?? 0
@@ -394,8 +439,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // corrections) run unconditionally — the user's words must still land.
         let generation = dictationGeneration
 
-        Task { @MainActor [weak self] in
+        processingTask = Task { @MainActor [weak self] in
             guard let self else { return }
+
+            // Tear down this session's cross-cutting processing state on EVERY exit
+            // path (success, early return, throw, or cancellation). Both actions are
+            // gated on the session still being current: a stale Task that finishes
+            // after a newer session began must not stop the newer session's live
+            // Escape interceptor (which would swallow Esc system-wide) nor null out
+            // the newer session's `processingTask`.
+            defer {
+                self.ifCurrent(generation) {
+                    self.appState.endPolishing()
+                    self.escapeInterceptor.stop()
+                    self.processingTask = nil
+                }
+            }
+
+            // Escape pressed the instant the key was released (before transcription
+            // even started): abort cleanly without touching the model or the text.
+            if Task.isCancelled {
+                self.abortProcessing(generation)
+                return
+            }
 
             // Discard near-silent clips (e.g. an instant key tap) so the model
             // can't hallucinate filler words from nothing. Notice-level (persisted)
@@ -403,7 +469,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // the logs, which made the device-change-teardown regression hard to
             // diagnose. Counts only — never transcript content.
             guard AudioRecorder.containsSpeech(samples) else {
-                Self.logger.notice("Discarded clip without speech (\(samples.count, privacy: .public) samples, \(duration, format: .fixed(precision: 1), privacy: .public)s held)")
+                Self.logger.notice("Discarded clip without speech (\(samples.count, privacy: .public) samples, \(duration, format: .fixed(precision: 1), privacy: .public)s held; \(AudioRecorder.speechDiagnostics(samples), privacy: .public))")
                 self.ifCurrent(generation) {
                     self.appState.reset()
                     self.pillController.hide()
@@ -417,6 +483,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // transcription instead of adding latency to the cleanup that follows.
                 self.cleanupCoordinator.prepareSession()
                 let raw = try await self.transcriptionService.transcribe(samples)
+
+                // Escape pressed while transcribing: drop the result — nothing has
+                // landed yet and the user rejected it.
+                if Task.isCancelled {
+                    self.abortProcessing(generation)
+                    return
+                }
 
                 // Nothing usable (too short, or discarded as low confidence).
                 guard !raw.isEmpty else {
@@ -433,6 +506,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // never run through the pipeline, never written to history.
                 if self.settings.voiceEditingEnabled,
                    let command = VoiceEditCommandParser.parse(raw) {
+                    // COMMIT POINT — stop the Escape interceptor BEFORE any
+                    // synthetic keystroke. Its consuming tap's callback runs on
+                    // THIS main thread; a key event we post while this Task holds
+                    // the thread stalls in our own tap until the system drops it —
+                    // the paste/edit silently never lands. (Field-diagnosed: every
+                    // posted Cmd+V vanished while the interceptor overlapped it.)
+                    // Esc-abort still covers transcription + cleanup; from here
+                    // we're acting, so aborting is moot. Idempotent; the Task's
+                    // defer remains the backstop.
+                    self.escapeInterceptor.stop()
                     // The edit itself acts on the user's real prior insertion —
                     // run it regardless of session; only the cue/UI is gated.
                     if self.applyVoiceEdit(command) {
@@ -469,6 +552,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     // The whole utterance was just the submit command. The Return
                     // is a real user action (ungated); only the cue/UI is gated.
                     if submit.submit {
+                        // Commit point: stop the interceptor before posting Return
+                        // (same own-tap stall as the voice-edit branch above).
+                        self.escapeInterceptor.stop()
                         self.textInserter.sendReturn()
                     }
                     self.ifCurrent(generation) {
@@ -534,16 +620,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
                 let tone = mode.isAuto ? self.resolvedTone(forBundleID: bundleID) : mode.tone
                 let cleanupEnabled = mode.isAuto ? nil : (mode.cleanupEnabledOverride ?? self.settings.cleanupEnabled)
+
+                // Whether the cleanup call below will actually reshape the words
+                // (vs. pass them through). Only then does the pill show the
+                // distinct "Polishing" sub-phase — mirrors the keep-warm condition.
+                let willPolish = (cleanupEnabled ?? self.settings.cleanupEnabled) && tone != .verbatim
+                if willPolish { self.ifCurrent(generation) { self.appState.beginPolishing() } }
                 let text = await self.cleanupCoordinator.cleanup(
                     expanded, tone: tone, backtrack: self.settings.backtrackEnabled,
                     cleanupEnabled: cleanupEnabled
                 )
+                self.appState.endPolishing()
+
+                // Escape pressed while polishing: drop the cleaned result before it
+                // lands. (Also covers the plain transcribe window when cleanup is off.)
+                if Task.isCancelled {
+                    self.abortProcessing(generation)
+                    return
+                }
 
                 // If cleanup just ran, the on-device model is loaded — refresh the
                 // keep-warm session so it stays resident for the next dictation.
                 // Cheap here (no cold load) and safe: the audio engine stopped at
                 // the top of finishDictation, so this can't race its teardown.
-                if (cleanupEnabled ?? self.settings.cleanupEnabled), tone != .verbatim {
+                if willPolish {
                     self.cleanupCoordinator.prewarm()
                 }
                 // A cleanup model can reflow a numbered list back onto one line;
@@ -566,6 +666,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     ? FocusedFieldClassifier.collapseToSingleLine(relisted)
                     : relisted
 
+                // The pre-cleanup words, kept only when cleanup actually changed
+                // them — the raw transcript we can reveal in history and revert to
+                // by voice ("use what I said"). Nil otherwise, so we never claim a
+                // safety net that would just re-insert the identical text.
+                let rawTranscript = (expanded != finalText) ? expanded : nil
+
+                // Last gate before the words land: Escape pressed anytime up to
+                // here rejects the dictation outright — no history.add, no insert.
+                // This is the point the abort MUST catch to honor "before text
+                // lands"; the earlier checks just avoid doing needless work.
+                if Task.isCancelled {
+                    self.abortProcessing(generation)
+                    return
+                }
+
+                // COMMIT POINT — stop the Escape interceptor BEFORE the paste.
+                // Its consuming tap's callback runs on THIS main thread; the
+                // synthetic Cmd+V we're about to post would route through our own
+                // tap and stall there (the thread is busy inside the insert call)
+                // until the system drops it — the dictation transcribes, hits
+                // history, and silently never appears. Field-diagnosed via the
+                // insertion breadcrumbs ("Cmd+V posted" ... "NEVER CONFIRMED").
+                // Esc-abort has covered transcription + cleanup up to this line;
+                // past it we're committed. Idempotent; the defer is the backstop.
+                self.escapeInterceptor.stop()
+
                 if !finalText.isEmpty {
                     // Record to history BEFORE inserting so a failed insert
                     // (accessibility revoked mid-session, event-synthesis failure)
@@ -578,9 +704,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                             text: finalText,
                             durationSeconds: duration,
                             appName: targetAppName,
-                            bundleID: bundleID
+                            bundleID: bundleID,
+                            rawTranscript: rawTranscript
                         ))
                     }
+                    // Arm the "use what I said" safety net for the insertion that's
+                    // about to land (whether or not history logging was skipped).
+                    self.lastRawTranscript = rawTranscript
                     try self.textInserter.insert(text: finalText)
                     self.ifCurrent(generation) {
                         self.appState.lastDictationAt = Date()
@@ -612,6 +742,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// Tears down the UI after the processing Task was cancelled (Escape pressed
+    /// during the processing window). No text was inserted and nothing is written
+    /// to history — the user rejected this dictation, so it's a clean discard, not
+    /// an error: play the soft record-stop cue (never the failure cue) and, only if
+    /// this is still the live session, clear state and hide the pill. The Task's
+    /// `defer` separately stops the Escape interceptor and clears `processingTask`.
+    private func abortProcessing(_ generation: Int) {
+        playFeedback(start: false)
+        ifCurrent(generation) {
+            appState.reset()
+            pillController.hide()
+        }
+    }
+
     /// Runs `work` only if `generation` is still the live dictation session.
     /// Guards every UI/session-outcome mutation inside `finishDictation`'s async
     /// Task, so a Task that completes after a newer session has begun can't reset
@@ -640,6 +784,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             } else {
                 pendingCorrection = nil
             }
+            // The insertion the raw transcript backed is gone; drop the safety net
+            // so "use what I said" can't revert to a now-deleted insertion.
+            if deleted { lastRawTranscript = nil }
             return deleted
         case .deleteLastWord:
             return textInserter.deleteLastWord()
@@ -653,6 +800,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 return false
             }
             return textInserter.replaceLastInserted(with: rewritten)
+        case .useRawTranscript:
+            // Reveal the raw words the AI cleanup rewrote. Only when we have a
+            // pre-cleanup transcript AND swapping it in succeeds; then consume it
+            // (the inserted text IS now the raw). On failure return false so the
+            // words fall through and insert as literal text.
+            guard let raw = lastRawTranscript,
+                  textInserter.replaceLastInserted(with: raw) else {
+                return false
+            }
+            lastRawTranscript = nil
+            return true
         }
     }
 

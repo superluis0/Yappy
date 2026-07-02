@@ -119,6 +119,24 @@ final class AudioRecorder {
         return rms >= Constants.speechRMSFloor && voiced >= voicedFloor
     }
 
+    /// One-line diagnostic for the no-speech breadcrumb: measured levels vs the
+    /// floors, so a silent-mic capture (rms ~ 0 -> wrong/dead input device) is
+    /// distinguishable from a threshold misjudging real speech, straight from the
+    /// persisted log of a release build. Levels only — never audio content.
+    static func speechDiagnostics(_ samples: [Float]) -> String {
+        guard !samples.isEmpty else { return "empty clip" }
+        var sumSquares: Float = 0
+        var voiced = 0
+        for sample in samples {
+            sumSquares += sample * sample
+            if abs(sample) > Constants.speechVoiceFloor { voiced += 1 }
+        }
+        let rms = (sumSquares / Float(samples.count)).squareRoot()
+        let voicedFloor = Int(Constants.speechVoicedMinSeconds * Self.targetSampleRate)
+        return String(format: "rms %.5f (floor %.5f), voiced %d (floor %d)",
+                      rms, Constants.speechRMSFloor, voiced, voicedFloor)
+    }
+
     // MARK: - Recording
 
     /// Starts capturing. Returns false if permission is missing or the engine fails.

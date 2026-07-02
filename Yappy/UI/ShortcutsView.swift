@@ -129,37 +129,80 @@ struct ShortcutsView: View {
 
     // MARK: - Empty state
 
+    /// Ready-made examples shown only in the empty state. These are NOT auto-seeded
+    /// into the store — shortcuts stay opt-in; the user taps Add to create one.
+    private static let exampleShortcuts: [VoiceShortcut] = [
+        VoiceShortcut(trigger: "signature", expansion: "Best regards,\n[Your name]"),
+        VoiceShortcut(trigger: "my address", expansion: "[Your street]\n[City, State ZIP]"),
+        VoiceShortcut(trigger: "standup update", expansion: "Yesterday: \nToday: \nBlockers: ")
+    ]
+
+    /// Adds an example to the store and opens the editor on it so the user can
+    /// personalize the placeholders right away.
+    private func addExample(_ example: VoiceShortcut) {
+        let shortcut = VoiceShortcut(trigger: example.trigger, expansion: example.expansion)
+        store.add(shortcut)
+        editing = shortcut
+        showingEditor = true
+    }
+
     private var emptyState: some View {
-        VStack(spacing: 10) {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color.white.opacity(0.06))
-                .frame(width: 52, height: 52)
-                .overlay(
-                    Image(systemName: "text.badge.plus")
-                        .font(.system(size: 22, weight: .medium))
+        VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Try one of these")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Brand.ink)
+                Text("Example — tap Add, then edit to make it yours.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Brand.ink4)
+            }
+
+            VStack(spacing: 10) {
+                ForEach(Self.exampleShortcuts) { example in
+                    exampleCard(example)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+    }
+
+    private func exampleCard(_ example: VoiceShortcut) -> some View {
+        HStack(spacing: 13) {
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text(example.trigger)
+                        .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(Brand.ink)
+                    Image(systemName: "arrow.right")
+                        .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(Brand.ink4)
-                )
-            Text("No shortcuts yet")
-                .font(.system(size: 14, weight: .medium))
-                .foregroundStyle(Brand.ink3)
-            Text("Add one, then say its trigger while dictating.")
-                .font(.system(size: 12))
-                .foregroundStyle(Brand.ink4)
-                .multilineTextAlignment(.center)
+                }
+                Text(example.expansion)
+                    .font(.system(size: 12))
+                    .foregroundStyle(Brand.ink3)
+                    .lineLimit(2)
+            }
+
+            Spacer(minLength: 12)
+
             Button {
-                editing = nil
-                showingEditor = true
+                addExample(example)
             } label: {
-                Label("Add shortcut", systemImage: "plus")
-                    .font(.system(size: 13, weight: .medium))
+                Label("Add", systemImage: "plus")
+                    .font(.system(size: 12, weight: .medium))
             }
             .buttonStyle(.borderless)
             .foregroundStyle(Color.accentColor)
-            .padding(.top, 4)
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 36)
-        .padding(.horizontal, 16)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.06))
+        )
     }
 
     // MARK: - Shortcut row

@@ -81,9 +81,9 @@ final class SettingsTests: XCTestCase {
     }
 
     func testToneOverridesPersist() {
-        settings.toneOverrides = [.email: .excited, .code: .formal]
+        settings.toneOverrides = [.email: .casual, .code: .formal]
         let reloaded = Settings(defaults: defaults)
-        XCTAssertEqual(reloaded.toneOverrides[.email], .excited)
+        XCTAssertEqual(reloaded.toneOverrides[.email], .casual)
         XCTAssertEqual(reloaded.toneOverrides[.code], .formal)
     }
 

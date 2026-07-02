@@ -9,8 +9,8 @@ import Foundation
 /// spellings the speech model tends to produce for it. `aliases` are entered by
 /// hand ("sounds like"); `learnedAliases` are mined from voice-training takes.
 /// `DictionaryReplacer` rewrites either kind of mishearing back to `text` after
-/// transcription (the speech model itself can't be biased toward these — see
-/// plans/001-findings.md).
+/// transcription; with "Boost my terms in the speech model" enabled the same
+/// terms also bias recognition itself (Parakeet/English only).
 struct DictionaryTerm: Identifiable, Codable, Equatable {
     let id: UUID
     var text: String

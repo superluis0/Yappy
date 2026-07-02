@@ -205,6 +205,42 @@ struct DictionaryView: View {
                             .tint(.accentColor)
                     }
                     .padding(.horizontal, 16).padding(.vertical, 12)
+
+                    if settings.transcriptionModel == .nemotron {
+                        // Divider
+                        Rectangle()
+                            .fill(Color.white.opacity(0.07))
+                            .frame(height: 1)
+                            .padding(.leading, 63)
+
+                        // Warning: boosting is a Parakeet-only feature and does
+                        // nothing while Nemotron is the active model.
+                        HStack(spacing: 13) {
+                            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                .fill(Brand.danger.opacity(0.18))
+                                .frame(width: 34, height: 34)
+                                .overlay(
+                                    Image(systemName: "exclamationmark.triangle.fill")
+                                        .font(.system(size: 14, weight: .medium))
+                                        .foregroundStyle(Brand.danger)
+                                )
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                        .strokeBorder(Brand.danger.opacity(0.25))
+                                )
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Boost has no effect with Nemotron")
+                                    .font(.system(size: 14, weight: .medium))
+                                    .foregroundStyle(Brand.ink)
+                                Text("Term boosting works with the Parakeet (English) model. Switch models in Settings to use it.")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(Brand.ink4)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            Spacer(minLength: 12)
+                        }
+                        .padding(.horizontal, 16).padding(.vertical, 12)
+                    }
                 }
             }
         }

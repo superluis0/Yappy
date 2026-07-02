@@ -17,6 +17,13 @@ final class AppState: ObservableObject {
     /// Indicates whether transcription/processing is in progress.
     @Published private(set) var isProcessing: Bool = false
 
+    /// A finer sub-phase of `isProcessing`: the AI cleanup ("polishing") pass is
+    /// running. `isProcessing` stays true for the whole transcribe+cleanup window;
+    /// this narrows the pill to the moment the on-device model is reshaping the
+    /// words, so the wait reads as deliberate work rather than a generic spinner.
+    /// Always a strict subset of `isProcessing` (never set while idle/recording).
+    @Published private(set) var isPolishing: Bool = false
+
     /// A dictation was requested while the speech model was still loading (e.g.
     /// just after launch). Recording starts automatically once the model is ready;
     /// until then the pill shows a "preparing" indicator.
@@ -75,11 +82,24 @@ final class AppState: ObservableObject {
         isProcessing = true
     }
 
+    /// Enters the "polishing" sub-phase (AI cleanup is running). Only meaningful
+    /// while already processing; the pill uses it to show a distinct look.
+    func beginPolishing() {
+        isPolishing = true
+    }
+
+    /// Leaves the "polishing" sub-phase. Safe to call even if it wasn't set, so
+    /// callers can `defer` it on every exit path.
+    func endPolishing() {
+        isPolishing = false
+    }
+
     /// Resets all state to initial values.
     func reset() {
         isIdle = true
         isRecording = false
         isProcessing = false
+        isPolishing = false
         isPreparing = false
         audioLevels = Array(repeating: 0.0, count: Constants.pillBarCount)
         currentTranscription = ""

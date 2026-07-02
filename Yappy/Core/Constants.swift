@@ -45,9 +45,16 @@ enum Constants {
     /// fraction punishes the long-hold-then-short-answer pattern that
     /// push-to-talk encourages: hold the key thinking for 30 s, then say
     /// "yes, ship it" (~0.5 s of speech), and a fraction gate would classify
-    /// the whole clip as silence and drop it. ~0.15 s of real voiced content is
-    /// enough to be a genuine word while still rejecting a brief click.
-    static let speechVoicedMinSeconds: Double = 0.15
+    /// the whole clip as silence and drop it.
+    ///
+    /// 0.05 s, not more: "voiced" counts only samples above `speechVoiceFloor`
+    /// amplitude, and quiet/far-mic speech clears that bar on just a fraction of
+    /// its samples — a real utterance measured in the field produced 1,098 voiced
+    /// samples (~0.07 s) across 1.7 s of genuine speech and was wrongly dropped
+    /// by a 0.15 s floor. A keyboard click's burst stays far under 0.05 s
+    /// (~60 samples measured), so click rejection is intact, and the RMS floor
+    /// still rejects sustained room tone.
+    static let speechVoicedMinSeconds: Double = 0.05
 
     /// ASR results below this confidence are discarded as probable noise
     /// decodes. Clean speech typically scores well above 0.7, and the energy

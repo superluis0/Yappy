@@ -31,6 +31,17 @@ struct HeatmapView: View {
         return tooltip(row: row, hour: hour)
     }
 
+    /// Clears any stuck hover state. Per-cell `.onHover` misses its exit event
+    /// when the content scrolls out from under a stationary cursor, so we also
+    /// reset at the whole-heatmap boundary and when the view leaves the screen.
+    private func clearHover() {
+        guard hoveredWeekday != nil || hoveredHour != nil else { return }
+        withAnimation(.easeOut(duration: 0.08)) {
+            hoveredWeekday = nil
+            hoveredHour = nil
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 0) {
@@ -92,6 +103,13 @@ struct HeatmapView: View {
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 12))
+        // Catch the exit event at the heatmap boundary: individual cells miss
+        // their `.onHover(false)` when the page scrolls under a still cursor.
+        .onHover { hovering in
+            if !hovering { clearHover() }
+        }
+        // And clear if the heatmap scrolls fully offscreen while hovered.
+        .onDisappear { clearHover() }
     }
 
     private var hourAxis: some View {

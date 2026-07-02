@@ -20,6 +20,9 @@ struct HomeView: View {
     @State private var pendingDeleteEntry: DictationEntry?
     @State private var deleteTimer: Timer?
     @State private var hoveredEntryID: UUID?
+    /// Entries whose "What you said" (raw pre-cleanup transcript) is expanded.
+    @State private var revealedRawIDs: Set<UUID> = []
+    @State private var copiedRawEntryID: UUID?
 
     var body: some View {
         ScrollView {
@@ -643,6 +646,10 @@ struct HomeView: View {
             }
             .font(.caption)
             .foregroundStyle(Brand.ink3)
+
+            if let raw = entry.rawTranscript {
+                rawTranscriptDisclosure(entry: entry, raw: raw)
+            }
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -652,6 +659,59 @@ struct HomeView: View {
         .animation(.easeOut(duration: 0.2), value: pendingDeleteEntry?.id == entry.id)
         .onHover { hovering in
             hoveredEntryID = hovering ? entry.id : nil
+        }
+    }
+
+    /// A subtle "What you said" reveal for entries whose text was rewritten by AI
+    /// cleanup: expands to show the raw pre-cleanup transcript, with its own copy
+    /// button. Collapsed by default; only present when `rawTranscript` exists, so
+    /// rows without one keep the same layout.
+    @ViewBuilder
+    private func rawTranscriptDisclosure(entry: DictationEntry, raw: String) -> some View {
+        let expanded = revealedRawIDs.contains(entry.id)
+        VStack(alignment: .leading, spacing: 6) {
+            Button {
+                withAnimation(.easeOut(duration: 0.18)) {
+                    if expanded { revealedRawIDs.remove(entry.id) }
+                    else { revealedRawIDs.insert(entry.id) }
+                }
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 9, weight: .semibold))
+                        .rotationEffect(.degrees(expanded ? 90 : 0))
+                    Text("What you said")
+                        .font(.caption)
+                }
+                .foregroundStyle(Brand.ink4)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            if expanded {
+                HStack(alignment: .top, spacing: 8) {
+                    Text(raw)
+                        .font(.caption)
+                        .foregroundStyle(Brand.ink3)
+                        .lineLimit(4)
+                        .textSelection(.enabled)
+                    Spacer(minLength: 0)
+                    Button {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(raw, forType: .string)
+                        copiedRawEntryID = entry.id
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                            if copiedRawEntryID == entry.id { copiedRawEntryID = nil }
+                        }
+                    } label: {
+                        Image(systemName: copiedRawEntryID == entry.id ? "checkmark" : "doc.on.doc")
+                            .font(.caption)
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Copy what you said")
+                }
+                .transition(.opacity)
+            }
         }
     }
 }

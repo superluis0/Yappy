@@ -322,6 +322,22 @@ struct OnboardingView: View {
         }
     }
 
+    /// A permission the try-it step still needs before dictation can work. If the
+    /// user skipped the Microphone or Accessibility step, hitting the practice box
+    /// would be silent dead air; the step names the gap and offers the fix instead
+    /// of the dictation prompt. Mic is reported first when both are missing (you
+    /// can't dictate at all without it), matching the setup step order.
+    private enum MissingGrant {
+        case microphone
+        case accessibility
+    }
+
+    private var missingGrant: MissingGrant? {
+        if !micGranted { return .microphone }
+        if !axGranted { return .accessibility }
+        return nil
+    }
+
     private var tryIt: some View {
         stepCard(spacing: 14) {
             if tryItSucceeded {
@@ -337,6 +353,42 @@ struct OnboardingView: View {
                     .foregroundStyle(Brand.ink)
             }
 
+            // A skipped permission makes the practice box dead air — the single
+            // most impression-forming moment of onboarding. When a grant is
+            // missing (and we haven't already succeeded), swap the dictation
+            // prompt + practice box for a callout that names the gap and offers
+            // the same fix as the earlier steps. The permission poll clears
+            // `missingGrant` live once granted, flipping this back automatically.
+            if let missingGrant, !tryItSucceeded {
+                permissionCallout(for: missingGrant)
+            } else {
+                tryItPractice
+            }
+
+            Spacer(minLength: 8)
+            Button(tryItSucceeded ? "Finish" : "Skip and finish", action: onFinish)
+                .keyboardShortcut(.defaultAction)
+                .controlSize(.large)
+        }
+        // Only a real Yappy voice dictation flips success. `lastDictationAt` is
+        // stamped by AppDelegate the moment transcribed text is inserted, so
+        // typing into the box never counts. Attached to the try-it card so it
+        // observes only while this step is on screen — an earlier dictation
+        // can't pre-trigger it.
+        .onChange(of: appState.lastDictationAt) {
+            guard !tryItSucceeded else { return }
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
+                tryItSucceeded = true
+            }
+        }
+        .animation(.spring(response: 0.4, dampingFraction: 0.7), value: tryItSucceeded)
+    }
+
+    /// The normal try-it content: the dictation prompt, the practice box, and the
+    /// "came from your voice" confirmation. Shown when both permissions are granted
+    /// (or once a dictation has already landed).
+    private var tryItPractice: some View {
+        Group {
             Text(transcriptionService.modelState == .ready
                  ? "Click into the box, hold **Right ⌘**, and say: “Yappy makes dictation feel like magic.”"
                  : "The speech model is still getting ready — you can finish setup and try dictating in a minute.")
@@ -368,24 +420,46 @@ struct OnboardingView: View {
                     .multilineTextAlignment(.center)
                     .foregroundStyle(Brand.ink4)
             }
-
-            Spacer(minLength: 8)
-            Button(tryItSucceeded ? "Finish" : "Skip and finish", action: onFinish)
-                .keyboardShortcut(.defaultAction)
-                .controlSize(.large)
         }
-        // Only a real Yappy voice dictation flips success. `lastDictationAt` is
-        // stamped by AppDelegate the moment transcribed text is inserted, so
-        // typing into the box never counts. Attached to the try-it card so it
-        // observes only while this step is on screen — an earlier dictation
-        // can't pre-trigger it.
-        .onChange(of: appState.lastDictationAt) {
-            guard !tryItSucceeded else { return }
-            withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
-                tryItSucceeded = true
+    }
+
+    /// Replaces the dictation prompt when a permission was skipped: names the
+    /// missing grant, says why it's needed, and offers the same Open-System-Settings
+    /// button the Microphone/Accessibility steps use. Mirrors those steps' visual
+    /// idiom (danger-tinted copy + a large button) so the fix reads as continuous
+    /// with the flow rather than an error.
+    @ViewBuilder
+    private func permissionCallout(for grant: MissingGrant) -> some View {
+        VStack(spacing: 10) {
+            switch grant {
+            case .microphone:
+                Text("Microphone access is still off")
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(Brand.danger)
+                Text("Yappy can't hear you until the microphone is on, so dictation won't do anything yet.")
+                    .font(.callout)
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(Brand.ink3)
+                Button("Open System Settings") {
+                    let url = "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"
+                    if let url = URL(string: url) { NSWorkspace.shared.open(url) }
+                }
+                .controlSize(.large)
+            case .accessibility:
+                Text("Accessibility access is still off")
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(Brand.danger)
+                Text("Yappy needs it to detect your hotkey and type text into other apps, so dictation can't land yet.")
+                    .font(.callout)
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(Brand.ink3)
+                Button("Open System Settings") {
+                    let url = "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
+                    if let url = URL(string: url) { NSWorkspace.shared.open(url) }
+                }
+                .controlSize(.large)
             }
         }
-        .animation(.spring(response: 0.4, dampingFraction: 0.7), value: tryItSucceeded)
     }
 
     @ViewBuilder

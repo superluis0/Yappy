@@ -72,6 +72,24 @@ final class CleanupCoordinator {
         guard tone != .verbatim else { return text }
         guard let provider else { return text }
 
+        let cleaned = await cleanWithProvider(text, provider: provider, tone: tone, backtrack: backtrack)
+
+        // Apply the DETERMINISTIC tone transform to the final cleaned string. The
+        // model's cleanup instructions stay register-neutral (prompt-level tone hints
+        // broke intent-safety on-device); tone is enforced here by pure text rules
+        // instead. The transform self-guards: `casualize` only touches short single-line
+        // sentences (a multi-line block passes through), `formalize` expands whitelisted
+        // contractions throughout and ensures terminal punctuation. `.verbatim` already
+        // returned above, so this only runs for `.formal`/`.casual`.
+        return tone.apply(to: cleaned)
+    }
+
+    /// Runs the provider's model cleanup over `text`, preserving its exact "\n"
+    /// structure, and returns the cleaned string. No tone transform is applied here —
+    /// that is layered on by `cleanup` over the whole final result.
+    private func cleanWithProvider(
+        _ text: String, provider: CleanupProvider, tone: ToneStyle, backtrack: Bool
+    ) async -> String {
         // Clean each line independently so spoken "new line" / "next line" breaks
         // survive. Given the whole block, the on-device model reflows them — turning a
         // single break into a paragraph break, or dropping a trailing one — even though

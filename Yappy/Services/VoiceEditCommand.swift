@@ -15,6 +15,7 @@ enum VoiceEditCommand: Equatable {
     case capitalizeThat      // title-case the last insertion
     case allCapsThat
     case lowercaseThat
+    case useRawTranscript    // revert the last insertion to the pre-cleanup words
 }
 
 /// Classifies a *whole utterance* as an edit command, or returns nil so the
@@ -55,6 +56,11 @@ enum VoiceEditCommandParser {
         "lowercase that": .lowercaseThat,
         "lowercase this": .lowercaseThat,
         "make that lowercase": .lowercaseThat,
+
+        "use what i said": .useRawTranscript,
+        "use what i actually said": .useRawTranscript,
+        "undo the cleanup": .useRawTranscript,
+        "undo that cleanup": .useRawTranscript,
     ]
 
     static func parse(_ raw: String) -> VoiceEditCommand? {
@@ -82,6 +88,9 @@ enum VoiceEditCommandParser {
         case .allCapsThat: return chunk.uppercased()
         case .lowercaseThat: return chunk.lowercased()
         case .deleteLast, .deleteLastWord, .deleteLastSentence, .deleteLastLine: return nil
+        // Not a string transform: reverting to the raw transcript is handled in
+        // AppDelegate, which holds the pre-cleanup words.
+        case .useRawTranscript: return nil
         }
     }
 }

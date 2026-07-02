@@ -117,7 +117,7 @@ struct SettingsView: View {
             if settings.cleanupEnabled {
                 RowDivider()
                 SettingToggle(icon: "arrow.triangle.2.circlepath", title: "Adapt tone to the app",
-                              subtitle: "Match formality to where you’re typing.",
+                              subtitle: "Match register to where you’re typing. Formal expands contractions and ends sentences with punctuation; Casual drops the trailing period on short messages; Verbatim skips cleanup.",
                               isOn: $settings.contextAwareToneEnabled)
                 if settings.contextAwareToneEnabled {
                     ForEach(AppCategory.allCases, id: \.self) { category in
@@ -149,6 +149,13 @@ struct SettingsView: View {
                     ForEach(TranscriptionModel.allCases, id: \.self) { Text($0.displayName).tag($0) }
                 }
                 .labelsHidden().fixedSize()
+            }
+            if settings.transcriptionModel == .nemotron {
+                RowDivider()
+                SettingRow(icon: "lightbulb", title: "Dictating mostly in English?",
+                           subtitle: "Parakeet is faster and more accurate for English, and supports dictionary boosting.") {
+                    EmptyView()
+                }
             }
             RowDivider()
             ModelStatusRow(settings: settings, transcriptionService: transcriptionService)

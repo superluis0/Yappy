@@ -167,6 +167,39 @@ final class HistoryStoreTests: XCTestCase {
         XCTAssertNil(reloaded.entries[1].appName)
     }
 
+    func testDecodesLegacyEntriesWithoutRawTranscript() throws {
+        // History written before rawTranscript existed must still load, with the
+        // missing key decoding to nil (synthesized Codable + optional field).
+        let legacy = """
+        [{"id":"6F9619FF-8B86-D011-B42D-00C04FC964FF","date":760000000.0,
+          "text":"cleaned entry","durationSeconds":2.5,"appName":"Slack","bundleID":"com.slack"}]
+        """
+        try legacy.data(using: .utf8)!.write(to: fileURL)
+
+        let reloaded = HistoryStore(fileURL: fileURL)
+        XCTAssertEqual(reloaded.entries.count, 1)
+        XCTAssertEqual(reloaded.entries[0].text, "cleaned entry")
+        XCTAssertNil(reloaded.entries[0].rawTranscript)
+    }
+
+    func testPersistsAndReloadsRawTranscript() throws {
+        store.add(DictationEntry(
+            text: "Let's meet at noon.", durationSeconds: 3,
+            rawTranscript: "um let us meet at noon"))
+
+        // Writes are async on a utility queue; allow them to flush.
+        let deadline = Date().addingTimeInterval(2)
+        var reloaded = HistoryStore(fileURL: fileURL)
+        while reloaded.entries.isEmpty, Date() < deadline {
+            usleep(50_000)
+            reloaded = HistoryStore(fileURL: fileURL)
+        }
+
+        XCTAssertEqual(reloaded.entries.count, 1)
+        XCTAssertEqual(reloaded.entries[0].text, "Let's meet at noon.")
+        XCTAssertEqual(reloaded.entries[0].rawTranscript, "um let us meet at noon")
+    }
+
     // MARK: - Top apps
 
     func testTopAppsAggregation() {

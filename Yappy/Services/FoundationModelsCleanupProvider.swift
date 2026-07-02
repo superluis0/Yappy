@@ -128,7 +128,10 @@ actor FoundationModelsCleanupProvider: CleanupProvider {
     /// - Never alter meaning or add content
     /// - Always use American (US) English spelling
     /// - Preserve lists, line breaks, and digit formatting
-    /// - Shape output to the requested `tone`
+    ///
+    /// The `tone` parameter is register-neutral here: the cleanup instructions are the
+    /// same regardless of tone. Tone is applied deterministically afterward by
+    /// `CleanupCoordinator` (`ToneStyle.apply(to:)`), not shaped by this model call.
     ///
     /// When `backtrack` is true an extra instruction teaches the model to
     /// resolve spoken self-corrections ("scratch that", "I mean", etc.) by

@@ -35,6 +35,20 @@ final class VoiceEditCommandParserTests: XCTestCase {
         XCTAssertEqual(p("make that lowercase"), .lowercaseThat)
     }
 
+    func testUseRawTranscriptPhrases() {
+        XCTAssertEqual(p("use what I said"), .useRawTranscript)
+        XCTAssertEqual(p("use what I actually said"), .useRawTranscript)
+        XCTAssertEqual(p("undo the cleanup"), .useRawTranscript)
+        XCTAssertEqual(p("undo that cleanup"), .useRawTranscript)
+    }
+
+    func testUseRawTranscriptNearMissesAreNotCommands() {
+        // Whole-utterance rule: extra words make it prose, not a command.
+        XCTAssertNil(p("use what I said about the budget"))
+        XCTAssertNil(p("undo the cleanup and start over"))
+        XCTAssertNil(p("I'll use what I said earlier"))
+    }
+
     // MARK: - Normalization tolerance
 
     func testTrailingPunctuationTolerated() {
@@ -78,6 +92,9 @@ final class VoiceEditCommandParserTests: XCTestCase {
         XCTAssertEqual(VoiceEditCommandParser.transform(.lowercaseThat, applyingTo: "Hello World"), "hello world")
         XCTAssertEqual(VoiceEditCommandParser.transform(.capitalizeThat, applyingTo: "hello world"), "Hello World")
         XCTAssertNil(VoiceEditCommandParser.transform(.deleteLast, applyingTo: "hello"))
+        // Reverting to the raw transcript isn't a string transform (AppDelegate
+        // holds the pre-cleanup words), so transform returns nil.
+        XCTAssertNil(VoiceEditCommandParser.transform(.useRawTranscript, applyingTo: "hello"))
     }
 
     // MARK: - Trailing-range math

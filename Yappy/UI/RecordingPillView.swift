@@ -56,7 +56,7 @@ struct RecordingPillView: View {
                     )
                     .transition(.opacity)
                 } else if appState.isProcessing || appState.isPreparing {
-                    processingDots
+                    processingIndicator
                         .transition(.opacity)
                 }
             }
@@ -67,6 +67,9 @@ struct RecordingPillView: View {
         .opacity(visible ? 1.0 : 0.0)
         .animation(.spring(response: 0.22, dampingFraction: 0.82), value: visible)
         .animation(.easeInOut(duration: 0.15), value: appState.isRecording)
+        // Cross-fade the neutral dots into the accent-tinted "Polishing" look when
+        // AI cleanup starts, so the sub-phase reads without any layout jump.
+        .animation(.easeInOut(duration: 0.2), value: appState.isPolishing)
         // Fill the (larger) panel with a clear, non-interactive container so the
         // capsule is centered and its shadow fades into transparent margin
         // rather than being clipped at the panel's rectangular edge.
@@ -108,11 +111,34 @@ struct RecordingPillView: View {
 
     // MARK: - Processing Indicator
 
+    /// The breathing dots shown while transcribing/preparing, plus a quiet
+    /// "Polishing" caption once the AI-cleanup sub-phase begins. Keeping one
+    /// container (dots always present, caption fades in) means the polishing
+    /// state reads as a subtle shift, not a swap that shoves the layout around.
+    private var processingIndicator: some View {
+        HStack(spacing: 7) {
+            processingDots
+            if appState.isPolishing {
+                Text("Polishing")
+                    .font(.system(size: 10.5, weight: .medium))
+                    .foregroundStyle(accent.opacity(0.9))
+                    .fixedSize()
+                    .transition(.opacity.combined(with: .move(edge: .leading)))
+            }
+        }
+    }
+
+    /// Three breathing dots. During the polishing sub-phase they warm to the
+    /// accent tint (from the neutral molten cream used while transcribing), so the
+    /// same motion signals "now reshaping your words" without changing the beat.
     private var processingDots: some View {
-        HStack(spacing: 5) {
+        let dotColor = appState.isPolishing
+            ? accent
+            : Color(red: 1.0, green: 0.8, blue: 0.62)
+        return HStack(spacing: 5) {
             ForEach(0..<3, id: \.self) { index in
                 Circle()
-                    .fill(Color(red: 1.0, green: 0.8, blue: 0.62))
+                    .fill(dotColor)
                     .frame(width: 5, height: 5)
                     .scaleEffect(breathe ? 1.0 : 0.55)
                     .animation(
