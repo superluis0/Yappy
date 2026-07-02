@@ -16,6 +16,15 @@ final class AudioRecorder {
     private var converter: AVAudioConverter?
     private var samples: [Float] = []
     private let samplesLock = NSLock()
+
+    /// Samples handed off when an `AVAudioEngineConfigurationChange` (e.g. AirPods
+    /// connecting, an input-device switch) forces us to tear the engine down
+    /// mid-recording. The notification arrives on a non-main thread and ends
+    /// capture before the user's key-up reaches `stopRecording()`, so the
+    /// captured audio is preserved here — guarded by `samplesLock`, like
+    /// `samples` — for the next `stopRecording()` to return instead of losing
+    /// the whole utterance. `nil` whenever a recording ended normally.
+    private var finishedEarlySamples: [Float]?
     private(set) var isRecording = false
     /// Level-only monitoring for the onboarding mic test; no samples are kept.
     private(set) var isPreviewing = false
@@ -96,10 +105,13 @@ final class AudioRecorder {
             if abs(sample) > Constants.speechVoiceFloor { voiced += 1 }
         }
         let rms = (sumSquares / Float(samples.count)).squareRoot()
-        let voicedFraction = Float(voiced) / Float(samples.count)
-        // Require both a real average level and *sustained* voiced content, so a
-        // brief loud transient (a click) — high RMS but tiny voiced span — fails.
-        return rms >= Constants.speechRMSFloor && voicedFraction >= Constants.speechVoicedFraction
+        // Count voiced samples against an ABSOLUTE floor (~0.15 s), not a
+        // fraction of the whole clip: a fraction grows the speech required as
+        // the hold lengthens, so a short real answer after a long silent hold
+        // would be dropped. The RMS floor still rejects a brief loud click,
+        // whose few voiced samples fall below this floor.
+        let voicedFloor = Int(Constants.speechVoicedMinSeconds * Self.targetSampleRate)
+        return rms >= Constants.speechRMSFloor && voiced >= voicedFloor
     }
 
     // MARK: - Recording
@@ -136,6 +148,7 @@ final class AudioRecorder {
         samplesLock.lock()
         samples.removeAll(keepingCapacity: true)
         samples.reserveCapacity(Int(Self.targetSampleRate) * 60)
+        finishedEarlySamples = nil // drop any leftover early-handoff from a prior session
         samplesLock.unlock()
 
         inputNode.installTap(onBus: 0, bufferSize: 2048, format: inputFormat) { [weak self] buffer, _ in
@@ -164,15 +177,32 @@ final class AudioRecorder {
     /// Stops capturing and returns the recorded 16 kHz mono samples.
     @discardableResult
     func stopRecording() -> [Float] {
+        // A mid-recording device change (see `handleConfigurationChange`) already
+        // tore the engine down and stashed everything captured up to that point.
+        // Return that instead of the empty result the `isRecording` guard below
+        // would otherwise give, so the key-up still transcribes what was heard.
+        samplesLock.lock()
+        if let earlySamples = finishedEarlySamples {
+            finishedEarlySamples = nil
+            samples.removeAll(keepingCapacity: false)
+            samplesLock.unlock()
+            return earlySamples
+        }
+        samplesLock.unlock()
+
         guard isRecording else { return [] }
         isRecording = false
 
+        // Removing the tap first blocks until any in-flight tap callback finishes,
+        // so no further samples are appended once it returns — the drain and
+        // snapshot below then see a stable buffer.
         audioEngine.inputNode.removeTap(onBus: 0)
         audioEngine.stop()
         audioEngine.reset()
-        converter = nil
 
         samplesLock.lock()
+        drainConverterTailLocked()
+        converter = nil
         let recorded = samples
         samples.removeAll(keepingCapacity: false)
         samplesLock.unlock()
@@ -243,11 +273,83 @@ final class AudioRecorder {
         return copy
     }
 
+    /// Handles a mid-session change to the audio graph — AirPods connecting or
+    /// disconnecting, or any input-device switch, a routine macOS event. The
+    /// engine stops delivering audio, so continuing to "record" would capture
+    /// nothing; we tear the pipeline down fully and hand off whatever was
+    /// captured so far.
+    ///
+    /// This notification is delivered on a **non-main** thread, so all shared
+    /// state is touched under `samplesLock` (matching how the audio thread guards
+    /// `samples`). The `isRecording` flag — a plain `Bool` read on the main thread
+    /// — is flipped on the main queue so it stays serialized with those readers.
     @objc private func handleConfigurationChange() {
-        // Input device changed/unplugged mid-recording: stop cleanly.
-        // The recorded samples up to this point remain available via stopRecording().
-        if isRecording, !audioEngine.isRunning {
-            isRecording = false
+        // A change while previewing or idle is irrelevant; only a live recording
+        // has captured audio to preserve. Read the flag under the lock.
+        samplesLock.lock()
+        let wasRecording = isRecording
+        samplesLock.unlock()
+        guard wasRecording else { return }
+
+        // Tear the engine down cleanly. `removeTap` blocks until any in-flight tap
+        // callback returns, so no further samples are appended past this point —
+        // making the drain + snapshot below race-free against the audio thread.
+        audioEngine.inputNode.removeTap(onBus: 0)
+        audioEngine.stop()
+        audioEngine.reset()
+
+        // Drain the resampler tail (F20) and stash the full capture so the pending
+        // key-up's stopRecording() returns it instead of an empty clip (F02).
+        samplesLock.lock()
+        drainConverterTailLocked()
+        converter = nil
+        finishedEarlySamples = samples
+        samples.removeAll(keepingCapacity: false)
+        samplesLock.unlock()
+
+        // Flip the flag where the main thread reads it. The sample handoff above
+        // is already visible via the lock, so ordering here doesn't lose audio.
+        DispatchQueue.main.async { [weak self] in
+            self?.isRecording = false
+        }
+    }
+
+    /// Drains the sample-rate converter's internal tail into `samples`, so the
+    /// last fraction of every clip isn't lost when the converter is discarded
+    /// (F20). `AVAudioConverter` buffers input across `convert` calls; feeding it
+    /// an `.endOfStream` signal and pulling once flushes those held frames.
+    ///
+    /// Mirrors the conversion in `process(buffer:)` but returns `.endOfStream`
+    /// from the input block. Robust by design: on any converter error it leaves
+    /// `samples` as-is — the main body of the recording is never lost, and it
+    /// never crashes. Caller MUST hold `samplesLock`.
+    private func drainConverterTailLocked() {
+        guard let converter, let targetFormat else { return }
+
+        // A generous tail capacity; the flush emits at most the converter's small
+        // internal backlog, well under this.
+        guard let outputBuffer = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: 4096) else {
+            return
+        }
+
+        var signalled = false
+        var error: NSError?
+        converter.convert(to: outputBuffer, error: &error) { _, outStatus in
+            // Report end-of-stream exactly once, then stop offering input so the
+            // converter emits only its buffered tail.
+            if signalled {
+                outStatus.pointee = .noDataNow
+                return nil
+            }
+            signalled = true
+            outStatus.pointee = .endOfStream
+            return nil
+        }
+        guard error == nil, let channelData = outputBuffer.floatChannelData else { return }
+
+        let frameCount = Int(outputBuffer.frameLength)
+        if frameCount > 0 {
+            samples.append(contentsOf: UnsafeBufferPointer(start: channelData[0], count: frameCount))
         }
     }
 

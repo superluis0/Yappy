@@ -59,6 +59,10 @@ final class HistoryStore: ObservableObject {
     private(set) var cachedHeatmapRows: [HeatmapWeekday] = []
     private(set) var cachedPersonalRecords: PersonalRecords = .empty
 
+    /// How many days of history to keep; `0` means keep forever. Set from
+    /// `Settings.historyRetentionDays` by the app; applied on load and on `add`.
+    var retentionDays: Int = 0
+
     private let fileURL: URL
     private let ioQueue = DispatchQueue(label: "com.yappy.historystore", qos: .utility)
     private static let encoder = JSONEncoder()
@@ -74,6 +78,9 @@ final class HistoryStore: ObservableObject {
             let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             let dir = appSupport.appendingPathComponent("Yappy", isDirectory: true)
             try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            // Dictation transcripts can be sensitive, so keep the containing
+            // directory owner-only (best-effort; never fatal if it can't be set).
+            try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: dir.path)
             self.fileURL = dir.appendingPathComponent("history.json")
         }
         loadFromDisk()
@@ -87,6 +94,7 @@ final class HistoryStore: ObservableObject {
         if entries.count > Constants.historyLimit {
             entries.removeLast(entries.count - Constants.historyLimit)
         }
+        entries = Self.applyingRetention(to: entries, days: retentionDays, now: Date())
         recomputeDerived()
         persist()
     }
@@ -224,7 +232,7 @@ final class HistoryStore: ObservableObject {
               let loaded = try? Self.decoder.decode([DictationEntry].self, from: data) else {
             return
         }
-        entries = loaded
+        entries = Self.applyingRetention(to: loaded, days: retentionDays, now: Date())
     }
 
     private func persist() {
@@ -233,6 +241,21 @@ final class HistoryStore: ObservableObject {
         ioQueue.async {
             guard let data = try? Self.encoder.encode(snapshot) else { return }
             try? data.write(to: url, options: .atomic)
+            // The atomic write swaps in a fresh file with default (0644,
+            // world-readable) perms, so re-tighten to owner-only after every
+            // write. Transcripts are sensitive; best-effort, never fatal.
+            try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
         }
+    }
+
+    // MARK: - Retention
+
+    /// Returns `entries` with anything older than `days` dropped. Returns the
+    /// input unchanged when `days <= 0` (0 = keep forever). Pure: no I/O, no
+    /// mutation of `self`, so it's trivially testable.
+    static func applyingRetention(to entries: [DictationEntry], days: Int, now: Date) -> [DictationEntry] {
+        guard days > 0 else { return entries }
+        let cutoff = now.addingTimeInterval(-Double(days) * 86_400)
+        return entries.filter { $0.date >= cutoff }
     }
 }

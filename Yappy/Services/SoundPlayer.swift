@@ -13,6 +13,10 @@ final class SoundPlayer {
         case recordStart = "record-start"
         case recordStop = "record-stop"
         case success
+        /// Played when a dictation fails (transcription or insertion threw) so a
+        /// failed session sounds distinct from a successful one. No bundled
+        /// `record-fail.wav` ships today; the system fallback below is the cue.
+        case failure = "record-fail"
 
         /// System-sound fallback when the bundled resource can't be loaded.
         var fallbackName: NSSound.Name? {
@@ -20,6 +24,9 @@ final class SoundPlayer {
             case .recordStart: return "Tink"
             case .recordStop: return "Pop"
             case .success: return nil // silent fallback — better than a jarring beep
+            // "Basso" is macOS's canonical low error thud: clearly reads as
+            // "something went wrong" without the harshness of "Sosumi"/"Funk".
+            case .failure: return "Basso"
             }
         }
     }

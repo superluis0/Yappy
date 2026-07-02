@@ -42,6 +42,10 @@ struct DictionaryView: View {
             VStack(alignment: .leading, spacing: 26) {
                 header
                 enableSection
+                boostSection
+                if !store.suggestions.isEmpty {
+                    suggestionsSection
+                }
                 if settings.customDictionaryEnabled {
                     termsSection
                 }
@@ -155,6 +159,91 @@ struct DictionaryView: View {
                     }
                 }
             }
+        }
+    }
+
+    // MARK: - Speech-model boosting section
+
+    private var boostSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            SectionLabel(icon: "waveform.and.magnifyingglass", title: "Speech model")
+                .padding(.horizontal, 4).padding(.bottom, 11)
+
+            GlassCard(padding: 0) {
+                VStack(spacing: 0) {
+                    HStack(spacing: 13) {
+                        RoundedRectangle(cornerRadius: 9, style: .continuous)
+                            .fill(settings.vocabularyBoostingEnabled
+                                  ? Color.accentColor.opacity(0.18)
+                                  : Color.white.opacity(0.06))
+                            .frame(width: 34, height: 34)
+                            .overlay(
+                                Image(systemName: "waveform.and.magnifyingglass")
+                                    .font(.system(size: 15, weight: .medium))
+                                    .foregroundStyle(settings.vocabularyBoostingEnabled
+                                                     ? Color.accentColor : Brand.ink3)
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                    .strokeBorder(settings.vocabularyBoostingEnabled
+                                                  ? Color.accentColor.opacity(0.25)
+                                                  : Color.white.opacity(0.06))
+                            )
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Boost my terms in the speech model")
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundStyle(Brand.ink)
+                            Text("Makes recognition prefer your dictionary terms while dictating (Parakeet, English). Downloads a 98 MB helper model the first time.")
+                                .font(.system(size: 12))
+                                .foregroundStyle(Brand.ink4)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        Spacer(minLength: 12)
+                        Toggle("", isOn: $settings.vocabularyBoostingEnabled)
+                            .labelsHidden()
+                            .toggleStyle(.switch)
+                            .tint(.accentColor)
+                    }
+                    .padding(.horizontal, 16).padding(.vertical, 12)
+                }
+            }
+        }
+    }
+
+    // MARK: - Suggestions section (learn-from-corrections)
+
+    private var suggestionsSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            SectionLabel(icon: "sparkles", title: "Suggestions")
+                .padding(.horizontal, 4).padding(.bottom, 11)
+
+            GlassCard(padding: 0) {
+                VStack(spacing: 0) {
+                    ForEach(Array(store.suggestions.enumerated()), id: \.element.id) { index, suggestion in
+                        if index > 0 {
+                            Rectangle()
+                                .fill(Color.white.opacity(0.07))
+                                .frame(height: 1)
+                                .padding(.leading, 16)
+                        }
+                        SuggestionRow(suggestion: suggestion) {
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                store.acceptSuggestion(suggestion)
+                            }
+                        } onDismiss: {
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                store.dismissSuggestion(suggestion)
+                            }
+                        }
+                    }
+                }
+            }
+
+            Text("Learned from your corrections — accepted spellings improve recognition.")
+                .font(.caption)
+                .foregroundStyle(Brand.ink4)
+                .padding(.horizontal, 4)
+                .padding(.top, 9)
         }
     }
 
@@ -291,6 +380,61 @@ private struct TermRow: View {
                     .foregroundStyle(Brand.ink4)
             }
             .buttonStyle(.borderless)
+        }
+        .padding(.horizontal, 16).padding(.vertical, 11)
+    }
+}
+
+// MARK: - Suggestion Row
+
+/// A single mined "did you mean" correction: what Yappy heard vs. what the user
+/// meant, with Add (accept) and Dismiss actions. Accepting is the only way the
+/// pair enters the dictionary — nothing is applied automatically.
+private struct SuggestionRow: View {
+    let suggestion: AliasSuggestion
+    let onAdd: () -> Void
+    let onDismiss: () -> Void
+
+    var body: some View {
+        HStack(spacing: 13) {
+            // Icon chip
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .fill(Color.accentColor.opacity(0.12))
+                .frame(width: 34, height: 34)
+                .overlay(
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(Color.accentColor)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .strokeBorder(Color.accentColor.opacity(0.20))
+                )
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Heard \u{201c}\(suggestion.heard)\u{201d} — did you mean \u{201c}\(suggestion.corrected)\u{201d}?")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(Brand.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("Add it so Yappy corrects this next time.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Brand.ink4)
+            }
+
+            Spacer(minLength: 8)
+
+            Button("Add", action: onAdd)
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .help("Add \u{201c}\(suggestion.heard)\u{201d} as a spelling of \u{201c}\(suggestion.corrected)\u{201d}")
+
+            Button(action: onDismiss) {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 14))
+                    .foregroundStyle(Brand.ink4)
+            }
+            .buttonStyle(.borderless)
+            .help("Dismiss")
         }
         .padding(.horizontal, 16).padding(.vertical, 11)
     }

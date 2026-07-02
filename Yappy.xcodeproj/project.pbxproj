@@ -97,6 +97,7 @@
 		B100001600000000000000A1 /* HotkeyStateMachineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200001600000000000000A1 /* HotkeyStateMachineTests.swift */; };
 		B100001700000000000000A1 /* HistoryStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200001700000000000000A1 /* HistoryStoreTests.swift */; };
 		B100009600000000000000A1 /* WhatsNewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200009600000000000000A1 /* WhatsNewTests.swift */; };
+		B100009700000000000000A1 /* FoundationModelsCleanupProviderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200009700000000000000A1 /* FoundationModelsCleanupProviderTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -199,6 +200,7 @@
 		B200001600000000000000A1 /* HotkeyStateMachineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HotkeyStateMachineTests.swift; sourceTree = "<group>"; };
 		B200001700000000000000A1 /* HistoryStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryStoreTests.swift; sourceTree = "<group>"; };
 		B200009600000000000000A1 /* WhatsNewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhatsNewTests.swift; sourceTree = "<group>"; };
+		B200009700000000000000A1 /* FoundationModelsCleanupProviderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FoundationModelsCleanupProviderTests.swift; sourceTree = "<group>"; };
 		B200001800000000000000A1 /* YappyTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = YappyTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		B200001900000000000000A1 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		B200001A00000000000000A1 /* Yappy.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Yappy.entitlements; sourceTree = "<group>"; };
@@ -357,6 +359,7 @@
 				B200001600000000000000A1 /* HotkeyStateMachineTests.swift */,
 				B200001700000000000000A1 /* HistoryStoreTests.swift */,
 				B200009600000000000000A1 /* WhatsNewTests.swift */,
+				B200009700000000000000A1 /* FoundationModelsCleanupProviderTests.swift */,
 				B200002500000000000000A1 /* ShortcutExpanderTests.swift */,
 				B200002600000000000000A1 /* AppContextClassifierTests.swift */,
 				B200002700000000000000A1 /* ShortcutStoreTests.swift */,
@@ -563,6 +566,7 @@
 				B100001600000000000000A1 /* HotkeyStateMachineTests.swift in Sources */,
 				B100001700000000000000A1 /* HistoryStoreTests.swift in Sources */,
 				B100009600000000000000A1 /* WhatsNewTests.swift in Sources */,
+				B100009700000000000000A1 /* FoundationModelsCleanupProviderTests.swift in Sources */,
 				B100002500000000000000A1 /* ShortcutExpanderTests.swift in Sources */,
 				B100002600000000000000A1 /* AppContextClassifierTests.swift in Sources */,
 				B100002700000000000000A1 /* ShortcutStoreTests.swift in Sources */,

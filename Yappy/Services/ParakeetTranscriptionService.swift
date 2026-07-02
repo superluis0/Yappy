@@ -74,6 +74,16 @@ final class ParakeetTranscriptionService: ObservableObject {
     // Nemotron (multilingual) backing state.
     private var nemotronManager: StreamingNemotronMultilingualAsrManager?
 
+    // MARK: - Vocabulary-boosting state (Parakeet/English only)
+
+    /// FluidAudio's CTC custom-vocabulary rescoring pipeline, configured lazily by
+    /// `configureVocabularyBoosting(terms:)` and consulted after each Parakeet
+    /// transcribe. All three are non-nil together (a configured session) or all nil
+    /// (torn down). Never touched on the Nemotron path.
+    private var vocabularySpotter: CtcKeywordSpotter?
+    private var vocabularyRescorer: VocabularyRescorer?
+    private var vocabularyContext: CustomVocabularyContext?
+
     /// `downloadVariant` arguments mirroring the `nemotron-multilingual-transcribe`
     /// CLI: the full multilingual ship ("auto") at the balanced 2240 ms chunk tier.
     private static let nemotronLanguageCode = "auto"
@@ -173,6 +183,106 @@ final class ParakeetTranscriptionService: ObservableObject {
         return false
     }
 
+    // MARK: - Vocabulary Boosting
+
+    /// A bounded, tokenization-ready dictionary term: canonical spelling plus the
+    /// alternative spellings the model tends to produce. Deliberately free of
+    /// FluidAudio types so the term-list builder is unit-testable without any
+    /// model download.
+    struct BoostTerm: Equatable {
+        let text: String
+        let aliases: [String]
+    }
+
+    /// Bounds on what we hand the CTC vocabulary pipeline. Terms shorter than
+    /// `minTermLength` are dropped (matches FluidAudio's own `minTermLength`
+    /// guardrail — short words like "or" trigger false positives), and the list is
+    /// capped so a huge dictionary can't blow up the per-dictation rescoring cost.
+    nonisolated static let vocabularyMinTermLength = 3
+    nonisolated static let vocabularyMaxTermCount = 200
+
+    /// Maps the user's dictionary into the bounded `[BoostTerm]` the CTC pipeline
+    /// tokenizes. Pure and side-effect-free (no model access, `nonisolated` like
+    /// `acceptsTranscript`) so it can be tested in isolation: drops terms under
+    /// `vocabularyMinTermLength` characters, keeps the first `vocabularyMaxTermCount`
+    /// in dictionary order, and folds each term's manual + learned aliases into the
+    /// boost term's alias list.
+    nonisolated static func buildBoostTerms(from terms: [DictionaryTerm]) -> [BoostTerm] {
+        terms
+            .filter { $0.text.trimmingCharacters(in: .whitespacesAndNewlines).count >= vocabularyMinTermLength }
+            .prefix(vocabularyMaxTermCount)
+            .map { BoostTerm(text: $0.text, aliases: $0.allAliases) }
+    }
+
+    /// Configures (or tears down) speech-model vocabulary biasing from the user's
+    /// dictionary. Loading the auxiliary CTC model, tokenizer, and rescorer is
+    /// expensive, so ALL of it happens here — never on the dictation path.
+    ///
+    /// CRITICAL INVARIANT: this must only be called at audio-idle moments
+    /// (warm-up, a settings-toggle change, or a dictionary edit), never during
+    /// audio-engine start/stop. Loading a CoreML/ANE model while the audio engine
+    /// is spinning up or tearing down races CoreAudio and has crashed the app
+    /// before (the same reason the cleanup model isn't warmed on the dictation
+    /// path). AppDelegate is the sole caller and keeps to that contract.
+    ///
+    /// Passing an empty `terms` (boosting off, or an empty dictionary) tears the
+    /// biasing state down. Any failure logs and leaves boosting disabled — it must
+    /// never surface to the user or block dictation.
+    func configureVocabularyBoosting(terms: [DictionaryTerm]) async {
+        let boostTerms = Self.buildBoostTerms(from: terms)
+        guard !boostTerms.isEmpty else {
+            teardownVocabularyBoosting()
+            return
+        }
+
+        do {
+            // The ctc110m model is cached on disk after the first download (~98 MB),
+            // arriving via FluidAudio's own DownloadUtils — the app's only permitted
+            // network path, identical to how every other model here is fetched.
+            let ctcModels = try await CtcModels.downloadAndLoad(variant: .ctc110m)
+            let ctcModelDir = CtcModels.defaultCacheDirectory(for: .ctc110m)
+            let tokenizer = try await CtcTokenizer.load(from: ctcModelDir)
+
+            let vocabularyTerms: [CustomVocabularyTerm] = boostTerms.compactMap { term in
+                let ctcTokenIds = tokenizer.encode(term.text)
+                guard !ctcTokenIds.isEmpty else { return nil }
+                return CustomVocabularyTerm(
+                    text: term.text,
+                    aliases: term.aliases.isEmpty ? nil : term.aliases,
+                    tokenIds: nil,
+                    ctcTokenIds: ctcTokenIds
+                )
+            }
+            guard !vocabularyTerms.isEmpty else {
+                teardownVocabularyBoosting()
+                return
+            }
+
+            let context = CustomVocabularyContext(terms: vocabularyTerms)
+            let spotter = CtcKeywordSpotter(models: ctcModels, blankId: ctcModels.vocabulary.count)
+            let rescorer = try await VocabularyRescorer.create(
+                spotter: spotter,
+                vocabulary: context,
+                config: .default,
+                ctcModelDirectory: ctcModelDir
+            )
+
+            vocabularySpotter = spotter
+            vocabularyRescorer = rescorer
+            vocabularyContext = context
+            Self.logger.info("Vocabulary boosting configured with \(vocabularyTerms.count, privacy: .public) term(s)")
+        } catch {
+            teardownVocabularyBoosting()
+            Self.logger.error("Vocabulary boosting configuration failed, boosting disabled: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    private func teardownVocabularyBoosting() {
+        vocabularySpotter = nil
+        vocabularyRescorer = nil
+        vocabularyContext = nil
+    }
+
     // MARK: - Transcription
 
     enum TranscriptionError: LocalizedError {
@@ -215,7 +325,70 @@ final class ParakeetTranscriptionService: ObservableObject {
                 "Discarding low-confidence transcript — confidence=\(result.confidence, format: .fixed(precision: 3), privacy: .public)")
             return ""
         }
-        return text
+
+        // Bias toward the user's dictionary terms, if boosting is configured. This
+        // is a best-effort refinement on top of a valid transcript: it runs one
+        // extra CTC pass over the recorded buffer and returns the rescored text
+        // only when the model actually preferred a dictionary term.
+        return await rescoredForVocabulary(text, samples: samples, result: result)
+    }
+
+    /// Runs the CTC custom-vocabulary rescoring pass over an already-transcribed
+    /// Parakeet result, returning the biased text when the rescorer made a
+    /// replacement and `text` otherwise.
+    ///
+    /// Boosting is a pure accuracy refinement, never a correctness dependency:
+    /// ANY failure (or a missing configuration, absent token timings, or empty
+    /// log-probs) logs and falls back to the unmodified transcript. Dictation
+    /// must never break because of biasing.
+    private func rescoredForVocabulary(
+        _ text: String, samples: [Float], result: ASRResult
+    ) async -> String {
+        guard let spotter = vocabularySpotter,
+              let rescorer = vocabularyRescorer,
+              let vocabulary = vocabularyContext,
+              !text.isEmpty else {
+            return text
+        }
+
+        // The rescorer needs token-level timings to locate each transcript word in
+        // the CTC frames. The batch transcribe above populates them; if a future
+        // FluidAudio overload doesn't, skip rescoring rather than fail.
+        guard let tokenTimings = result.tokenTimings, !tokenTimings.isEmpty else {
+            Self.logger.info("Vocabulary boosting skipped — no token timings on this transcript")
+            return text
+        }
+
+        do {
+            let spotResult = try await spotter.spotKeywordsWithLogProbs(
+                audioSamples: samples,
+                customVocabulary: vocabulary,
+                minScore: nil
+            )
+            guard !spotResult.logProbs.isEmpty else {
+                Self.logger.info("Vocabulary boosting skipped — spotter produced no log-probs")
+                return text
+            }
+
+            // Vocabulary-size-aware defaults, mirroring the FluidAudio CLI exactly.
+            let vocabConfig = ContextBiasingConstants.rescorerConfig(forVocabSize: vocabulary.terms.count)
+            let rescoreOutput = rescorer.ctcTokenRescore(
+                transcript: text,
+                tokenTimings: tokenTimings,
+                logProbs: spotResult.logProbs,
+                frameDuration: spotResult.frameDuration,
+                cbw: vocabConfig.cbw,
+                marginSeconds: ContextBiasingConstants.defaultMarginSeconds,
+                minSimilarity: vocabConfig.minSimilarity
+            )
+
+            guard rescoreOutput.wasModified else { return text }
+            Self.logger.info("Vocabulary boosting applied \(rescoreOutput.replacements.count, privacy: .public) replacement(s)")
+            return rescoreOutput.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        } catch {
+            Self.logger.error("Vocabulary boosting failed, using unbiased transcript: \(error.localizedDescription, privacy: .public)")
+            return text
+        }
     }
 
     /// Batch transcribe via the streaming Nemotron manager, mirroring the

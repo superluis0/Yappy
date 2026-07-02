@@ -4,8 +4,10 @@
 //
 
 import AVFoundation
+import Carbon.HIToolbox
 import Cocoa
 import Combine
+import os
 import ServiceManagement
 import SwiftUI
 
@@ -83,6 +85,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// loading; recording auto-starts when it's ready (see bindModelReadyAutostart).
     private var pendingDictationStart = false
 
+    /// Monotonic id for the live dictation session. Bumped when a new recording
+    /// actually begins (and when one is cancelled), then captured by
+    /// `finishDictation`'s async Task. Every UI/session-outcome mutation in that
+    /// Task is gated on the id still being current (see `ifCurrent`), so a slow
+    /// transcription/cleanup that finishes AFTER a newer session has started can
+    /// never clobber the newer session's pill or state — a defense-in-depth
+    /// backstop to the `isProcessing` guard in `startDictation`.
+    private var dictationGeneration = 0
+
+    /// Errors on the dictation hot path (transcription/insertion failures). The
+    /// user hears the failure cue; this records the cause for `log stream` /
+    /// Console triage. Matches the `Logger` convention in the transcription layer.
+    private static let logger = Logger(subsystem: "com.yappy.app", category: "dictation")
+
     /// Bundle id of the app that had focus when the current session started.
     private var sessionBundleID: String?
     /// Most recently activated app other than Yappy — the app you were in when
@@ -90,6 +106,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var lastActiveBundleID: String?
     /// Mode resolved at the start of the current session.
     private var sessionMode: Mode = .auto
+
+    /// Set when the user "scratch that"-deletes an insertion: the rejected text
+    /// plus when it happened. If the *next* dictation lands soon after and is a
+    /// near-match, the middle diff is a correction signal that becomes a
+    /// suggested dictionary alias. One-shot — consumed by the next insert.
+    private var pendingCorrection: (rejected: String, at: Date)?
+
+    /// How fresh a `pendingCorrection` must be to pair with a re-dictation.
+    private static let correctionPairingWindow: TimeInterval = 30
 
     // Dictionary-boosted final via the sliding-window manager.
 
@@ -104,6 +129,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // launch-time load (below) loads the right one. Changes after launch are
         // handled by a sink in bindSettings.
         transcriptionService.activeModel = settings.transcriptionModel
+
+        // Apply the persisted history-retention window up front so the store prunes
+        // old entries on its first load. Changes after launch are handled by a sink
+        // in bindSettings (mirrors the speech-model pattern above).
+        history.retentionDays = settings.historyRetentionDays
 
         setupMenuBar()
         bindStateToMenuBar()
@@ -140,13 +170,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if needsDownload {
                 self.closeSetupWindowWhenReady()
             }
+            // Configure speech-model vocabulary biasing once the model is warm and
+            // the audio engine is idle — never on the dictation start/stop path.
+            await self.reconfigureVocabularyBoosting()
+
+            // Warm the on-device cleanup model now too, so the first dictation of
+            // the session doesn't pay its multi-second cold load. This is safe here
+            // for the same reason the CTC load above is: the audio engine is idle at
+            // launch, and we sequence this right after that load rather than during
+            // any dictation. `prewarm()` self-gates to a no-op when cleanup is off.
+            self.cleanupCoordinator.prewarm()
         }
-        // Note: the on-device cleanup model is deliberately NOT warmed here.
-        // Warming it loads it on a background thread, and doing that while a
-        // dictation's audio engine is being torn down races CoreAudio and crashes.
-        // The model is warmed only at audio-idle moments instead — when the user
-        // selects Apple Intelligence (see bindSettings) and right after a cleanup
-        // (see finishDictation), then held resident.
+        // Note: the on-device cleanup model is warmed at launch (above) — audio-idle,
+        // right after the speech + CTC models load — so it's resident before the
+        // first dictation. It is deliberately NOT warmed during the finishDictation
+        // audio-teardown window: warming loads the model on a background thread, and
+        // doing that while a dictation's audio engine is being torn down races
+        // CoreAudio and crashes. It is otherwise (re)warmed only at other audio-idle
+        // moments — when the user enables Apple Intelligence (see bindSettings) and
+        // right after a completed cleanup (see finishDictation) — then held resident.
 
         // Onboarding shows only for new users (first launch). Returning users
         // manage permissions from Settings; just resolve mic access up front so
@@ -259,8 +301,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Dictation Flow
 
     private func startDictation() {
-        // Ignore if already capturing, or already queued waiting for the model.
-        guard !appState.isRecording, !appState.isPreparing else { return }
+        // Ignore if already capturing, already queued waiting for the model, or
+        // still transcribing/cleaning the PREVIOUS utterance. `isProcessing` stays
+        // true for the whole async Task in `finishDictation` (routinely 1–3s with
+        // AI cleanup); starting a second recording during that window would let the
+        // first Task's teardown clobber the new session AND run two transcriptions
+        // on the shared speech model at once. An ignored press+release is a clean
+        // no-op — `finishDictation`'s `guard appState.isRecording` returns early.
+        guard !appState.isRecording, !appState.isPreparing, !appState.isProcessing else { return }
 
         switch transcriptionService.modelState {
         case .ready:
@@ -306,6 +354,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
+        // A new live session has begun: bump the generation so any still-running
+        // Task from a prior session can no longer touch this session's UI/state.
+        dictationGeneration += 1
+
         recordingStartTime = Date()
         playFeedback(start: true)
         armMaxDurationTimer { [weak self] in self?.finishDictation() }
@@ -334,14 +386,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         appState.stopRecording()
         playFeedback(start: false)
 
+        // Capture the session id NOW; the Task below may finish after a newer
+        // session has started (rapid re-dictation, or the max-duration timer
+        // firing mid-processing). Every UI/session-outcome mutation is routed
+        // through `ifCurrent` so a stale Task can't reset/hide a newer session's
+        // pill or overwrite its state. Data operations (insert, history, learned
+        // corrections) run unconditionally — the user's words must still land.
+        let generation = dictationGeneration
+
         Task { @MainActor [weak self] in
             guard let self else { return }
 
             // Discard near-silent clips (e.g. an instant key tap) so the model
             // can't hallucinate filler words from nothing.
             guard AudioRecorder.containsSpeech(samples) else {
-                self.appState.reset()
-                self.pillController.hide()
+                self.ifCurrent(generation) {
+                    self.appState.reset()
+                    self.pillController.hide()
+                }
                 return
             }
 
@@ -354,8 +416,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
                 // Nothing usable (too short, or discarded as low confidence).
                 guard !raw.isEmpty else {
-                    self.appState.reset()
-                    self.pillController.hide()
+                    self.ifCurrent(generation) {
+                        self.appState.reset()
+                        self.pillController.hide()
+                    }
                     return
                 }
 
@@ -364,10 +428,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // never run through the pipeline, never written to history.
                 if self.settings.voiceEditingEnabled,
                    let command = VoiceEditCommandParser.parse(raw) {
+                    // The edit itself acts on the user's real prior insertion —
+                    // run it regardless of session; only the cue/UI is gated.
                     if self.applyVoiceEdit(command) {
-                        self.playSuccessFeedback()
-                        self.appState.reset()
-                        self.pillController.hide()
+                        self.ifCurrent(generation) {
+                            self.playSuccessFeedback()
+                            self.appState.reset()
+                            self.pillController.hide()
+                        }
                         return
                     }
                 }
@@ -376,10 +444,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // scratchpad", "new note") runs as its own utterance — never inserted.
                 if self.settings.voiceControlEnabled,
                    let control = VoiceControlCommandParser.parse(raw, modes: self.modeStore.modes) {
+                    // The command is the user's real intent — apply it regardless
+                    // of session; only the cue/UI is gated.
                     self.applyVoiceControl(control)
-                    self.playSuccessFeedback()
-                    self.appState.reset()
-                    self.pillController.hide()
+                    self.ifCurrent(generation) {
+                        self.playSuccessFeedback()
+                        self.appState.reset()
+                        self.pillController.hide()
+                    }
                     return
                 }
 
@@ -389,13 +461,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 let submit = SubmitCommandParser.parse(raw)
                 let dictation = submit.text
                 if dictation.isEmpty {
-                    // The whole utterance was just the submit command.
+                    // The whole utterance was just the submit command. The Return
+                    // is a real user action (ungated); only the cue/UI is gated.
                     if submit.submit {
                         self.textInserter.sendReturn()
-                        self.playSuccessFeedback()
                     }
-                    self.appState.reset()
-                    self.pillController.hide()
+                    self.ifCurrent(generation) {
+                        if submit.submit { self.playSuccessFeedback() }
+                        self.appState.reset()
+                        self.pillController.hide()
+                    }
                     return
                 }
 
@@ -423,17 +498,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 let expander = ShortcutExpander(shortcuts: self.shortcutStore.shortcuts)
                 if let canned = expander.wholeUtteranceExpansion(for: corrected) {
                     if !canned.isEmpty {
+                        // Record to history BEFORE inserting: if `insert` throws
+                        // (accessibility revoked mid-session, event-synthesis
+                        // failure) the transcribed text is still preserved rather
+                        // than lost. Skip the LOG only (never the insert) when the
+                        // user opted out or a secure input field is focused, so a
+                        // password dictated into a secure field never lands in the
+                        // plaintext history.
+                        if self.settings.saveHistoryEnabled, !IsSecureEventInputEnabled() {
+                            self.history.add(DictationEntry(
+                                text: canned, durationSeconds: duration,
+                                appName: targetAppName, bundleID: bundleID))
+                        }
                         try self.textInserter.insert(text: canned, allowLeadingSpace: false)
-                        self.playSuccessFeedback()
-                        self.appState.lastDictationAt = Date()
-                        self.history.add(DictationEntry(
-                            text: canned, durationSeconds: duration,
-                            appName: targetAppName, bundleID: bundleID))
+                        self.ifCurrent(generation) {
+                            self.appState.lastDictationAt = Date()
+                            self.playSuccessFeedback()
+                        }
                     }
                     if submit.submit { self.textInserter.sendReturn() }
-                    self.appState.setTranscription(canned)
-                    self.appState.reset()
-                    self.pillController.hide()
+                    self.ifCurrent(generation) {
+                        self.appState.setTranscription(canned)
+                        self.appState.reset()
+                        self.pillController.hide()
+                    }
                     return
                 }
 
@@ -459,27 +547,75 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 let listsEnabled = mode.isAuto ? self.settings.numberedListsEnabled : mode.numberedLists
                 let relisted = listsEnabled ? SpokenListFormatter.format(text) : text
 
-                let finalText = relisted
+                // Refine to the destination field: a single-line or search field
+                // (Spotlight, a URL bar, a one-line form input) can't hold line
+                // breaks or paragraphs, so flatten dictated structure to one clean
+                // line before it lands. Advisory and off the model's path — one
+                // cheap AX read of the still-focused field at insert time — and
+                // gated behind the existing context-aware toggle. Multi-line and
+                // unknown fields keep the text unchanged.
+                let fieldKind = self.settings.contextAwareToneEnabled
+                    ? FocusedFieldClassifier.classifyFocusedField()
+                    : .unknown
+                let finalText = (fieldKind == .singleLine || fieldKind == .search)
+                    ? FocusedFieldClassifier.collapseToSingleLine(relisted)
+                    : relisted
 
                 if !finalText.isEmpty {
+                    // Record to history BEFORE inserting so a failed insert
+                    // (accessibility revoked mid-session, event-synthesis failure)
+                    // never loses the transcript. Skip the LOG only (never the
+                    // insert) when the user opted out or a secure input field is
+                    // focused, so a password dictated into a secure field never
+                    // lands in the plaintext history.
+                    if self.settings.saveHistoryEnabled, !IsSecureEventInputEnabled() {
+                        self.history.add(DictationEntry(
+                            text: finalText,
+                            durationSeconds: duration,
+                            appName: targetAppName,
+                            bundleID: bundleID
+                        ))
+                    }
                     try self.textInserter.insert(text: finalText)
-                    self.playSuccessFeedback()
-                    self.appState.lastDictationAt = Date()
-                    self.history.add(DictationEntry(
-                        text: finalText,
-                        durationSeconds: duration,
-                        appName: targetAppName,
-                        bundleID: bundleID
-                    ))
+                    self.ifCurrent(generation) {
+                        self.appState.lastDictationAt = Date()
+                        self.playSuccessFeedback()
+                    }
+                    // Learn from a "scratch that" + re-dictation: if the just-
+                    // rejected text is fresh, mine the diff and file each pair as
+                    // a *suggested* alias (never auto-applied).
+                    self.captureCorrectionIfPending(redictated: finalText)
                 }
                 if submit.submit { self.textInserter.sendReturn() }
-                self.appState.setTranscription(finalText)
+                self.ifCurrent(generation) { self.appState.setTranscription(finalText) }
             } catch {
-                self.appState.setError(error)
+                // Transcription or insertion failed. The transcript (if any) is
+                // already in history, so it's recoverable. Surface the failure
+                // audibly — success and failure were previously indistinguishable —
+                // and log the cause for triage. `setError` is retained though the
+                // pill doesn't render it yet (a visual error state is deferred).
+                Self.logger.error("Dictation failed: \(error.localizedDescription, privacy: .public)")
+                self.ifCurrent(generation) {
+                    self.playFailureFeedback()
+                    self.appState.setError(error)
+                }
             }
-            self.appState.reset()
-            self.pillController.hide()
+            self.ifCurrent(generation) {
+                self.appState.reset()
+                self.pillController.hide()
+            }
         }
+    }
+
+    /// Runs `work` only if `generation` is still the live dictation session.
+    /// Guards every UI/session-outcome mutation inside `finishDictation`'s async
+    /// Task, so a Task that completes after a newer session has begun can't reset
+    /// or overwrite the newer session's pill/state. Data operations (text
+    /// insertion, history, learned corrections) deliberately bypass this — the
+    /// user's spoken words must land even if the session they came from is stale.
+    private func ifCurrent(_ generation: Int, _ work: () -> Void) {
+        guard generation == dictationGeneration else { return }
+        work()
     }
 
     /// Applies a spoken edit to the previous insertion. Returns false (so the
@@ -488,7 +624,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func applyVoiceEdit(_ command: VoiceEditCommand) -> Bool {
         switch command {
         case .deleteLast:
-            return textInserter.deleteLastInserted()
+            // Capture the rejected text BEFORE deleting (the delete clears
+            // `lastInsertedText`). If the next dictation is a near-match, their
+            // diff becomes a suggested alias. Only arm it when the delete
+            // actually happened, so a no-op "scratch that" leaves no stale signal.
+            let rejected = textInserter.lastInsertedText
+            let deleted = textInserter.deleteLastInserted()
+            if deleted, let rejected, !rejected.isEmpty {
+                pendingCorrection = (rejected: rejected, at: Date())
+            } else {
+                pendingCorrection = nil
+            }
+            return deleted
         case .deleteLastWord:
             return textInserter.deleteLastWord()
         case .deleteLastSentence:
@@ -501,6 +648,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 return false
             }
             return textInserter.replaceLastInserted(with: rewritten)
+        }
+    }
+
+    /// If a "scratch that" left a fresh rejected phrase, diff it against the text
+    /// just re-dictated and file any tight substitution as a suggested dictionary
+    /// alias. Consumed one-shot: `pendingCorrection` is cleared whether or not a
+    /// pair was found, so a single scratch never seeds more than one re-dictation.
+    private func captureCorrectionIfPending(redictated: String) {
+        defer { pendingCorrection = nil }
+        guard let pending = pendingCorrection,
+              Date().timeIntervalSince(pending.at) <= Self.correctionPairingWindow else {
+            return
+        }
+        for pair in AliasMiner.correctionPairs(rejected: pending.rejected, redictated: redictated) {
+            dictionaryStore.addSuggestion(heard: pair.heard, corrected: pair.corrected)
         }
     }
 
@@ -589,6 +751,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         pendingDictationStart = false
         audioRecorder.stopRecording()
 
+        // End this session definitively: bump the generation so a transcription
+        // Task still in flight (Escape pressed after key-up handed off) can't
+        // reset/hide the pill or resurface state after this clean teardown.
+        dictationGeneration += 1
+
         appState.reset()
         pillController.hide()
     }
@@ -615,6 +782,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func playSuccessFeedback() {
         guard settings.audioFeedbackEnabled else { return }
         soundPlayer.play(.success, volume: settings.audioFeedbackVolume * 0.7)
+    }
+
+    /// Distinct cue when a dictation fails (transcription or insertion threw), so
+    /// a failure doesn't sound like the success confirmation. Same volume scaling
+    /// as success; callers gate it on the session still being current.
+    private func playFailureFeedback() {
+        guard settings.audioFeedbackEnabled else { return }
+        soundPlayer.play(.failure, volume: settings.audioFeedbackVolume * 0.7)
     }
 
     // MARK: - Model Setup Window
@@ -658,6 +833,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             setupWindow?.orderOut(nil)
             setupWindow = nil
         }
+    }
+
+    // MARK: - Vocabulary Boosting
+
+    /// (Re)configures speech-model vocabulary biasing from the current toggle and
+    /// dictionary. When boosting is off, configures with `[]`, which tears the
+    /// biasing state down. Runs only at audio-idle moments (warm-up, a toggle
+    /// change, or a debounced dictionary edit) — never on the dictation path,
+    /// because the CTC model load must not race the audio engine (see
+    /// `ParakeetTranscriptionService.configureVocabularyBoosting`).
+    @MainActor
+    private func reconfigureVocabularyBoosting() async {
+        let terms = settings.vocabularyBoostingEnabled ? dictionaryStore.terms : []
+        await transcriptionService.configureVocabularyBoosting(terms: terms)
     }
 
     // MARK: - Menu Bar
@@ -1013,6 +1202,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.markDictionaryTermAddedIfNeeded(terms)
             }
             .store(in: &cancellables)
+
+        // Rebuild the speech-model biasing vocabulary when the dictionary changes.
+        // Debounced ~1s so rapid edits (typing several terms, editing aliases)
+        // don't thrash the CTC model reconfiguration. dropFirst: the launch-time
+        // warm-up already applied the initial configuration.
+        dictionaryStore.$terms
+            .dropFirst()
+            .debounce(for: .seconds(1), scheduler: DispatchQueue.main)
+            .sink { [weak self] _ in
+                Task { @MainActor [weak self] in await self?.reconfigureVocabularyBoosting() }
+            }
+            .store(in: &cancellables)
+
+        // Enable/disable speech-model vocabulary biasing when the toggle flips.
+        // Turning it off reconfigures with an empty list, tearing the state down.
+        // dropFirst: the launch-time warm-up already applied the initial value.
+        settings.$vocabularyBoostingEnabled
+            .dropFirst()
+            .removeDuplicates()
+            .sink { [weak self] _ in
+                Task { @MainActor [weak self] in await self?.reconfigureVocabularyBoosting() }
+            }
+            .store(in: &cancellables)
         settings.$activeModeID
             .removeDuplicates()
             .sink { [weak self] id in
@@ -1054,6 +1266,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .dropFirst()
             .removeDuplicates()
             .sink { [weak self] _ in self?.cleanupCoordinator.prewarm() }
+            .store(in: &cancellables)
+
+        // Keep the history store's retention window in sync when the user changes
+        // it, so newly-expired entries prune on the next add/load. dropFirst: the
+        // launch code above already applied the initial value.
+        settings.$historyRetentionDays
+            .dropFirst()
+            .removeDuplicates()
+            .sink { [weak self] days in self?.history.retentionDays = days }
             .store(in: &cancellables)
     }
 

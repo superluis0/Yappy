@@ -155,4 +155,16 @@ enum TextEditMath {
         guard let lastNewline = chars.lastIndex(of: "\n") else { return chars.count }
         return chars.count - lastNewline
     }
+
+    /// The character offsets to select when reaching *back* over the last
+    /// insertion: `length` characters ending at the caret sitting at `caretLocation`.
+    /// Returns `nil` when the span would start before the field (a negative
+    /// origin), which signals a stale/untrustworthy caret — the caller must not
+    /// select (and delete) the wrong span. Pure so the arithmetic is unit-tested
+    /// independently of the accessibility set-selection call that consumes it.
+    /// - Returns: `(location, length)` for the selection, or `nil` if invalid.
+    static func selectionRange(caretLocation: Int, length: Int) -> (location: Int, length: Int)? {
+        guard length > 0, caretLocation >= length else { return nil }
+        return (caretLocation - length, length)
+    }
 }

@@ -34,12 +34,20 @@ enum Constants {
     /// Safety cap on a single recording.
     static let maxRecordingDuration: TimeInterval = 300.0
 
-    /// A clip must clear all of these to count as speech; below them it's
+    /// A clip must clear both of these to count as speech; below them it's
     /// treated as silence and discarded, so a near-instant key tap (or a stray
     /// click) can't make the model hallucinate filler words ("Mm-hmm", "Okay").
     static let speechRMSFloor: Float = 0.005      // ≈ -46 dBFS average level
     static let speechVoiceFloor: Float = 0.02     // per-sample amplitude counted as "voiced"
-    static let speechVoicedFraction: Float = 0.02 // ≥ 2% of the clip must be voiced (rejects transients)
+
+    /// Minimum *duration* of voiced samples for a clip to count as speech,
+    /// measured as an absolute floor rather than a fraction of the clip. A
+    /// fraction punishes the long-hold-then-short-answer pattern that
+    /// push-to-talk encourages: hold the key thinking for 30 s, then say
+    /// "yes, ship it" (~0.5 s of speech), and a fraction gate would classify
+    /// the whole clip as silence and drop it. ~0.15 s of real voiced content is
+    /// enough to be a genuine word while still rejecting a brief click.
+    static let speechVoicedMinSeconds: Double = 0.15
 
     /// ASR results below this confidence are discarded as probable noise
     /// decodes. Clean speech typically scores well above 0.7, and the energy

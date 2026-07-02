@@ -8,18 +8,24 @@ import XCTest
 
 final class DictionaryStoreTests: XCTestCase {
 
+    var testDir: URL!
     var fileURL: URL!
     var store: DictionaryStore!
 
     override func setUp() {
         super.setUp()
-        fileURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("yappy-dictionary-tests-\(UUID().uuidString).json")
+        // A per-test directory so the derived suggestions file (which sits
+        // beside the terms file) is isolated too — it doesn't carry the test's
+        // UUID in its own name.
+        testDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("yappy-dictionary-tests-\(UUID().uuidString)", isDirectory: true)
+        try? FileManager.default.createDirectory(at: testDir, withIntermediateDirectories: true)
+        fileURL = testDir.appendingPathComponent("dictionary.json")
         store = DictionaryStore(fileURL: fileURL, seedsBuiltIns: false)
     }
 
     override func tearDown() {
-        try? FileManager.default.removeItem(at: fileURL)
+        try? FileManager.default.removeItem(at: testDir)
         store = nil
         super.tearDown()
     }
@@ -129,6 +135,131 @@ final class DictionaryStoreTests: XCTestCase {
         let supabase = store.terms.filter { $0.text.caseInsensitiveCompare("Supabase") == .orderedSame }
         XCTAssertEqual(supabase.count, 1, "Seeding must not duplicate a term the user already has")
         XCTAssertEqual(supabase.first?.aliases, ["my custom alias"], "User's own term is preserved")
+    }
+
+    // MARK: - Vocabulary-boosting term builder
+
+    func testBuildBoostTermsIsEmptyForNoInput() {
+        XCTAssertTrue(ParakeetTranscriptionService.buildBoostTerms(from: []).isEmpty)
+    }
+
+    func testBuildBoostTermsDropsShortTerms() {
+        let terms = [
+            DictionaryTerm(text: "Go"),        // 2 chars — dropped
+            DictionaryTerm(text: "  R  "),     // 1 char after trim — dropped
+            DictionaryTerm(text: "Vim"),       // 3 chars — kept
+            DictionaryTerm(text: "Kubernetes"), // kept
+        ]
+        let built = ParakeetTranscriptionService.buildBoostTerms(from: terms)
+        XCTAssertEqual(built.map(\.text), ["Vim", "Kubernetes"])
+    }
+
+    func testBuildBoostTermsCapsAtMaxKeepingDictionaryOrder() {
+        let count = ParakeetTranscriptionService.vocabularyMaxTermCount + 25
+        let terms = (0..<count).map { DictionaryTerm(text: "term\($0)") }
+        let built = ParakeetTranscriptionService.buildBoostTerms(from: terms)
+
+        XCTAssertEqual(built.count, ParakeetTranscriptionService.vocabularyMaxTermCount)
+        // The first N in dictionary order are kept.
+        XCTAssertEqual(built.first?.text, "term0")
+        XCTAssertEqual(built.last?.text, "term\(ParakeetTranscriptionService.vocabularyMaxTermCount - 1)")
+    }
+
+    func testBuildBoostTermsFoldsManualAndLearnedAliases() {
+        let term = DictionaryTerm(
+            text: "Luis",
+            aliases: ["Lewis", "Louie"],
+            learnedAliases: ["Louise"]
+        )
+        let built = ParakeetTranscriptionService.buildBoostTerms(from: [term])
+        XCTAssertEqual(built.count, 1)
+        XCTAssertEqual(built.first?.text, "Luis")
+        // Mirrors DictionaryTerm.allAliases: manual first, learned appended.
+        XCTAssertEqual(built.first?.aliases, ["Lewis", "Louie", "Louise"])
+    }
+
+    // MARK: - Alias suggestions (learn-from-corrections)
+
+    func testAddSuggestionDedupesIdenticalPending() {
+        store.addSuggestion(heard: "harkonen", corrected: "Harkonnen")
+        store.addSuggestion(heard: "Harkonen", corrected: "harkonnen") // case-insensitive dup
+        XCTAssertEqual(store.suggestions.count, 1)
+        XCTAssertEqual(store.suggestions.first?.heard, "harkonen")
+        XCTAssertEqual(store.suggestions.first?.corrected, "Harkonnen")
+    }
+
+    func testAddSuggestionSkipsAlreadyKnownAlias() {
+        store.add("Luis")
+        store.addLearnedAliases(["Lewis"], to: store.terms[0])
+        store.addSuggestion(heard: "lewis", corrected: "luis") // already known
+        XCTAssertTrue(store.suggestions.isEmpty)
+    }
+
+    func testAddSuggestionRespectsDismissedKeys() {
+        store.addSuggestion(heard: "harkonen", corrected: "Harkonnen")
+        let suggestion = store.suggestions[0]
+        store.dismissSuggestion(suggestion)
+        XCTAssertTrue(store.suggestions.isEmpty)
+
+        // Same pair should not come back after being dismissed.
+        store.addSuggestion(heard: "Harkonen", corrected: "harkonnen")
+        XCTAssertTrue(store.suggestions.isEmpty)
+    }
+
+    func testAddSuggestionCapsAtTenDroppingOldest() {
+        for i in 0..<13 {
+            store.addSuggestion(heard: "heard\(i)", corrected: "corrected\(i)")
+        }
+        XCTAssertEqual(store.suggestions.count, 10)
+        // The three oldest (0,1,2) were dropped; 3...12 remain in order.
+        XCTAssertEqual(store.suggestions.first?.heard, "heard3")
+        XCTAssertEqual(store.suggestions.last?.heard, "heard12")
+    }
+
+    func testAcceptSuggestionAddsLearnedAliasToExistingTerm() {
+        store.add("Luis")
+        store.addSuggestion(heard: "Lewis", corrected: "luis") // matches case-insensitively
+        let suggestion = store.suggestions[0]
+        store.acceptSuggestion(suggestion)
+
+        XCTAssertEqual(store.terms.count, 1)
+        XCTAssertEqual(store.terms[0].learnedAliases, ["Lewis"])
+        XCTAssertTrue(store.suggestions.isEmpty)
+    }
+
+    func testAcceptSuggestionCreatesTermWhenMissing() {
+        store.addSuggestion(heard: "harkonen", corrected: "Harkonnen")
+        let suggestion = store.suggestions[0]
+        store.acceptSuggestion(suggestion)
+
+        XCTAssertEqual(store.terms.count, 1)
+        XCTAssertEqual(store.terms[0].text, "Harkonnen")
+        XCTAssertEqual(store.terms[0].learnedAliases, ["harkonen"])
+        XCTAssertTrue(store.suggestions.isEmpty)
+    }
+
+    func testDismissSuggestionRemovesAndPreventsReAdd() {
+        store.addSuggestion(heard: "cooper netties", corrected: "kubernetes")
+        XCTAssertEqual(store.suggestions.count, 1)
+        store.dismissSuggestion(store.suggestions[0])
+        XCTAssertTrue(store.suggestions.isEmpty)
+
+        store.addSuggestion(heard: "cooper netties", corrected: "kubernetes")
+        XCTAssertTrue(store.suggestions.isEmpty, "A dismissed pair must not be re-suggested")
+    }
+
+    func testSuggestionsPersistAcrossReload() {
+        store.addSuggestion(heard: "harkonen", corrected: "Harkonnen")
+
+        let deadline = Date().addingTimeInterval(2)
+        var reloaded = DictionaryStore(fileURL: fileURL, seedsBuiltIns: false)
+        while reloaded.suggestions.isEmpty, Date() < deadline {
+            usleep(50_000)
+            reloaded = DictionaryStore(fileURL: fileURL, seedsBuiltIns: false)
+        }
+        XCTAssertEqual(reloaded.suggestions.count, 1)
+        XCTAssertEqual(reloaded.suggestions.first?.heard, "harkonen")
+        XCTAssertEqual(reloaded.suggestions.first?.corrected, "Harkonnen")
     }
 
     // MARK: - Legacy migration

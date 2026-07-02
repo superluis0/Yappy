@@ -41,9 +41,12 @@ final class SettingsTests: XCTestCase {
         XCTAssertTrue(settings.appModeOverrides.isEmpty)
         XCTAssertTrue(settings.toneOverrides.isEmpty)
         XCTAssertTrue(settings.customDictionaryEnabled, "On by default so built-in dev terms apply out of the box")
+        XCTAssertFalse(settings.vocabularyBoostingEnabled, "Speech-model boosting is opt-in (extra download + inference pass)")
         XCTAssertFalse(settings.onboardingComplete)
         XCTAssertTrue(settings.autoUpdateChecksEnabled, "Automatic update checks should be on by default")
         XCTAssertEqual(settings.transcriptionModel, .parakeet, "Parakeet (English) is the default STT model")
+        XCTAssertTrue(settings.saveHistoryEnabled, "Dictation history is saved by default")
+        XCTAssertEqual(settings.historyRetentionDays, 0, "History is kept forever by default (0 days)")
     }
 
     func testAutoUpdateChecksEnabledPersists() {
@@ -128,6 +131,39 @@ final class SettingsTests: XCTestCase {
         XCTAssertFalse(reloaded.fillerRemovalEnabled)
         XCTAssertFalse(reloaded.spokenCommandsEnabled)
         XCTAssertFalse(reloaded.voiceEditingEnabled)
+    }
+
+    func testVocabularyBoostingEnabledPersists() {
+        settings.vocabularyBoostingEnabled = true
+        let reloaded = Settings(defaults: defaults)
+        XCTAssertTrue(reloaded.vocabularyBoostingEnabled, "A chosen boosting setting survives relaunch on the same suite")
+    }
+
+    func testVocabularyBoostingEnabledResets() {
+        settings.vocabularyBoostingEnabled = true
+        settings.reset()
+        XCTAssertFalse(settings.vocabularyBoostingEnabled, "Reset returns speech-model boosting to off")
+    }
+
+    // MARK: - History & privacy
+
+    func testHistoryPrivacySettingsPersist() {
+        settings.saveHistoryEnabled = false
+        settings.historyRetentionDays = 30
+
+        let reloaded = Settings(defaults: defaults)
+        XCTAssertFalse(reloaded.saveHistoryEnabled, "Opting out of history survives relaunch")
+        XCTAssertEqual(reloaded.historyRetentionDays, 30, "Retention window survives relaunch")
+    }
+
+    func testHistoryPrivacySettingsReset() {
+        settings.saveHistoryEnabled = false
+        settings.historyRetentionDays = 90
+
+        settings.reset()
+
+        XCTAssertTrue(settings.saveHistoryEnabled, "Reset re-enables saving history")
+        XCTAssertEqual(settings.historyRetentionDays, 0, "Reset returns retention to keep-forever")
     }
 
     func testTranscriptCleanupTogglesReset() {

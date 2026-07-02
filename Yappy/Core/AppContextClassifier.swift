@@ -3,6 +3,7 @@
 //  Yappy
 //
 
+import ApplicationServices
 import Foundation
 
 /// Broad category of the app receiving dictation, used to pick a default tone.
@@ -102,5 +103,67 @@ enum AppContextClassifier {
     static func category(forBundleID bundleID: String?) -> AppCategory {
         guard let bundleID else { return .other }
         return map[bundleID] ?? .other
+    }
+}
+
+/// The kind of text field currently holding the caret. Used to refine
+/// formatting: a single-line or search field can't hold line breaks or
+/// paragraphs, so dictated structure is flattened before it's inserted.
+enum FocusedFieldKind {
+    case singleLine   // AXTextField — a one-line input (URL bar, form field)
+    case multiLine    // AXTextArea — a multi-line editor or composer
+    case search       // AXSearchField subrole — Spotlight, a search box
+    case unknown      // couldn't determine (no focus, opaque app, not trusted)
+}
+
+/// Reads the accessibility role/subrole of the focused element to classify the
+/// kind of field receiving dictation. Advisory only: any failure yields
+/// `.unknown` so it can never block or misdirect dictation.
+enum FocusedFieldClassifier {
+    /// Pure mapping from an AX role/subrole to a field kind, factored out so it's
+    /// unit-testable without the live accessibility API. Subrole wins over role
+    /// (a search field reports role `AXTextField` plus subrole `AXSearchField`).
+    static func kind(role: String?, subrole: String?) -> FocusedFieldKind {
+        if subrole == kAXSearchFieldSubrole as String { return .search }
+        if role == kAXTextAreaRole as String { return .multiLine }
+        if role == kAXTextFieldRole as String { return .singleLine }
+        return .unknown
+    }
+
+    /// Reads the system-wide focused element's role + subrole and maps them to a
+    /// `FocusedFieldKind`. A single cheap AX round-trip; resilient by design —
+    /// returns `.unknown` on any failure (no focus, missing attribute, not
+    /// trusted) rather than throwing or blocking. Mirrors the focused-element
+    /// read in `TextInserter.precedingContext()`.
+    static func classifyFocusedField() -> FocusedFieldKind {
+        let system = AXUIElementCreateSystemWide()
+        var focusedObj: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(
+                system, kAXFocusedUIElementAttribute as CFString, &focusedObj) == .success,
+              let focused = focusedObj else { return .unknown }
+        let element = focused as! AXUIElement
+
+        return kind(role: copyStringAttribute(element, kAXRoleAttribute),
+                    subrole: copyStringAttribute(element, kAXSubroleAttribute))
+    }
+
+    /// Copies a string-valued AX attribute, returning nil if it's absent or not a
+    /// string (subrole in particular is optional on many elements).
+    private static func copyStringAttribute(_ element: AXUIElement, _ attribute: String) -> String? {
+        var valueObj: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, attribute as CFString, &valueObj) == .success else {
+            return nil
+        }
+        return valueObj as? String
+    }
+
+    /// Collapses text to a single clean line for a single-line/search field:
+    /// newlines become spaces, runs of whitespace collapse to one space, and the
+    /// result is trimmed. Pure and idempotent so it's unit-testable and safe to
+    /// re-apply.
+    static func collapseToSingleLine(_ text: String) -> String {
+        text
+            .split(whereSeparator: { $0.isWhitespace || $0.isNewline })
+            .joined(separator: " ")
     }
 }

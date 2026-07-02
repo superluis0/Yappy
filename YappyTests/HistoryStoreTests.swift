@@ -70,6 +70,67 @@ final class HistoryStoreTests: XCTestCase {
         XCTAssertTrue(store.entries.isEmpty)
     }
 
+    // MARK: - Retention
+
+    func testApplyingRetentionKeepsRecentDropsOld() {
+        let now = Date()
+        let recent = DictationEntry(date: now.addingTimeInterval(-3 * 86_400), text: "recent", durationSeconds: 1)
+        let old = DictationEntry(date: now.addingTimeInterval(-40 * 86_400), text: "old", durationSeconds: 1)
+
+        let kept = HistoryStore.applyingRetention(to: [recent, old], days: 30, now: now)
+
+        XCTAssertEqual(kept.map(\.text), ["recent"], "Only entries within the window survive")
+    }
+
+    func testApplyingRetentionForeverKeepsAll() {
+        let now = Date()
+        let entries = [
+            DictationEntry(date: now.addingTimeInterval(-1000 * 86_400), text: "ancient", durationSeconds: 1),
+            DictationEntry(date: now, text: "fresh", durationSeconds: 1),
+        ]
+
+        // days <= 0 means keep forever → input returned unchanged.
+        XCTAssertEqual(HistoryStore.applyingRetention(to: entries, days: 0, now: now).count, 2)
+        XCTAssertEqual(HistoryStore.applyingRetention(to: entries, days: -5, now: now).count, 2)
+    }
+
+    func testApplyingRetentionBoundaryIsInclusive() {
+        let now = Date()
+        // Exactly at the cutoff (7 days ago) should be kept (>=), just past it dropped.
+        let atCutoff = DictationEntry(date: now.addingTimeInterval(-7 * 86_400), text: "edge", durationSeconds: 1)
+        let justPast = DictationEntry(date: now.addingTimeInterval(-7 * 86_400 - 60), text: "gone", durationSeconds: 1)
+
+        let kept = HistoryStore.applyingRetention(to: [atCutoff, justPast], days: 7, now: now)
+
+        XCTAssertEqual(kept.map(\.text), ["edge"])
+    }
+
+    func testAddPrunesEntriesOutsideRetentionWindow() {
+        store.retentionDays = 30
+        store.add(DictationEntry(date: Date().addingTimeInterval(-40 * 86_400), text: "stale", durationSeconds: 1))
+        store.add(DictationEntry(text: "fresh", durationSeconds: 1))
+
+        XCTAssertEqual(store.entries.map(\.text), ["fresh"], "add() drops entries older than retentionDays")
+    }
+
+    func testAddPersistsPrunedSet() throws {
+        // With a retention window, add() should both prune in memory AND write the
+        // pruned set to disk, so a fresh reload never resurrects stale entries.
+        store.retentionDays = 30
+        store.add(DictationEntry(date: Date().addingTimeInterval(-40 * 86_400), text: "stale", durationSeconds: 1))
+        store.add(DictationEntry(text: "fresh", durationSeconds: 1))
+
+        // Writes are async on a utility queue; allow them to flush.
+        let deadline = Date().addingTimeInterval(2)
+        var reloaded = HistoryStore(fileURL: fileURL)
+        while reloaded.entries.isEmpty, Date() < deadline {
+            usleep(50_000)
+            reloaded = HistoryStore(fileURL: fileURL)
+        }
+
+        XCTAssertEqual(reloaded.entries.map(\.text), ["fresh"], "Persisted history excludes pruned entries")
+    }
+
     // MARK: - Time saved
 
     func testTimeSavedMath() {

@@ -77,6 +77,76 @@ enum AliasMiner {
         return candidate
     }
 
+    // MARK: - Corrections (learn-from-"scratch that")
+
+    /// Diffs a rejected dictation against the phrase the user immediately
+    /// re-dictated and, when the two differ only in a tight middle run of words,
+    /// returns that (heard → corrected) substitution as a candidate alias pair.
+    ///
+    /// The signal: after "scratch that" the user re-says nearly the same phrase,
+    /// so the model *heard* one thing and the user *meant* another. We keep this
+    /// as conservative as the rest of the miner — a wrong alias feeds the
+    /// dictionary and would degrade accuracy — so we only accept a substitution
+    /// bracketed by matching context and reject anything that looks like an
+    /// unrelated re-dictation.
+    ///
+    /// Approach: tokenize both, strip the longest common prefix and suffix, and
+    /// take the middle remainders as (heard, corrected). We require:
+    /// - both remainders non-empty (a pure insertion/deletion isn't a
+    ///   spelling correction) and each ≤ `maxWords`,
+    /// - at least 2 words of shared context (prefix + suffix) so re-dictating
+    ///   something unrelated yields nothing,
+    /// - the two normalized runs actually differ, and their lengths are
+    ///   plausibly related (reuses `plausibleLength`).
+    ///
+    /// Returns at most one pair (the single middle diff) — deliberately narrow.
+    static func correctionPairs(rejected: String, redictated: String) -> [(heard: String, corrected: String)] {
+        let heardWords = words(rejected)
+        let correctedWords = words(redictated)
+        guard !heardWords.isEmpty, !correctedWords.isEmpty else { return [] }
+        // Identical utterances carry no correction.
+        guard heardWords != correctedWords else { return [] }
+
+        // Strip the longest common prefix.
+        var prefixLength = 0
+        let maxPrefix = min(heardWords.count, correctedWords.count)
+        while prefixLength < maxPrefix, heardWords[prefixLength] == correctedWords[prefixLength] {
+            prefixLength += 1
+        }
+
+        // Strip the longest common suffix, without overlapping the prefix.
+        var suffixLength = 0
+        let maxSuffix = min(heardWords.count, correctedWords.count) - prefixLength
+        while suffixLength < maxSuffix,
+              heardWords[heardWords.count - 1 - suffixLength] == correctedWords[correctedWords.count - 1 - suffixLength] {
+            suffixLength += 1
+        }
+
+        // Require real shared context on both sides combined — an unrelated
+        // re-dictation shares little or nothing.
+        guard prefixLength + suffixLength >= 2 else { return [] }
+
+        let heardRun = Array(heardWords[prefixLength ..< (heardWords.count - suffixLength)])
+        let correctedRun = Array(correctedWords[prefixLength ..< (correctedWords.count - suffixLength)])
+
+        // Both sides must be a tight substitution: non-empty (not a pure
+        // insertion/deletion) and short (a name mishearing, not a new clause).
+        guard !heardRun.isEmpty, !correctedRun.isEmpty,
+              heardRun.count <= maxWords, correctedRun.count <= maxWords else {
+            return []
+        }
+
+        let heard = heardRun.joined(separator: " ")
+        let corrected = correctedRun.joined(separator: " ")
+        // The runs must genuinely differ once normalized (so "Luis" vs "luis."
+        // isn't mined) and be plausibly the same word length.
+        guard normalize(heard) != normalize(corrected),
+              plausibleLength(heard, vs: corrected) else {
+            return []
+        }
+        return [(heard: heard, corrected: corrected)]
+    }
+
     // MARK: - Helpers
 
     private static func normalize(_ text: String) -> String {

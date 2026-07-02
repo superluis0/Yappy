@@ -43,6 +43,30 @@ final class TextInserter {
     /// Guard against synthesizing an unreasonable number of selection keystrokes.
     private let maxReselectableLength = 1000
 
+    /// Re-entrancy guard for voice edits. A voice edit posts a burst of key
+    /// events with tiny inter-key sleeps; a second edit that interleaved its
+    /// keystrokes with an in-flight one would extend or delete the wrong span.
+    /// Everything here runs synchronously on the main thread, so the only way a
+    /// second edit arrives mid-flight is re-entrantly (e.g. a queued hotkey
+    /// callback firing during a sleep) — this flag makes that a safe no-op.
+    private var isVoiceEditInFlight = false
+
+    /// The pending clipboard restore for the most recent paste. Held so a new
+    /// paste can CANCEL it before starting: otherwise an overlapping insertion's
+    /// restore could fire mid-way through and stamp Yappy's own payload (or a
+    /// stale snapshot) over the user's real clipboard.
+    private var pendingClipboardRestore: DispatchWorkItem?
+
+    /// Opaque apps (Electron, many web views) don't expose their text to the
+    /// accessibility API, so we can't confirm the paste landed. Give a slow
+    /// consumer (busy app, machine under load) a generous window before
+    /// restoring, rather than the old fixed 0.3 s that races the paste.
+    private let opaqueRestoreDelay: TimeInterval = 1.0
+    /// For AX-capable apps, poll for the pasted text to appear before restoring.
+    /// Bounded so we always restore eventually even if the read never confirms.
+    private let restorePollInterval: TimeInterval = 0.05
+    private let maxRestorePolls = 24   // ~1.2 s ceiling at 0.05 s spacing
+
     // MARK: - Public
 
     /// - Parameter allowLeadingSpace: when false, never prepends a separating
@@ -83,6 +107,12 @@ final class TextInserter {
     /// clipboard afterward (only if nothing else wrote to it in the meantime).
     private func pasteText(_ payload: String) throws {
         let pasteboard = NSPasteboard.general
+
+        // Cancel any restore still pending from a previous paste before we
+        // overwrite the pasteboard: otherwise its timer could fire against THIS
+        // paste's payload and stamp a stale snapshot over the user's clipboard.
+        cancelPendingClipboardRestore()
+
         let snapshot = snapshotClipboard(pasteboard)
 
         pasteboard.clearContents()
@@ -91,10 +121,15 @@ final class TextInserter {
 
         try postCommandV()
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
-            guard pasteboard.changeCount == ourChangeCount else { return }
-            self?.restoreClipboard(snapshot, to: pasteboard)
-        }
+        scheduleClipboardRestore(snapshot,
+                                 to: pasteboard,
+                                 payload: payload,
+                                 ourChangeCount: ourChangeCount)
+    }
+
+    private func cancelPendingClipboardRestore() {
+        pendingClipboardRestore?.cancel()
+        pendingClipboardRestore = nil
     }
 
     // MARK: - Voice Editing (act on the last insertion)
@@ -142,10 +177,14 @@ final class TextInserter {
         return true
     }
 
-    /// Verifies the caret is still right after our last insertion, then extends
-    /// the selection left by `length` characters. Degrades to false rather than
-    /// risk deleting the wrong text.
+    /// Verifies the caret is still right after our last insertion, then selects
+    /// the last `length` characters. Prefers a single accessibility set-selection
+    /// call (instant, no keystrokes); falls back to synthesizing Shift+Left for
+    /// apps that don't expose a settable selection range. Degrades to false
+    /// rather than risk selecting — and then deleting — the wrong text.
     private func selectBackOverLastInsertion(length: Int) -> Bool {
+        // Trust checks first — cheap, and they gate BOTH the fast path and the
+        // fallback so we never act on a stale caret regardless of which we use.
         guard AXIsProcessTrusted(), length > 0, length <= maxReselectableLength else { return false }
         guard let when = lastInsertionDate,
               Date().timeIntervalSince(when) < fallbackValidityWindow,
@@ -160,8 +199,61 @@ final class TextInserter {
             break                                          // opaque app — trust the time window
         }
 
+        // Re-entrancy guard: a burst of Shift+Left events (fallback) must not
+        // interleave with another in-flight edit. Held across both paths so the
+        // state stays consistent even when the fast path succeeds.
+        guard !isVoiceEditInFlight else { return false }
+        isVoiceEditInFlight = true
+        defer { isVoiceEditInFlight = false }
+
+        // Fast path: one IPC round-trip instead of `length` keystrokes + sleeps.
+        if setSelectionViaAccessibility(length: length) { return true }
+
+        // Fallback for opaque apps that don't allow a settable selection range.
         postShiftLeftArrow(times: length)
         return true
+    }
+
+    /// Selects the `length` characters ending at the current caret by SETTING the
+    /// focused element's `kAXSelectedTextRange`, then reading it back to confirm
+    /// the app honored the request. This replaces `length` synthetic Shift+Left
+    /// keystrokes (each with an inter-key sleep) with a single accessibility call.
+    ///
+    /// Returns false — so the caller falls back to keystrokes — whenever the app
+    /// doesn't expose a caret range, rejects the set, or reports back a different
+    /// range than requested (Electron/web views typically fall into this bucket).
+    /// The read-back is the safety net: we only report success on an exact match,
+    /// so a partially-honored or ignored set never leaves us thinking a delete
+    /// will land on the right span.
+    private func setSelectionViaAccessibility(length: Int) -> Bool {
+        guard let focus = focusedCaret() else { return false }
+        guard let target = TextEditMath.selectionRange(caretLocation: focus.caret.location, length: length) else {
+            return false
+        }
+
+        var desired = CFRange(location: target.location, length: target.length)
+        guard let axDesired = AXValueCreate(.cfRange, &desired) else { return false }
+        guard AXUIElementSetAttributeValue(
+            focus.element,
+            kAXSelectedTextRangeAttribute as CFString,
+            axDesired
+        ) == .success else { return false }
+
+        // Verify: read the selection back and require an exact match. Without
+        // this an app that silently ignores or clamps the set would leave the
+        // caret where it was — and the subsequent delete would hit the wrong text.
+        var readbackObj: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(
+                focus.element,
+                kAXSelectedTextRangeAttribute as CFString,
+                &readbackObj
+              ) == .success,
+              let readbackValue = readbackObj,
+              CFGetTypeID(readbackValue) == AXValueGetTypeID() else { return false }
+        var actual = CFRange()
+        guard AXValueGetValue(readbackValue as! AXValue, .cfRange, &actual) else { return false }
+
+        return actual.location == target.location && actual.length == target.length
     }
 
     // MARK: - Leading-space Decision
@@ -204,32 +296,51 @@ final class TextInserter {
     }
 
     private func precedingContext() -> PrecedingContext {
+        guard let focus = focusedCaret() else { return .unknown }
+        guard focus.caret.location > 0 else { return .startOfField }
+
+        let range = CFRange(location: focus.caret.location - 1, length: 1)
+        guard let string = string(in: range, of: focus.element), let last = string.last else {
+            return .unknown
+        }
+        return .character(last)
+    }
+
+    /// The system-wide focused element and the current caret/selection range
+    /// within it. Returns nil for apps that don't expose a selected-text range
+    /// to the accessibility API (opaque apps), or when nothing is focused.
+    /// The single place the focused-element + `kAXSelectedTextRange` read lives,
+    /// shared by the leading-space decision, the set-selection fast path, and the
+    /// post-paste restore verification.
+    private func focusedCaret() -> (element: AXUIElement, caret: CFRange)? {
         let system = AXUIElementCreateSystemWide()
         var focusedObj: CFTypeRef?
         guard AXUIElementCopyAttributeValue(system, kAXFocusedUIElementAttribute as CFString, &focusedObj) == .success,
-              let focused = focusedObj else { return .unknown }
+              let focused = focusedObj else { return nil }
         let element = focused as! AXUIElement
 
         var rangeObj: CFTypeRef?
         guard AXUIElementCopyAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, &rangeObj) == .success,
-              let rangeValue = rangeObj, CFGetTypeID(rangeValue) == AXValueGetTypeID() else { return .unknown }
+              let rangeValue = rangeObj, CFGetTypeID(rangeValue) == AXValueGetTypeID() else { return nil }
         var caret = CFRange()
-        guard AXValueGetValue(rangeValue as! AXValue, .cfRange, &caret) else { return .unknown }
-        guard caret.location > 0 else { return .startOfField }
+        guard AXValueGetValue(rangeValue as! AXValue, .cfRange, &caret) else { return nil }
+        return (element, caret)
+    }
 
-        var charRange = CFRange(location: caret.location - 1, length: 1)
-        guard let axCharRange = AXValueCreate(.cfRange, &charRange) else { return .unknown }
+    /// Reads the substring occupying `range` in `element` via the parameterized
+    /// `kAXStringForRange` attribute. Returns nil if the app can't service it.
+    private func string(in range: CFRange, of element: AXUIElement) -> String? {
+        var mutableRange = range
+        guard let axRange = AXValueCreate(.cfRange, &mutableRange) else { return nil }
         var substringObj: CFTypeRef?
         let status = AXUIElementCopyParameterizedAttributeValue(
             element,
             kAXStringForRangeParameterizedAttribute as CFString,
-            axCharRange,
+            axRange,
             &substringObj
         )
-        guard status == .success, let string = substringObj as? String, let last = string.last else {
-            return .unknown
-        }
-        return .character(last)
+        guard status == .success, let string = substringObj as? String else { return nil }
+        return string
     }
 
     // MARK: - Paste Keystroke
@@ -282,6 +393,102 @@ final class TextInserter {
             return types
         }
         return ClipboardSnapshot(items: items)
+    }
+
+    /// Whether the frontmost app has finished consuming the synthetic paste.
+    private enum PasteConfirmation {
+        case confirmed   // the pasted text is now present at the caret
+        case notYet      // AX-capable app, but the text hasn't landed yet
+        case opaque      // app doesn't expose its text — can't confirm via AX
+    }
+
+    /// Restores the user's clipboard once the paste has been consumed, rather
+    /// than after a fixed delay that races slow consumers. For AX-capable apps we
+    /// poll (cheaply) until the pasted text appears at the caret, then restore
+    /// immediately; opaque apps get a single generous delay. The `changeCount`
+    /// guard is re-checked on every tick so we never clobber a clipboard the user
+    /// changed themselves. Non-blocking: each tick is a separate main-queue work
+    /// item, so the pill animation and hotkeys keep running while we wait.
+    private func scheduleClipboardRestore(_ snapshot: ClipboardSnapshot,
+                                          to pasteboard: NSPasteboard,
+                                          payload: String,
+                                          ourChangeCount: Int) {
+        scheduleRestoreTick(snapshot,
+                            to: pasteboard,
+                            payload: payload,
+                            ourChangeCount: ourChangeCount,
+                            attempt: 0)
+    }
+
+    private func scheduleRestoreTick(_ snapshot: ClipboardSnapshot,
+                                     to pasteboard: NSPasteboard,
+                                     payload: String,
+                                     ourChangeCount: Int,
+                                     attempt: Int) {
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            // The user (or a newer paste's restore) put something else on the
+            // clipboard — leave it alone.
+            guard pasteboard.changeCount == ourChangeCount else {
+                self.pendingClipboardRestore = nil
+                return
+            }
+
+            switch self.pasteLanded(payload) {
+            case .confirmed:
+                self.restoreClipboard(snapshot, to: pasteboard)
+                self.pendingClipboardRestore = nil
+            case .notYet where attempt + 1 < self.maxRestorePolls:
+                self.scheduleRestoreTick(snapshot,
+                                         to: pasteboard,
+                                         payload: payload,
+                                         ourChangeCount: ourChangeCount,
+                                         attempt: attempt + 1)
+            case .notYet:
+                // Polled to the ceiling without confirmation — restore anyway so
+                // we don't strand the user's clipboard.
+                self.restoreClipboard(snapshot, to: pasteboard)
+                self.pendingClipboardRestore = nil
+            case .opaque:
+                // Can't verify; give the app a generous fixed window (measured
+                // from now) before restoring, rather than re-polling forever.
+                self.scheduleOpaqueRestore(snapshot, to: pasteboard, ourChangeCount: ourChangeCount)
+            }
+        }
+        pendingClipboardRestore = work
+        // First tick fires immediately (many apps have already consumed the
+        // paste by the time the run loop turns); later ticks are spaced out.
+        let delay = attempt == 0 ? 0 : restorePollInterval
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+    }
+
+    private func scheduleOpaqueRestore(_ snapshot: ClipboardSnapshot,
+                                       to pasteboard: NSPasteboard,
+                                       ourChangeCount: Int) {
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.pendingClipboardRestore = nil
+            guard pasteboard.changeCount == ourChangeCount else { return }
+            self.restoreClipboard(snapshot, to: pasteboard)
+        }
+        pendingClipboardRestore = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + opaqueRestoreDelay, execute: work)
+    }
+
+    /// Reads the text immediately before the caret and checks it ends with what
+    /// we pasted — evidence the frontmost app has serviced the synthetic Cmd+V.
+    /// Compares the payload's trailing characters so we don't depend on the app
+    /// exposing the entire field (some cap `kAXStringForRange` reads).
+    private func pasteLanded(_ payload: String) -> PasteConfirmation {
+        guard let focus = focusedCaret() else { return .opaque }
+        let expected = String(payload.suffix(maxReselectableLength))
+        let expectedLength = expected.count
+        guard expectedLength > 0 else { return .confirmed }
+        guard focus.caret.location >= expectedLength else { return .notYet }
+
+        let range = CFRange(location: focus.caret.location - expectedLength, length: expectedLength)
+        guard let actual = string(in: range, of: focus.element) else { return .opaque }
+        return actual == expected ? .confirmed : .notYet
     }
 
     private func restoreClipboard(_ snapshot: ClipboardSnapshot, to pasteboard: NSPasteboard) {

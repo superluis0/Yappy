@@ -99,6 +99,34 @@ final class VoiceEditCommandParserTests: XCTestCase {
         XCTAssertEqual(TextEditMath.trailingLineLength(of: "single line"), 11)
     }
 
+    // MARK: - Set-selection range math (accessibility fast path)
+
+    func testSelectionRangeReachesBackFromCaret() {
+        // Caret after 11 chars, select the last 6 → origin 5, length 6.
+        let range = TextEditMath.selectionRange(caretLocation: 11, length: 6)
+        XCTAssertEqual(range?.location, 5)
+        XCTAssertEqual(range?.length, 6)
+    }
+
+    func testSelectionRangeAtStartOfSelectionOrigin() {
+        // Selecting exactly as many chars as precede the caret → origin 0.
+        let range = TextEditMath.selectionRange(caretLocation: 4, length: 4)
+        XCTAssertEqual(range?.location, 0)
+        XCTAssertEqual(range?.length, 4)
+    }
+
+    func testSelectionRangeRejectsUnderflow() {
+        // A stale/wrong caret closer to the field start than our insertion is
+        // long must NOT produce a negative origin — we'd select the wrong span.
+        XCTAssertNil(TextEditMath.selectionRange(caretLocation: 3, length: 6))
+        XCTAssertNil(TextEditMath.selectionRange(caretLocation: 0, length: 1))
+    }
+
+    func testSelectionRangeRejectsNonPositiveLength() {
+        XCTAssertNil(TextEditMath.selectionRange(caretLocation: 10, length: 0))
+        XCTAssertNil(TextEditMath.selectionRange(caretLocation: 10, length: -2))
+    }
+
     // MARK: - "cap that" shorthand
 
     func testCapThatShorthand() {

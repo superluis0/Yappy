@@ -71,6 +71,31 @@ final class AppStateTests: XCTestCase {
         XCTAssertFalse(state.isProcessing, "isProcessing should remain false")
     }
 
+    // MARK: - Overlap Invariant (F01)
+
+    /// Regression guard for the "press during processing" bug. `AppState` itself
+    /// does NOT make recording and processing mutually exclusive: starting a new
+    /// recording while the previous utterance is still processing flips
+    /// `isRecording` back on and leaves `isProcessing` true. That's precisely why
+    /// the overlap guard must live in `AppDelegate.startDictation` (which also
+    /// checks `isProcessing`) rather than being enforced here — if a future change
+    /// made `startRecording` clear `isProcessing`, this test should fail loudly so
+    /// the guard's rationale isn't silently invalidated.
+    func testStartRecordingDuringProcessingDoesNotClearProcessing() {
+        state.startRecording()
+        state.stopRecording()
+        XCTAssertTrue(state.isProcessing, "precondition: processing after stopRecording()")
+
+        // A second recording begins while the first is still processing.
+        state.startRecording()
+
+        XCTAssertTrue(state.isRecording, "startRecording() re-enters recording even mid-processing")
+        XCTAssertTrue(
+            state.isProcessing,
+            "AppState provides no recording/processing mutual exclusion — the overlap guard lives in startDictation"
+        )
+    }
+
     // MARK: - Reset Tests
 
     func testReset() {

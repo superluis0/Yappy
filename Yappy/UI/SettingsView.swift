@@ -13,6 +13,9 @@ struct SettingsView: View {
     @ObservedObject var settings: Settings
     @ObservedObject var transcriptionService: ParakeetTranscriptionService
     @ObservedObject var updateChecker: UpdateChecker
+    /// Optional history store, used only for the "Clear history now" button. When
+    /// nil (e.g. a call site that hasn't wired it yet) the button is hidden.
+    var historyStore: HistoryStore? = nil
     /// Re-shows the "What's New" card; wired by MainWindowView to the presenter.
     var onShowReleaseNotes: () -> Void = {}
 
@@ -26,6 +29,7 @@ struct SettingsView: View {
                 dictationSection
                 aiCleanupSection
                 generalSection
+                privacySection
                 softwareUpdateSection
                 permissionsSection
             }
@@ -149,6 +153,40 @@ struct SettingsView: View {
             RowDivider()
             ModelStatusRow(settings: settings, transcriptionService: transcriptionService)
                 .padding(.horizontal, 16).padding(.vertical, 12)
+        }
+    }
+
+    private var privacySection: some View {
+        SettingsSection(icon: "lock.shield", title: "History & privacy") {
+            SettingToggle(icon: "clock.arrow.circlepath", title: "Save dictation history",
+                          subtitle: "Keeps a local log of your dictations for stats and history. Never leaves your Mac.",
+                          isOn: $settings.saveHistoryEnabled)
+            if settings.saveHistoryEnabled {
+                RowDivider()
+                SettingRow(icon: "calendar", title: "Keep history for",
+                           subtitle: "Older dictations are removed automatically.") {
+                    Picker("", selection: $settings.historyRetentionDays) {
+                        Text("Forever").tag(0)
+                        Text("7 days").tag(7)
+                        Text("30 days").tag(30)
+                        Text("90 days").tag(90)
+                    }
+                    .labelsHidden().fixedSize()
+                }
+            }
+            if let historyStore {
+                RowDivider()
+                SettingRow(icon: "trash", title: "Clear history now",
+                           subtitle: "Permanently deletes every stored dictation. This can’t be undone.",
+                           iconColor: Brand.danger) {
+                    Button("Clear history") { historyStore.clearAll() }
+                }
+            }
+            RowDivider()
+            SettingRow(icon: "key.fill", title: "Password fields are never recorded",
+                       subtitle: "While a secure input field (like a password box) is focused, dictations aren’t added to your history.") {
+                EmptyView()
+            }
         }
     }
 

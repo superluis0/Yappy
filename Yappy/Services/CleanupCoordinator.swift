@@ -19,6 +19,13 @@ protocol CleanupProvider: AnyObject {
     /// run (enabled, non-verbatim tone). Returns the original text on any failure.
     func cleanup(_ text: String, tone: ToneStyle, backtrack: Bool) async -> String
 
+    /// Cleans several dictated lines in a SINGLE call and returns one cleaned string
+    /// per input line (same order and count), or `nil` if the result can't be trusted
+    /// to map 1:1 back onto the input lines. Lets the coordinator clean a multi-line
+    /// dictation in one model round-trip instead of one call per line, falling back to
+    /// the per-line path when this returns `nil`. Default: `nil` (no batching).
+    func cleanupBatched(lines: [String], tone: ToneStyle, backtrack: Bool) async -> [String]?
+
     /// Asks the provider to load its model into memory ahead of use, so the first
     /// real request doesn't pay a cold-start. Best-effort and idempotent.
     func prewarm() async
@@ -30,6 +37,9 @@ protocol CleanupProvider: AnyObject {
 }
 
 extension CleanupProvider {
+    /// Default: no batching — the coordinator falls back to the per-line path.
+    func cleanupBatched(lines: [String], tone: ToneStyle, backtrack: Bool) async -> [String]? { nil }
+
     /// Default: nothing to warm up.
     func prewarm() async {}
 
@@ -65,14 +75,39 @@ final class CleanupCoordinator {
         // Clean each line independently so spoken "new line" / "next line" breaks
         // survive. Given the whole block, the on-device model reflows them — turning a
         // single break into a paragraph break, or dropping a trailing one — even though
-        // the prompt says to keep them. Splitting on "\n" and rejoining on "\n" preserves
-        // the exact structure (blank lines and a trailing break included) because the
+        // the prompt says to keep them. We split on "\n" and rejoin on "\n" so the exact
+        // structure (blank lines and a trailing break included) is preserved because the
         // model never sees the breaks. Single-line dictations keep the fast one-call path.
         guard text.contains("\n") else {
             return await provider.cleanup(text, tone: tone, backtrack: backtrack)
         }
+
+        let rawLines = text.components(separatedBy: "\n")
+        // Indices of the lines we actually clean (blank lines are passed through as-is).
+        let contentIndices = rawLines.indices.filter {
+            !rawLines[$0].trimmingCharacters(in: .whitespaces).isEmpty
+        }
+
+        // Fast path: clean every content line in ONE model call. The provider returns
+        // cleaned lines only if it can trust them to map 1:1 back (same count, no
+        // reflow/merge/drop); otherwise nil, and we fall through to the per-line loop.
+        // This preserves the exact "\n" structure either way — we only ever substitute
+        // content lines back into their original slots.
+        if contentIndices.count >= 2 {
+            let contentLines = contentIndices.map { rawLines[$0] }
+            if let batched = await provider.cleanupBatched(lines: contentLines, tone: tone, backtrack: backtrack),
+               batched.count == contentIndices.count {
+                var merged = rawLines
+                for (slot, cleaned) in zip(contentIndices, batched) {
+                    merged[slot] = cleaned
+                }
+                return merged.joined(separator: "\n")
+            }
+        }
+
+        // Fallback: one call per non-blank line (correctness-preserving safety net).
         var cleanedLines: [String] = []
-        for line in text.components(separatedBy: "\n") {
+        for line in rawLines {
             if line.trimmingCharacters(in: .whitespaces).isEmpty {
                 cleanedLines.append(line)
             } else {

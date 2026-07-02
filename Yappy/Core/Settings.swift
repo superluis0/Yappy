@@ -56,6 +56,7 @@ final class Settings: ObservableObject {
         static let adaptiveModeEnabled = "com.yappy.adaptiveModeEnabled"
         static let appModeOverrides = "com.yappy.appModeOverrides"
         static let customDictionaryEnabled = "com.yappy.customDictionaryEnabled"
+        static let vocabularyBoostingEnabled = "com.yappy.vocabularyBoostingEnabled"
         static let numberFormattingEnabled = "com.yappy.numberFormattingEnabled"
         static let numberedListsEnabled = "com.yappy.numberedListsEnabled"
         static let fillerRemovalEnabled = "com.yappy.fillerRemovalEnabled"
@@ -63,6 +64,8 @@ final class Settings: ObservableObject {
         static let spokenPunctuationEnabled = "com.yappy.spokenPunctuationEnabled"
         static let voiceEditingEnabled = "com.yappy.voiceEditingEnabled"
         static let voiceControlEnabled = "com.yappy.voiceControlEnabled"
+        static let saveHistoryEnabled = "com.yappy.saveHistoryEnabled"
+        static let historyRetentionDays = "com.yappy.historyRetentionDays"
         static let activeModeID = "com.yappy.activeModeID"
         static let useCases = "com.yappy.useCases"
         static let onboardingComplete = "com.yappy.onboardingComplete"
@@ -157,6 +160,15 @@ final class Settings: ObservableObject {
         didSet { if !isLoading { save() } }
     }
 
+    /// Whether the speech model itself is biased toward the custom-dictionary terms
+    /// (Parakeet/English only, via FluidAudio's CTC custom-vocabulary rescoring).
+    /// Off by default: it downloads a ~98 MB helper model on first use and adds one
+    /// extra inference pass per dictation, so it's strictly opt-in. Distinct from
+    /// `customDictionaryEnabled`, which only drives post-hoc find/replace.
+    @Published var vocabularyBoostingEnabled: Bool = false {
+        didSet { if !isLoading { save() } }
+    }
+
     /// Whether spoken numbers are written as digits ("eleven point six" -> "11.6").
     @Published var numberFormattingEnabled: Bool = true {
         didSet { if !isLoading { save() } }
@@ -191,6 +203,21 @@ final class Settings: ObservableObject {
     /// Whether spoken app-control commands ("switch to email mode", "open
     /// scratchpad", "new note") control Yappy instead of being dictated.
     @Published var voiceControlEnabled: Bool = true {
+        didSet { if !isLoading { save() } }
+    }
+
+    /// Whether a local log of past dictations is kept (for Home stats and the
+    /// history list). On by default. When off, nothing is written to disk — the
+    /// skip is enforced at the `HistoryStore.add` call site. The log is always
+    /// on-device; it never leaves the Mac.
+    @Published var saveHistoryEnabled: Bool = true {
+        didSet { if !isLoading { save() } }
+    }
+
+    /// How many days of dictation history to keep before pruning; `0` = keep
+    /// forever. Enforced by `HistoryStore` (which mirrors this value into its
+    /// `retentionDays` at the app layer).
+    @Published var historyRetentionDays: Int = 0 {
         didSet { if !isLoading { save() } }
     }
 
@@ -273,6 +300,7 @@ final class Settings: ObservableObject {
         defaults.set(adaptiveModeEnabled, forKey: Keys.adaptiveModeEnabled)
         defaults.set(appModeOverrides, forKey: Keys.appModeOverrides)
         defaults.set(customDictionaryEnabled, forKey: Keys.customDictionaryEnabled)
+        defaults.set(vocabularyBoostingEnabled, forKey: Keys.vocabularyBoostingEnabled)
         defaults.set(numberFormattingEnabled, forKey: Keys.numberFormattingEnabled)
         defaults.set(numberedListsEnabled, forKey: Keys.numberedListsEnabled)
         defaults.set(fillerRemovalEnabled, forKey: Keys.fillerRemovalEnabled)
@@ -280,6 +308,8 @@ final class Settings: ObservableObject {
         defaults.set(spokenPunctuationEnabled, forKey: Keys.spokenPunctuationEnabled)
         defaults.set(voiceEditingEnabled, forKey: Keys.voiceEditingEnabled)
         defaults.set(voiceControlEnabled, forKey: Keys.voiceControlEnabled)
+        defaults.set(saveHistoryEnabled, forKey: Keys.saveHistoryEnabled)
+        defaults.set(historyRetentionDays, forKey: Keys.historyRetentionDays)
         defaults.set(activeModeID, forKey: Keys.activeModeID)
         defaults.set(Array(useCases), forKey: Keys.useCases)
         defaults.set(onboardingComplete, forKey: Keys.onboardingComplete)
@@ -354,6 +384,9 @@ final class Settings: ObservableObject {
             customDictionaryEnabled = true
         }
 
+        // Off by default (absent key → false), like the checklist flags.
+        vocabularyBoostingEnabled = defaults.bool(forKey: Keys.vocabularyBoostingEnabled)
+
         if defaults.object(forKey: Keys.numberFormattingEnabled) != nil {
             numberFormattingEnabled = defaults.bool(forKey: Keys.numberFormattingEnabled)
         } else {
@@ -395,6 +428,15 @@ final class Settings: ObservableObject {
         } else {
             voiceControlEnabled = true
         }
+
+        if defaults.object(forKey: Keys.saveHistoryEnabled) != nil {
+            saveHistoryEnabled = defaults.bool(forKey: Keys.saveHistoryEnabled)
+        } else {
+            saveHistoryEnabled = true
+        }
+
+        // Absent key → 0 (keep forever), which is exactly `integer(forKey:)`'s default.
+        historyRetentionDays = defaults.integer(forKey: Keys.historyRetentionDays)
 
         activeModeID = defaults.string(forKey: Keys.activeModeID)
 
@@ -441,6 +483,7 @@ final class Settings: ObservableObject {
         appModeOverrides = [:]
         toneOverrides = [:]
         customDictionaryEnabled = true
+        vocabularyBoostingEnabled = false
         numberFormattingEnabled = true
         numberedListsEnabled = true
         fillerRemovalEnabled = true
@@ -448,6 +491,8 @@ final class Settings: ObservableObject {
         spokenPunctuationEnabled = true
         voiceEditingEnabled = true
         voiceControlEnabled = true
+        saveHistoryEnabled = true
+        historyRetentionDays = 0
         activeModeID = nil
         useCases = []
         autoUpdateChecksEnabled = true
@@ -461,9 +506,11 @@ final class Settings: ObservableObject {
             Keys.dismissedSuggestions,
             Keys.contextAwareToneEnabled, Keys.backtrackEnabled, Keys.adaptiveModeEnabled,
             Keys.appModeOverrides, Keys.toneOverrides, Keys.customDictionaryEnabled,
+            Keys.vocabularyBoostingEnabled,
             Keys.numberFormattingEnabled, Keys.numberedListsEnabled, Keys.fillerRemovalEnabled,
             Keys.spokenCommandsEnabled, Keys.spokenPunctuationEnabled,
-            Keys.voiceEditingEnabled, Keys.voiceControlEnabled, Keys.activeModeID,
+            Keys.voiceEditingEnabled, Keys.voiceControlEnabled,
+            Keys.saveHistoryEnabled, Keys.historyRetentionDays, Keys.activeModeID,
             Keys.useCases, Keys.autoUpdateChecksEnabled,
         ] {
             defaults.removeObject(forKey: key)

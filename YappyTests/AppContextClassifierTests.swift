@@ -27,4 +27,54 @@ final class AppContextClassifierTests: XCTestCase {
         XCTAssertEqual(AppCategory.code.defaultTone, .verbatim)
         XCTAssertEqual(AppCategory.other.defaultTone, .formal)
     }
+
+    // MARK: - FocusedFieldClassifier (pure role/subrole mapping)
+
+    func testSearchSubroleMapsToSearch() {
+        XCTAssertEqual(FocusedFieldClassifier.kind(role: "AXTextField", subrole: "AXSearchField"), .search)
+        // Subrole wins even without a recognized role.
+        XCTAssertEqual(FocusedFieldClassifier.kind(role: nil, subrole: "AXSearchField"), .search)
+    }
+
+    func testTextAreaMapsToMultiLine() {
+        XCTAssertEqual(FocusedFieldClassifier.kind(role: "AXTextArea", subrole: nil), .multiLine)
+    }
+
+    func testTextFieldMapsToSingleLine() {
+        XCTAssertEqual(FocusedFieldClassifier.kind(role: "AXTextField", subrole: nil), .singleLine)
+    }
+
+    func testUnknownAndNilRolesMapToUnknown() {
+        XCTAssertEqual(FocusedFieldClassifier.kind(role: "AXStaticText", subrole: nil), .unknown)
+        XCTAssertEqual(FocusedFieldClassifier.kind(role: "AXButton", subrole: "AXSomethingElse"), .unknown)
+        XCTAssertEqual(FocusedFieldClassifier.kind(role: nil, subrole: nil), .unknown)
+    }
+
+    // MARK: - Single-line collapse (used for single-line / search fields)
+
+    func testCollapseFlattensNewlinesToSingleSpaces() {
+        XCTAssertEqual(
+            FocusedFieldClassifier.collapseToSingleLine("first line\nsecond line"),
+            "first line second line")
+    }
+
+    func testCollapseCollapsesRunsOfWhitespace() {
+        XCTAssertEqual(
+            FocusedFieldClassifier.collapseToSingleLine("hello   world"),
+            "hello world")
+        XCTAssertEqual(
+            FocusedFieldClassifier.collapseToSingleLine("a\n\n\nb\t c"),
+            "a b c")
+    }
+
+    func testCollapseTrimsLeadingAndTrailingWhitespace() {
+        XCTAssertEqual(
+            FocusedFieldClassifier.collapseToSingleLine("  \n padded \n "),
+            "padded")
+    }
+
+    func testCollapseIsIdempotentOnAlreadyCleanText() {
+        let clean = "already a single clean line"
+        XCTAssertEqual(FocusedFieldClassifier.collapseToSingleLine(clean), clean)
+    }
 }
