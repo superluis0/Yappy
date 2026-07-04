@@ -37,6 +37,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var scratchpadController = ScratchpadController(store: notesStore)
     private let scratchpadHotkey = ScratchpadHotkey()
 
+    // Ask (hold-Fn voice questions) — experimental, OFF by default. The Fn tap
+    // is armed only while askEnabled; until then nothing here touches the network.
+    // Grok routes through the warm stdio agent with automatic one-shot fallback
+    // (model switch, think-harder, or a cold/wedged warm process).
+    let askController = AskController(
+        grokClient: GrokClientRouter(warm: GrokAgentClient(), oneShot: GrokAskClient())
+    )
+    private let askHotkey = AskHotkey()
+    private lazy var askPillController = AskPillController(controller: askController)
+    /// True while an Ask capture is recording audio (distinct from dictation's
+    /// appState.isRecording — Ask drives its own pill via askController).
+    private var askRecording = false
+    /// True when Fn is held waiting for the speech model to finish loading;
+    /// recording auto-starts when it's ready (see bindModelReadyAutostart).
+    private var pendingAskStart = false
+    private var askGeneration = 0
+    private var askProcessingTask: Task<Void, Never>?
+    private var askRecordingStartTime: Date?
+
     /// Precompiled custom-dictionary matcher, rebuilt only when the dictionary
     /// changes (not per dictation). Kept in sync via a `dictionaryStore` sink.
     private var dictionaryReplacer = DictionaryReplacer(terms: [])
@@ -48,7 +67,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         modeStore: modeStore,
         transcriptionService: transcriptionService,
         updateChecker: updateChecker,
-        whatsNewPresenter: whatsNewPresenter
+        whatsNewPresenter: whatsNewPresenter,
+        askController: askController
     )
 
     // MARK: - State
@@ -72,6 +92,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let whatsNewPresenter = WhatsNewPresenter()
     private var menuBarAnimationTimer: Timer?
     private var menuBarFrameIndex = 0
+    /// Listen-only global mouse monitor feeding `TextInserter.noteUserInputOccurred()`
+    /// — a click moves the caret, so the opaque-app insertion fallbacks must reset.
+    private var clickMonitor: Any?
     private var cancellables = Set<AnyCancellable>()
     private var recordingStartTime: Date?
     private var maxDurationTimer: Timer?
@@ -169,11 +192,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         audioRecorder.onAudioLevelUpdate = { [weak self] level in
             guard let self else { return }
+            // During an Ask capture the shared engine's levels feed the Ask pill,
+            // not the dictation pill.
+            if self.askRecording {
+                self.askController.pushAudioLevel(Double(level))
+                return
+            }
             self.appState.updateAudioLevel(level)
             self.onboardingLevelModel?.push(level)
         }
 
         wireHotkeyCallbacks()
+        wireAskCallbacks()
 
         // Load the speech model in the background; show first-run UI if downloading.
         Task { @MainActor [weak self] in
@@ -236,10 +266,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // otherwise slow (the lag before the waveform appears on the first press).
         DispatchQueue.main.async { [weak self] in self?.audioRecorder.prewarm() }
 
+        // Ask: build its pill ahead of time, and — only if the user has turned
+        // Ask on — warm the Codex app-server (spawn + pre-created thread) so the
+        // first question streams without setup latency. The client is a
+        // subprocess (no in-process CoreML), so this is safe at audio-idle launch.
+        DispatchQueue.main.async { [weak self] in self?.askPillController.prewarm() }
+        if settings.askEnabled {
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                self?.askController.prewarm()
+            }
+        }
+
         startHotkeyMonitoring()
     }
 
     @objc private func appDidActivate(_ note: Notification) {
+        // Switching apps moves focus somewhere our last-insertion memory knows
+        // nothing about — invalidate the opaque-app fallbacks (leading space,
+        // voice-edit trust) so they never act on a stale caret.
+        textInserter.noteUserInputOccurred()
         guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
               let bundle = app.bundleIdentifier, bundle != Bundle.main.bundleIdentifier else { return }
         lastActiveBundleID = bundle
@@ -258,6 +304,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         hotkeyManager.stop()
         escapeInterceptor.stop()
         scratchpadHotkey.stop()
+        askHotkey.stop()
+        askController.shutdown()
         notesStore.flush()
         maxDurationTimer?.invalidate()
         accessibilityPollTimer?.invalidate()
@@ -274,6 +322,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         escapeInterceptor.onEscape = { [weak self] in self?.escapeCancel() }
 
         scratchpadHotkey.onTrigger = { [weak self] in self?.toggleScratchpad() }
+
+        // Any REAL keystroke after an insertion means the caret may have moved
+        // (Enter, arrows, typing) — the opaque-app fallbacks must stop trusting
+        // the last insertion. Synthetic events are tag-filtered inside the tap.
+        scratchpadHotkey.onUserKeyDown = { [weak self] in
+            guard let self else { return }
+            self.textInserter.noteUserInputOccurred()
+            // A real key while Ask is listening means the Fn press was a keyboard
+            // chord (fn+arrow, etc.), not a spoken question — cancel the capture.
+            if self.askController.isListening { self.abortAsk() }
+        }
+
+        // Mouse clicks move the caret too. A global monitor is listen-only
+        // (other apps' clicks; Yappy's own windows don't affect the target
+        // caret) and costs nothing beyond this closure.
+        clickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
+            self?.textInserter.noteUserInputOccurred()
+        }
     }
 
     /// Esc pressed mid-session. Two cases:
@@ -284,6 +350,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     ///     drop the result before it's inserted (the "abort before text lands"
     ///     path). The hotkey isn't active during processing, so no deactivate.
     private func escapeCancel() {
+        // Ask owns the session — abort its capture / turn (Stop-button equivalent).
+        if askController.isBusy {
+            askHotkey.deactivate()
+            abortAsk()
+            return
+        }
         if appState.isRecording || appState.isPreparing {
             hotkeyManager.deactivate()
             cancelDictation()
@@ -336,6 +408,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func startTaps() -> Bool {
         let dictationStarted = hotkeyManager.start()
         scratchpadHotkey.start() // idempotent; summons the floating notepad (⌥⇧S)
+        updateAskHotkeyArming()  // arms the Fn tap only when unlocked && enabled
         return dictationStarted
     }
 
@@ -349,7 +422,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // first Task's teardown clobber the new session AND run two transcriptions
         // on the shared speech model at once. An ignored press+release is a clean
         // no-op — `finishDictation`'s `guard appState.isRecording` returns early.
-        guard !appState.isRecording, !appState.isPreparing, !appState.isProcessing else { return }
+        guard !appState.isRecording, !appState.isPreparing, !appState.isProcessing,
+              !askController.isBusy else { return }
+
+        // A finished Ask answer may still be lingering (pinned or counting
+        // down) at bottom-center — clear it so the two pills never overlap.
+        if askController.run != nil { askController.dismiss() }
 
         switch transcriptionService.modelState {
         case .ready:
@@ -923,6 +1001,172 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         pillController.hide()
     }
 
+    // MARK: - Ask Flow (hold-Fn voice questions)
+
+    private func wireAskCallbacks() {
+        askController.backend = settings.askBackend
+        askController.grokModel = settings.askGrokModel
+        askController.saveHistory = settings.askSaveHistoryEnabled
+        askController.insertText = { [weak self] text in
+            guard let self else { return }
+            do {
+                try self.textInserter.insert(text: text)
+            } catch {
+                Self.logger.error("Ask insert failed: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+        askController.copyText = { text in
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(text, forType: .string)
+        }
+        askController.backendUsable = { backend in
+            switch backend {
+            case .codex: CodexAskClient.isInstalled && CodexAskClient.isSignedIn
+            case .grok: GrokAskClient.isAvailable && GrokAskClient.isSignedIn
+            }
+        }
+        askHotkey.onStart = { [weak self] in self?.beginAsk() }
+        askHotkey.onStop = { [weak self] in self?.finishAsk() }
+        askHotkey.onCancel = { [weak self] in self?.cancelAsk() }
+    }
+
+    /// Arms the Fn tap only when Ask is enabled and Accessibility is trusted;
+    /// disarms it otherwise. Called from startTaps and the askEnabled sink.
+    private func updateAskHotkeyArming() {
+        guard settings.askEnabled, AXIsProcessTrusted() else {
+            askHotkey.stop()
+            return
+        }
+        askHotkey.start()
+    }
+
+    /// Fn pressed — begin capturing a question. Mutually exclusive with dictation
+    /// (one shared audio engine): a press while dictation is active is ignored.
+    /// A press during a streaming answer barges in; a press during an active
+    /// capture (listening / transcribing / preparing) is still ignored.
+    private func beginAsk() {
+        guard settings.askEnabled else { return }
+        guard !appState.isRecording, !appState.isPreparing, !appState.isProcessing else { return }
+        let askStatus = askController.status
+        guard askStatus != .listening, askStatus != .transcribing, askStatus != .preparing
+        else { return }
+
+        switch transcriptionService.modelState {
+        case .ready:
+            beginAskRecording()
+        case .loading, .notLoaded:
+            // The speech model is still warming up. Do NOT start the audio engine
+            // now: loading the model while the engine later tears down races
+            // CoreAudio and crashes. Show a "Getting ready…" pill and begin
+            // recording automatically the moment the model is ready.
+            if case .notLoaded = transcriptionService.modelState {
+                Task { [weak self] in await self?.transcriptionService.warmUp() }
+            }
+            pendingAskStart = true
+            askController.beginPreparing()
+            escapeInterceptor.start()
+        case .downloading, .failed:
+            askHotkey.deactivate()
+            showSetupWindowIfNotReady()
+        }
+    }
+
+    /// Begins the actual Ask capture session. Precondition: the speech model is
+    /// `.ready` (the audio engine must never run concurrently with a model load).
+    private func beginAskRecording() {
+        askController.beginListening()  // shows the Ask pill + warms Codex
+        askRecording = true
+        guard audioRecorder.startRecording() else {
+            askRecording = false
+            askController.cancelCapture()
+            return
+        }
+        askGeneration += 1
+        askRecordingStartTime = Date()
+        playFeedback(start: true)
+        armMaxDurationTimer { [weak self] in self?.finishAsk() }
+        escapeInterceptor.start()  // stays live through the whole turn (see bindStateToMenuBar)
+    }
+
+    /// Fn released — transcribe the captured audio and hand the question to the
+    /// backend. Escape stays armed through the turn so it can interrupt streaming.
+    private func finishAsk() {
+        if pendingAskStart {
+            pendingAskStart = false
+            askController.cancelCapture()
+            return
+        }
+        guard askRecording else { return }
+        askRecording = false
+        maxDurationTimer?.invalidate()
+        let samples = audioRecorder.stopRecording()
+        askRecordingStartTime = nil
+        playFeedback(start: false)
+        askController.markTranscribing()
+
+        let generation = askGeneration
+        askProcessingTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer { self.ifCurrentAsk(generation) { self.askProcessingTask = nil } }
+
+            if Task.isCancelled { self.askController.cancelCapture(); return }
+            guard AudioRecorder.containsSpeech(samples) else {
+                self.askController.cancelCapture()
+                return
+            }
+            do {
+                let raw = try await self.transcriptionService.transcribe(samples)
+                if Task.isCancelled { self.askController.cancelCapture(); return }
+                let question = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !question.isEmpty else { self.askController.cancelCapture(); return }
+                self.askController.submit(question)
+            } catch {
+                Self.logger.error("Ask transcription failed: \(error.localizedDescription, privacy: .public)")
+                self.askController.cancelCapture()
+            }
+        }
+    }
+
+    /// Fn tap deactivated while held (secure input, app switch) — discard cleanly.
+    private func cancelAsk() {
+        guard pendingAskStart || askRecording else { return }
+        abortAsk()
+    }
+
+    /// Cancels whatever Ask is doing — recording, transcribing, or a live turn.
+    private func abortAsk() {
+        if pendingAskStart {
+            pendingAskStart = false
+            askController.cancelCapture()
+            return
+        }
+        pendingAskStart = false
+        if askRecording {
+            askRecording = false
+            audioRecorder.stopRecording()
+            maxDurationTimer?.invalidate()
+        }
+        askProcessingTask?.cancel()
+        askController.abort()  // interrupts the turn (if any) + cancels the run
+        // The Escape interceptor is torn down by the askController.$run sink once
+        // the run reaches a terminal state.
+    }
+
+    /// Guards Ask UI/session mutations against a stale generation (a slow
+    /// transcription finishing after a newer Ask began).
+    private func ifCurrentAsk(_ generation: Int, _ work: () -> Void) {
+        guard generation == askGeneration else { return }
+        work()
+    }
+
+    /// Menu bar → Show Last Answer: re-summons the newest completed Ask into
+    /// the pill, pinned. No-op while an Ask or dictation is live, or when
+    /// history is empty (dictation owns bottom-center while active).
+    @objc private func showLastAskAnswer() {
+        guard !appState.isRecording, !appState.isPreparing, !appState.isProcessing else { return }
+        askController.showLastAnswer()
+    }
+
     /// Arms the safety timer that force-stops an over-long session.
     private func armMaxDurationTimer(_ stop: @escaping () -> Void) {
         maxDurationTimer?.invalidate()
@@ -1022,6 +1266,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusMenu = menu
         menu.addItem(NSMenuItem(title: "Open Yappy", action: #selector(openMainWindow), keyEquivalent: "o"))
         menu.addItem(NSMenuItem(title: "Scratchpad (⌥⇧S)", action: #selector(toggleScratchpad), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "Show Last Answer", action: #selector(showLastAskAnswer), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "Configure Answers…", action: #selector(openMainWindow), keyEquivalent: ""))
         menu.addItem(NSMenuItem.separator())
 
         let modeItem = NSMenuItem(title: "Mode", action: nil, keyEquivalent: "")
@@ -1163,6 +1409,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.updateMenuBarIcon()
         }
         .store(in: &cancellables)
+
+        // Ask reflects into the same menu-bar glyph (listening → recording anim,
+        // thinking/working → processing). This sink also tears down the Escape
+        // interceptor once an Ask run is over — it must stay live through the
+        // whole turn (not just capture) so Esc can interrupt a streaming answer.
+        askController.$run
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] run in
+                guard let self else { return }
+                self.updateMenuBarIcon()
+                let over = (run == nil) || (run?.status.isTerminal == true)
+                if over, !self.askRecording, !self.appState.isRecording, !self.appState.isProcessing {
+                    self.escapeInterceptor.stop()
+                }
+            }
+            .store(in: &cancellables)
     }
 
     /// When a dictation was requested while the speech model was still loading,
@@ -1173,18 +1435,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         transcriptionService.$modelState
             .receive(on: DispatchQueue.main)
             .sink { [weak self] state in
-                guard let self, self.pendingDictationStart else { return }
-                switch state {
-                case .ready:
-                    self.pendingDictationStart = false
-                    self.beginDictationRecording()
-                case .failed:
-                    self.pendingDictationStart = false
-                    self.appState.reset()
-                    self.pillController.hide()
-                    self.showSetupWindowIfNotReady()
-                case .notLoaded, .loading, .downloading:
-                    break // keep showing the preparing pill until ready/failed
+                guard let self else { return }
+                if self.pendingDictationStart {
+                    switch state {
+                    case .ready:
+                        self.pendingDictationStart = false
+                        self.beginDictationRecording()
+                    case .failed:
+                        self.pendingDictationStart = false
+                        self.appState.reset()
+                        self.pillController.hide()
+                        self.showSetupWindowIfNotReady()
+                    case .notLoaded, .loading, .downloading:
+                        break // keep showing the preparing pill until ready/failed
+                    }
+                }
+                if self.pendingAskStart {
+                    switch state {
+                    case .ready:
+                        self.pendingAskStart = false
+                        self.beginAskRecording()
+                    case .failed:
+                        self.pendingAskStart = false
+                        self.askController.cancelCapture()
+                        self.showSetupWindowIfNotReady()
+                    case .notLoaded, .loading, .downloading:
+                        break // keep showing the preparing pill until ready/failed
+                    }
                 }
             }
             .store(in: &cancellables)
@@ -1197,14 +1474,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func updateMenuBarIcon() {
-        if appState.isRecording {
+        if appState.isRecording || askController.isListening {
             startMenuBarAnimation()
             return
         }
         stopMenuBarAnimation()
 
         let image: NSImage
-        if appState.isProcessing {
+        if appState.isProcessing || askController.isExecuting {
             image = Self.processingIcon
         } else {
             switch transcriptionService.modelState {
@@ -1227,17 +1504,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Idle/processing menu-bar glyphs, drawn once and reused on every state
     /// change rather than redrawn each time (static lets initialize lazily).
-    private static let readyIcon: NSImage = bubbleIcon(.ready)
-    private static let processingIcon: NSImage = bubbleIcon(.processing)
+    private static let readyIcon: NSImage = yIcon(.ready)
+    private static let processingIcon: NSImage = yIcon(.processing)
 
-    /// Precomputed frames cycling the bubble's bar heights (cheap to swap).
+    /// Precomputed frames "breathing" the Y's stroke weight while recording —
+    /// the lettermark has no waveform bars to animate, so the whole glyph pulses
+    /// instead, echoing the pill's breathing glow. Cheap to swap, like the old
+    /// bar frames.
     private static let recordingFrames: [NSImage] = [
-        [3.0, 6.0, 3.0],
-        [5.0, 4.0, 6.0],
-        [6.5, 3.0, 4.5],
-        [4.0, 6.5, 5.5],
-        [3.0, 5.0, 6.5],
-    ].map { bubbleIcon(.recording, barHeights: $0) }
+        2.3, 2.6, 2.9, 2.6, 2.3,
+    ].map { yIcon(.recording, strokeWidth: $0) }
 
     private func startMenuBarAnimation() {
         guard menuBarAnimationTimer == nil else { return }
@@ -1259,71 +1535,48 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private static let brandOrange = NSColor(named: "AccentColor")
         ?? NSColor(red: 1.0, green: 0.42, blue: 0.21, alpha: 1.0)
 
-    /// Draws the Yappy speech-bubble glyph for a given state.
-    /// Ready/processing are template images (auto light/dark); recording is solid orange.
-    /// `barHeights` lets the recording animation vary the waveform.
-    private static func bubbleIcon(_ glyph: MenuBarGlyph, barHeights: [CGFloat]? = nil) -> NSImage {
+    /// Draws the Yappy "Y" lettermark for a given state.
+    /// Ready/processing are template images (auto light/dark); recording is solid
+    /// orange. `strokeWidth` drives the recording "breathe" animation frames.
+    private static func yIcon(_ glyph: MenuBarGlyph, strokeWidth: CGFloat = 2.6) -> NSImage {
         let size = NSSize(width: 18, height: 18)
         let image = NSImage(size: size, flipped: false) { _ in
-            let bubble = bubblePath()
-            let bars = waveformBarPaths(heights: barHeights ?? [3.0, 6.0, 3.0])
+            let path = yPath()
+            path.lineWidth = strokeWidth
+            path.lineCapStyle = .round
+            path.lineJoinStyle = .round
 
             switch glyph {
             case .ready:
-                // Filled silhouette (body+tail union) avoids the stroke seam at
-                // the tail joint; bars are punched out as holes.
-                NSColor.black.setFill()
-                bubble.fill()
-                NSGraphicsContext.current?.compositingOperation = .clear
-                bars.forEach { $0.fill() }
-
+                NSColor.black.setStroke()
             case .processing:
-                // Same shape, dimmed, to read as "working" during the brief
-                // processing window (the pill shows the detailed state).
-                NSColor.black.withAlphaComponent(0.4).setFill()
-                bubble.fill()
-                NSGraphicsContext.current?.compositingOperation = .clear
-                bars.forEach { $0.fill() }
-
+                // Dimmed, to read as "working" during the brief processing
+                // window (the pill shows the detailed state).
+                NSColor.black.withAlphaComponent(0.4).setStroke()
             case .recording:
-                brandOrange.setFill()
-                bubble.fill()
-                // Solid white bars stay legible on the orange fill (this is a
-                // color image, not a template, so the white is preserved).
-                NSColor.white.setFill()
-                bars.forEach { $0.fill() }
+                brandOrange.setStroke()
             }
+            path.stroke()
             return true
         }
         image.isTemplate = (glyph != .recording)
         return image
     }
 
-    /// Rounded speech-bubble body with a tail pointing down-left, in an 18×18 box.
-    private static func bubblePath() -> NSBezierPath {
-        let body = NSBezierPath(
-            roundedRect: NSRect(x: 2.5, y: 6.0, width: 13.0, height: 8.5),
-            xRadius: 2.8, yRadius: 2.8
-        )
-        let tail = NSBezierPath()
-        tail.move(to: NSPoint(x: 5.0, y: 6.5))
-        tail.line(to: NSPoint(x: 8.6, y: 6.5))
-        tail.line(to: NSPoint(x: 5.0, y: 2.5))
-        tail.close()
-        body.append(tail)
-        return body
-    }
-
-    /// Three rounded waveform bars centered inside the bubble body.
-    private static func waveformBarPaths(heights: [CGFloat] = [3.0, 6.0, 3.0]) -> [NSBezierPath] {
-        let centerY: CGFloat = 10.25
-        let xs: [CGFloat] = [5.6, 8.2, 10.8]
-        return zip(xs, heights).map { x, height in
-            // Clamp so animated bars stay inside the bubble body (y 6.0–14.5).
-            let clamped = min(max(height, 2.0), 7.5)
-            let rect = NSRect(x: x, y: centerY - clamped / 2, width: 1.6, height: clamped)
-            return NSBezierPath(roundedRect: rect, xRadius: 0.8, yRadius: 0.8)
-        }
+    /// The Y lettermark in an 18×18 box: two arms meeting at the fork, stem
+    /// dropping to the baseline. NSImage's unflipped coordinates put y=0 at the
+    /// BOTTOM, so the arms anchor high (y 15.4) and the stem ends low (y 2.6).
+    /// Stroke-based (round caps/joins) so the recording frames can vary weight.
+    private static func yPath() -> NSBezierPath {
+        let path = NSBezierPath()
+        let fork = NSPoint(x: 9.0, y: 9.0)
+        path.move(to: NSPoint(x: 4.4, y: 15.4))
+        path.line(to: fork)
+        path.move(to: NSPoint(x: 13.6, y: 15.4))
+        path.line(to: fork)
+        path.move(to: fork)
+        path.line(to: NSPoint(x: 9.0, y: 2.6))
+        return path
     }
 
     // MARK: - Settings Bindings
@@ -1334,6 +1587,48 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .sink { [weak self] option in
                 self?.hotkeyManager.updateMode(option)
             }
+            .store(in: &cancellables)
+
+        // Ask: arm/disarm the Fn tap and warm/tear-down the backend when the
+        // enable toggle flips.
+        settings.$askEnabled
+            .removeDuplicates()
+            .sink { [weak self] enabled in
+                guard let self else { return }
+                self.updateAskHotkeyArming()
+                if enabled {
+                    self.askPillController.prewarm()
+                    // This sink can fire (at bind time) before the backend wiring
+                    // runs — sync the selection first or the default (.codex)
+                    // gets warmed regardless of the setting.
+                    self.askController.backend = self.settings.askBackend
+                    self.askController.prewarm()
+                } else {
+                    self.askController.shutdown()
+                }
+            }
+            .store(in: &cancellables)
+
+        settings.$askBackend
+            .removeDuplicates()
+            .sink { [weak self] backend in
+                guard let self else { return }
+                self.askController.backend = backend
+                self.askController.prewarm()
+                // One resident helper: the deselected backend's warm process
+                // (app-server / grok agent) has no next question coming.
+                self.askController.shutdownDeselectedBackend()
+            }
+            .store(in: &cancellables)
+
+        settings.$askSaveHistoryEnabled
+            .removeDuplicates()
+            .sink { [weak self] on in self?.askController.saveHistory = on }
+            .store(in: &cancellables)
+
+        settings.$askGrokModel
+            .removeDuplicates()
+            .sink { [weak self] model in self?.askController.grokModel = model }
             .store(in: &cancellables)
 
         // Switch the active speech model when the user changes it. Updating
@@ -1547,6 +1842,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func toggleScratchpad() {
+        // Never summon the notepad mid-Ask — they'd fight over the audio engine
+        // and the floating panels would overlap.
+        guard !askController.isBusy else { return }
         // A toggle from hidden → visible counts as opening it for the checklist.
         if !scratchpadController.isVisible, !settings.hasOpenedScratchpad {
             settings.hasOpenedScratchpad = true

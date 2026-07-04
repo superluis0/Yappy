@@ -45,6 +45,23 @@ enum WhatsNew {
     /// announcing; upgraders from any earlier version see the entry for the
     /// version they land on.
     static let entries: [String: Entry] = [
+        "2.5": Entry(
+            version: "2.5",
+            headline: "Ask out loud. Answers arrive.",
+            highlights: [
+                Highlight(icon: "questionmark.bubble",
+                          title: "Answers — hold Fn, get an answer",
+                          detail: "Speak a question and a floating card answers it, researched with live web search and cited sources — on your own Codex (ChatGPT) or Grok account. Off by default, one toggle in Settings."),
+                Highlight(icon: "bolt.fill",
+                          title: "Fast on both models",
+                          detail: "Grok now answers in seconds, not half a minute — warm sessions, real follow-up threads, and honest timing shown on every card."),
+                Highlight(icon: "mic.fill",
+                          title: "Talk to the card",
+                          detail: "Say “insert that” to drop the answer at your cursor, “copy that”, “pin that” — or just hold Fn mid-answer to interrupt and redirect."),
+                Highlight(icon: "lock.shield",
+                          title: "Dictation stays 100% on-device",
+                          detail: "Nothing about dictation changed: audio never leaves your Mac. Answers sends only your typed-out question, only when you turn it on."),
+            ]),
         "2.1": Entry(
             version: "2.1",
             headline: "On-device intelligence, and updates that come to you.",

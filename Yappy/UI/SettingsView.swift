@@ -22,6 +22,18 @@ struct SettingsView: View {
     @State private var microphoneGranted = AudioRecorder.hasPermission
     @State private var accessibilityGranted = AXIsProcessTrusted()
 
+    /// One backend's connection state, for the Ask "green light". Checked
+    /// silently (file probes only, no network) and re-checked whenever the app
+    /// becomes active — install codex in Terminal, switch back, light turns on.
+    enum AskBackendReadiness {
+        case ready
+        case needsLogin
+        case notInstalled
+    }
+    @State private var askCodexReadiness: AskBackendReadiness = .notInstalled
+    @State private var askGrokReadiness: AskBackendReadiness = .notInstalled
+    @State private var copiedLoginCommand = false
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 26) {
@@ -32,6 +44,7 @@ struct SettingsView: View {
                 privacySection
                 softwareUpdateSection
                 permissionsSection
+                askSection
             }
             .frame(maxWidth: 640, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .center)
@@ -41,11 +54,23 @@ struct SettingsView: View {
         }
         .scrollContentBackground(.hidden)
         .background(Color.clear)
+        .onAppear { refreshAskReadiness() }
         .onReceive(NotificationCenter.default.publisher(
             for: NSApplication.didBecomeActiveNotification)) { _ in
             microphoneGranted = AudioRecorder.hasPermission
             accessibilityGranted = AXIsProcessTrusted()
+            refreshAskReadiness()
         }
+    }
+
+    /// Silent infrastructure check for Ask: cheap file probes, no network.
+    private func refreshAskReadiness() {
+        askCodexReadiness = CodexAskClient.isInstalled
+            ? (CodexAskClient.isSignedIn ? .ready : .needsLogin)
+            : .notInstalled
+        askGrokReadiness = GrokAskClient.isAvailable
+            ? (GrokAskClient.isSignedIn ? .ready : .needsLogin)
+            : .notInstalled
     }
 
     private var header: some View {
@@ -160,6 +185,187 @@ struct SettingsView: View {
             RowDivider()
             ModelStatusRow(settings: settings, transcriptionService: transcriptionService)
                 .padding(.horizontal, 16).padding(.vertical, 12)
+        }
+    }
+
+    /// Ask (hold-Fn voice questions) — experimental, OFF by default. The only
+    /// Yappy feature that touches the network, and only via the user's own
+    /// Codex/Grok account.
+    ///
+    /// Setup philosophy: Yappy checks the user's Codex install silently (file
+    /// probes, re-run whenever the app activates) and shows one green light.
+    /// The enable toggle stays locked until something is connected, so the
+    /// whole flow is "see the green light, flip the switch."
+    private var askSection: some View {
+        SettingsSection(icon: "questionmark.bubble", title: "Answers", tinted: true) {
+            askReadinessRow
+            RowDivider()
+            // Locked until a backend is connected — but never locks the OFF
+            // direction (a vanished codex must not trap the toggle on).
+            SettingToggle(icon: "mic", title: "Hold Fn to ask",
+                          subtitle: askToggleSubtitle,
+                          isOn: $settings.askEnabled)
+                .disabled(!askAnyBackendReady && !settings.askEnabled)
+                .opacity(askAnyBackendReady || settings.askEnabled ? 1 : 0.55)
+            if settings.askEnabled {
+                // Offer the model choice only when there IS a choice.
+                if askCodexReadiness == .ready && askGrokReadiness == .ready {
+                    RowDivider()
+                    SettingRow(icon: "cpu", title: "Answering model",
+                               subtitle: "Both research with their own web search.") {
+                        Picker("", selection: $settings.askBackend) {
+                            ForEach(AskBackend.allCases) { Text($0.displayName).tag($0) }
+                        }
+                        .labelsHidden().fixedSize()
+                    }
+                }
+                // Grok has two models; the choice routes every Grok answer.
+                if settings.askBackend == .grok, askGrokReadiness == .ready {
+                    RowDivider()
+                    SettingRow(icon: "brain.head.profile", title: "Grok model",
+                               subtitle: "Composer 2.5 Fast is snappier; Grok Build reasons longer.") {
+                        Picker("", selection: $settings.askGrokModel) {
+                            ForEach(AskGrokModel.allCases) { Text($0.displayName).tag($0) }
+                        }
+                        .labelsHidden().fixedSize()
+                    }
+                }
+                RowDivider()
+                SettingToggle(icon: "clock.arrow.circlepath", title: "Save answer history",
+                              subtitle: "Keeps questions and answers in a local log on this Mac. Turn off and nothing is stored.",
+                              isOn: $settings.askSaveHistoryEnabled)
+                RowDivider()
+                SettingRow(icon: "globe", title: "Set the Globe key free",
+                           subtitle: "For reliable Fn capture, set System Settings → Keyboard → “Press 🌐 to” = Do Nothing.") {
+                    Button("Open Keyboard Settings") {
+                        if let url = URL(string: "x-apple.systempreferences:com.apple.Keyboard-Settings.extension") {
+                            NSWorkspace.shared.open(url)
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                }
+            }
+        }
+        // If only one backend is connected, quietly make it the active one so
+        // enabling never selects a dead backend.
+        .onChange(of: settings.askEnabled) { _, enabled in
+            guard enabled else { return }
+            if settings.askBackend == .codex, askCodexReadiness != .ready, askGrokReadiness == .ready {
+                settings.askBackend = .grok
+            } else if settings.askBackend == .grok, askGrokReadiness != .ready, askCodexReadiness == .ready {
+                settings.askBackend = .codex
+            }
+        }
+    }
+
+    private var askAnyBackendReady: Bool {
+        askCodexReadiness == .ready || askGrokReadiness == .ready
+    }
+
+    private func askReadiness(for backend: AskBackend) -> AskBackendReadiness {
+        switch backend {
+        case .codex: askCodexReadiness
+        case .grok: askGrokReadiness
+        }
+    }
+
+    /// Backend the readiness row should describe: prefer the selected one when
+    /// it's ready, otherwise the other ready backend, otherwise the selected one
+    /// for setup messaging.
+    private var effectiveAskBackendForReadiness: AskBackend {
+        let selected = settings.askBackend
+        if askReadiness(for: selected) == .ready { return selected }
+        let other: AskBackend = selected == .codex ? .grok : .codex
+        if askReadiness(for: other) == .ready { return other }
+        return selected
+    }
+
+    private var askToggleSubtitle: String {
+        askAnyBackendReady
+            ? "Hold the Globe/Fn key, ask out loud, and the answer appears in a pill — with web search and sources. Your spoken question goes to your own model account, not Yappy."
+            : "Turns on once Codex (or Grok) is connected above."
+    }
+
+    /// The "green light" row: silent check of the user's Codex install, with
+    /// exactly one next step when something's missing.
+    private var askReadinessRow: some View {
+        let effective = effectiveAskBackendForReadiness
+        let effectiveReadiness = askReadiness(for: effective)
+        let selectedReady = askReadiness(for: settings.askBackend) == .ready
+
+        let (color, title, subtitle): (Color, String, String) = {
+            if askAnyBackendReady {
+                if selectedReady {
+                    switch settings.askBackend {
+                    case .codex:
+                        let grokNote = askGrokReadiness == .ready ? " Grok is connected too." : ""
+                        return (Brand.ready, "Codex connected",
+                                "Answers uses your own Codex (ChatGPT) sign-in — nothing to configure.\(grokNote)")
+                    case .grok:
+                        let codexNote = askCodexReadiness == .ready ? " Codex is connected too." : ""
+                        return (Brand.ready, "Grok connected",
+                                "Answers uses your own Grok sign-in — nothing to configure.\(codexNote)")
+                    }
+                }
+                switch effective {
+                case .grok:
+                    return (Brand.ready, "Grok connected", "Grok is connected and will answer.")
+                case .codex:
+                    return (Brand.ready, "Codex connected", "Codex is connected and will answer.")
+                }
+            }
+            switch effectiveReadiness {
+            case .ready:
+                return (Brand.ready, "\(effective.displayName) connected", "Answers is ready.")
+            case .needsLogin:
+                switch effective {
+                case .codex:
+                    return (Color.accentColor, "One step left: sign in",
+                            "Codex is installed. Open Terminal, run codex login once, then come back — Yappy notices automatically.")
+                case .grok:
+                    return (Color.accentColor, "One step left: sign in",
+                            "Grok is installed. Open Terminal, run grok login once, then come back — Yappy notices automatically.")
+                }
+            case .notInstalled:
+                switch effective {
+                case .codex:
+                    return (Brand.ink4, "Codex not found",
+                            "Install the Codex CLI or the Codex app and sign in once — Yappy detects it automatically, no paths or keys to enter.")
+                case .grok:
+                    return (Brand.ink4, "Grok not found",
+                            "Install the Grok CLI and sign in once — Yappy detects it automatically, no paths or keys to enter.")
+                }
+            }
+        }()
+
+        return SettingRow(icon: "circle.fill", title: title, subtitle: subtitle, iconColor: color) {
+            if askAnyBackendReady {
+                Image(systemName: "checkmark.seal.fill")
+                    .foregroundStyle(Brand.ready)
+            } else {
+                switch effectiveReadiness {
+                case .ready:
+                    EmptyView()
+                case .needsLogin:
+                    let command = effective == .codex ? "codex login" : "grok login"
+                    Button(copiedLoginCommand ? "Copied" : "Copy “\(command)”") {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(command, forType: .string)
+                        copiedLoginCommand = true
+                        Task { try? await Task.sleep(nanoseconds: 1_500_000_000); copiedLoginCommand = false }
+                    }
+                    .buttonStyle(.bordered)
+                case .notInstalled:
+                    if effective == .codex {
+                        Button("Get Codex") {
+                            if let url = URL(string: "https://github.com/openai/codex") {
+                                NSWorkspace.shared.open(url)
+                            }
+                        }
+                        .buttonStyle(.bordered)
+                    }
+                }
+            }
         }
     }
 

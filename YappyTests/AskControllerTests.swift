@@ -1,0 +1,910 @@
+//
+//  AskControllerTests.swift
+//  YappyTests
+//
+
+import XCTest
+@testable import Yappy
+
+// MARK: - Fakes
+
+@MainActor
+final class FakeCodexClient: CodexAsking {
+    var onNotification: (@Sendable (CodexEventEnvelope) -> Void)?
+
+    private(set) var prewarmCount = 0
+    private(set) var askCalls: [(transcript: String, continuingThread: String?, effort: String)] = []
+    private(set) var interruptCalls: [(threadID: String, turnID: String)] = []
+    private(set) var stopCount = 0
+
+    var askResult: Result<CodexRunStart, Error> = .success(
+        CodexRunStart(threadID: "t1", turnID: "turn1", turnStarted: true)
+    )
+
+    func prewarm() async { prewarmCount += 1 }
+
+    func ask(transcript: String, continuingThread: String?, effort: String) async throws -> CodexRunStart {
+        askCalls.append((transcript, continuingThread, effort))
+        let start = try askResult.get()
+        // Follow-up asks defer turn ID to streaming events (turnStarted), matching
+        // the gap where stale prior-turn events can arrive.
+        if askCalls.count > 1 {
+            return CodexRunStart(
+                threadID: start.threadID,
+                turnID: nil,
+                turnStarted: start.turnStarted
+            )
+        }
+        return start
+    }
+
+    func interrupt(threadID: String, turnID: String) {
+        interruptCalls.append((threadID, turnID))
+    }
+
+    func stop() { stopCount += 1 }
+
+    func push(_ envelope: CodexEventEnvelope) {
+        onNotification?(envelope)
+    }
+}
+
+@MainActor
+final class FakeGrokClient: GrokAsking {
+    var onEvent: (@Sendable (GrokEvent) -> Void)?
+
+    private(set) var askCalls: [GrokAskRequest] = []
+    private(set) var prewarmCount = 0
+    private(set) var cancelCount = 0
+    var askError: Error?
+
+    func prewarm() async { prewarmCount += 1 }
+
+    func ask(_ request: GrokAskRequest) async throws {
+        askCalls.append(request)
+        if let askError { throw askError }
+    }
+
+    func cancel() { cancelCount += 1 }
+
+    func push(_ event: GrokEvent) {
+        onEvent?(event)
+    }
+}
+
+// MARK: - Tests
+
+@MainActor
+final class AskControllerTests: XCTestCase {
+    private var historyDirectory: URL!
+
+    override func setUp() {
+        super.setUp()
+        historyDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ask-controller-tests-\(UUID().uuidString)", isDirectory: true)
+    }
+
+    override func tearDown() {
+        if let historyDirectory { try? FileManager.default.removeItem(at: historyDirectory) }
+        super.tearDown()
+    }
+
+    // MARK: - Helpers
+
+    private func makeController(
+        codex: FakeCodexClient? = nil,
+        grok: FakeGrokClient? = nil,
+        history: AskHistoryStore? = nil
+    ) -> (AskController, FakeCodexClient, FakeGrokClient) {
+        let codexClient = codex ?? FakeCodexClient()
+        let grokClient = grok ?? FakeGrokClient()
+        let store = history ?? AskHistoryStore(directory: historyDirectory)
+        let controller = AskController(codexClient: codexClient, grokClient: grokClient, history: store)
+        return (controller, codexClient, grokClient)
+    }
+
+    private func yieldUntil(_ condition: () -> Bool, maxYields: Int = 30, file: StaticString = #file, line: UInt = #line) async {
+        for _ in 0..<maxYields {
+            if condition() { return }
+            await Task.yield()
+        }
+        XCTFail("Condition not met within \(maxYields) yields", file: file, line: line)
+    }
+
+    private func pushCodex(
+        _ client: FakeCodexClient,
+        threadID: String = "t1",
+        turnID: String = "turn1",
+        event: CodexEvent
+    ) async {
+        client.push(CodexEventEnvelope(threadID: threadID, turnID: turnID, event: event))
+        await Task.yield()
+        await Task.yield()
+    }
+
+    private func pushGrok(_ client: FakeGrokClient, event: GrokEvent) async {
+        client.push(event)
+        await Task.yield()
+        await Task.yield()
+    }
+
+    private func completeCodexRun(
+        controller: AskController,
+        codex: FakeCodexClient,
+        question: String,
+        answer: String,
+        threadID: String = "t1",
+        turnID: String = "turn1"
+    ) async {
+        controller.beginListening()
+        controller.submit(question)
+        await yieldUntil { codex.askCalls.count == 1 }
+        await pushCodex(codex, threadID: threadID, turnID: turnID, event: .turnStarted)
+        await pushCodex(codex, threadID: threadID, turnID: turnID, event: .agentMessageDelta(itemID: "msg1", delta: answer))
+        await pushCodex(codex, threadID: threadID, turnID: turnID, event: .turnCompleted(failureMessage: nil))
+        await yieldUntil { controller.run?.status == .completed }
+    }
+
+    // MARK: - a. Happy path codex
+
+    func testHappyPathCodexCompletesAndWritesHistory() async {
+        let codex = FakeCodexClient()
+        let history = AskHistoryStore(directory: historyDirectory)
+        let (controller, _, _) = makeController(codex: codex, history: history)
+        controller.saveHistory = true
+
+        controller.beginListening()
+        controller.submit("What is two plus two?")
+
+        await yieldUntil { codex.askCalls.count == 1 }
+        XCTAssertNil(codex.askCalls[0].continuingThread)
+        XCTAssertEqual(codex.askCalls[0].effort, "low")
+
+        await pushCodex(codex, event: .turnStarted)
+        await pushCodex(codex, event: .agentMessageDelta(itemID: "msg1", delta: "Four"))
+        await pushCodex(codex, event: .turnCompleted(failureMessage: nil))
+
+        await yieldUntil { controller.run?.status == .completed }
+        XCTAssertEqual(controller.run?.answerText, "Four")
+        XCTAssertEqual(controller.run?.result, "Four")
+        XCTAssertEqual(history.entries.count, 1)
+        XCTAssertEqual(history.entries.first?.question, "What is two plus two?")
+        XCTAssertEqual(history.entries.first?.answer, "Four")
+    }
+
+    // MARK: - b. Narration strip on save
+
+    func testNarrationStripOnSave() async {
+        let codex = FakeCodexClient()
+        let history = AskHistoryStore(directory: historyDirectory)
+        let (controller, _, _) = makeController(codex: codex, history: history)
+        controller.saveHistory = true
+
+        controller.beginListening()
+        controller.submit("Find the capital")
+
+        await yieldUntil { codex.askCalls.count == 1 }
+        let answer = "Searching for X.\nReal."
+        await pushCodex(codex, event: .agentMessageDelta(itemID: "msg1", delta: answer))
+        await pushCodex(codex, event: .turnCompleted(failureMessage: nil))
+
+        await yieldUntil { controller.run?.status == .completed }
+        XCTAssertEqual(history.entries.first?.answer, "Real.")
+    }
+
+    // MARK: - c. Abort mid-stream
+
+    func testAbortMidStreamInterruptsAndCancels() async {
+        let codex = FakeCodexClient()
+        let (controller, _, _) = makeController(codex: codex)
+        controller.saveHistory = false
+
+        controller.beginListening()
+        controller.submit("Long question")
+
+        await yieldUntil { codex.askCalls.count == 1 }
+        await pushCodex(codex, event: .turnStarted)
+        await yieldUntil { controller.run?.codexThreadID == "t1" }
+
+        controller.abort()
+
+        XCTAssertEqual(controller.run?.status, .cancelled)
+        XCTAssertEqual(codex.interruptCalls.count, 1)
+        XCTAssertEqual(codex.interruptCalls[0].threadID, "t1")
+        XCTAssertEqual(codex.interruptCalls[0].turnID, "turn1")
+    }
+
+    // MARK: - d. Stale-thread events dropped
+
+    func testStaleThreadEventsAreDropped() async {
+        let codex = FakeCodexClient()
+        let (controller, _, _) = makeController(codex: codex)
+        controller.saveHistory = false
+
+        await completeCodexRun(
+            controller: controller,
+            codex: codex,
+            question: "First?",
+            answer: "First answer."
+        )
+        let answerBefore = controller.run?.answerText
+
+        await pushCodex(codex, event: .agentMessageDelta(itemID: "msg1", delta: " stale"))
+        await Task.yield()
+        await Task.yield()
+
+        XCTAssertEqual(controller.run?.status, .completed)
+        XCTAssertEqual(controller.run?.answerText, answerBefore)
+    }
+
+    // MARK: - e. Backend fallback
+
+    func testBackendFallbackDispatchesGrok() async {
+        let codex = FakeCodexClient()
+        let grok = FakeGrokClient()
+        let (controller, _, _) = makeController(codex: codex, grok: grok)
+        controller.backend = .codex
+        controller.backendUsable = { backend in backend == .grok }
+        controller.saveHistory = false
+
+        controller.beginListening()
+        controller.submit("Fallback question")
+
+        await yieldUntil { grok.askCalls.count == 1 }
+        XCTAssertTrue(codex.askCalls.isEmpty)
+        XCTAssertEqual(controller.backend, .grok)
+
+        await pushGrok(grok, event: .text(delta: "Grok says hi."))
+        await pushGrok(grok, event: .end(stopReason: "EndTurn", sessionId: nil))
+        await yieldUntil { controller.run?.status == .completed }
+        XCTAssertEqual(controller.run?.answerText, "Grok says hi.")
+    }
+
+    // MARK: - f. Tool blocklist
+
+    func testCommandStartedFailsRunAndInterrupts() async {
+        let codex = FakeCodexClient()
+        let (controller, _, _) = makeController(codex: codex)
+        controller.saveHistory = false
+
+        controller.beginListening()
+        controller.submit("Do something dangerous")
+
+        await yieldUntil { codex.askCalls.count == 1 }
+        await yieldUntil { controller.run?.codexThreadID == "t1" }
+
+        await pushCodex(codex, event: .commandStarted(command: "rm -rf /"))
+
+        await yieldUntil { controller.run?.status == .failed }
+        XCTAssertEqual(controller.run?.result, "Ask tried to use a blocked tool and was stopped.")
+        XCTAssertEqual(codex.interruptCalls.count, 1)
+        XCTAssertEqual(codex.interruptCalls[0].threadID, "t1")
+        XCTAssertEqual(codex.interruptCalls[0].turnID, "turn1")
+    }
+
+    // MARK: - g. Follow-up thread reuse
+
+    func testFollowUpReusesCodexThread() async {
+        let codex = FakeCodexClient()
+        let (controller, _, _) = makeController(codex: codex)
+        controller.saveHistory = false
+
+        await completeCodexRun(
+            controller: controller,
+            codex: codex,
+            question: "First question",
+            answer: "First answer.",
+            threadID: "t1"
+        )
+
+        controller.beginListening()
+        controller.submit("Follow up?")
+
+        await yieldUntil { codex.askCalls.count == 2 }
+        XCTAssertEqual(codex.askCalls[1].continuingThread, "t1")
+        XCTAssertTrue(codex.askCalls[1].transcript.contains("Question:\nFollow up?"))
+        XCTAssertTrue(codex.askCalls[1].transcript.contains("Context: it is"))
+        XCTAssertEqual(controller.run?.turns.count, 1)
+        XCTAssertEqual(controller.run?.turns[0].question, "First question")
+        XCTAssertEqual(controller.run?.turns[0].answer, "First answer.")
+    }
+
+    // MARK: - h. Empty captures fade out (no ghost card)
+
+    func testCancelCaptureWithoutSpeechClearsRun() {
+        let (controller, _, _) = makeController()
+        controller.saveHistory = false
+
+        controller.beginListening()
+        controller.cancelCapture()
+
+        XCTAssertNil(controller.run, "an empty capture must fade out, not park a cancelled card")
+    }
+
+    func testEmptySubmitClearsRun() {
+        let (controller, _, _) = makeController()
+        controller.saveHistory = false
+
+        controller.beginListening()
+        controller.submit("   \n")
+
+        XCTAssertNil(controller.run)
+    }
+
+    func testAbortDuringCaptureClearsRun() {
+        let (controller, _, _) = makeController()
+        controller.saveHistory = false
+
+        controller.beginPreparing()
+        controller.abort()
+        XCTAssertNil(controller.run, "abort during preparing must discard, not show a Stopped card")
+
+        controller.beginListening()
+        controller.abort()
+        XCTAssertNil(controller.run, "abort during listening must discard, not show a Stopped card")
+    }
+
+    func testCancelledFollowUpCaptureRestoresCompletedCard() async {
+        let codex = FakeCodexClient()
+        let (controller, _, _) = makeController(codex: codex)
+        controller.saveHistory = false
+
+        await completeCodexRun(
+            controller: controller,
+            codex: codex,
+            question: "Original question",
+            answer: "Previous answer."
+        )
+
+        controller.beginListening()   // borrows the completed card for a follow-up
+        controller.cancelCapture()    // silence — nothing was asked
+
+        XCTAssertEqual(controller.run?.status, .completed)
+        XCTAssertEqual(controller.run?.rawTranscript, "Original question")
+        XCTAssertEqual(controller.run?.answerText, "Previous answer.")
+        XCTAssertEqual(controller.run?.turns.count, 0)
+    }
+
+    // MARK: - i. Card command
+
+    func testCardCommandCopyRestoresCompletedRun() async {
+        let codex = FakeCodexClient()
+        let (controller, _, _) = makeController(codex: codex)
+        controller.saveHistory = false
+
+        var copied: String?
+        controller.copyText = { copied = $0 }
+
+        await completeCodexRun(
+            controller: controller,
+            codex: codex,
+            question: "Original question",
+            answer: "Previous answer."
+        )
+
+        controller.beginListening()
+        controller.submit("copy that")
+
+        XCTAssertEqual(copied, "Previous answer.")
+        XCTAssertEqual(controller.run?.status, .completed)
+        XCTAssertEqual(controller.run?.rawTranscript, "Original question")
+        XCTAssertEqual(controller.run?.answerText, "Previous answer.")
+    }
+
+    // MARK: - j. Grok dispatch + metrics
+
+    func testGrokDispatchDefaultsToLowEffortAndSplitsSystemPrompt() async {
+        let grok = FakeGrokClient()
+        let (controller, _, _) = makeController(grok: grok)
+        controller.backend = .grok
+        controller.saveHistory = false
+
+        controller.beginListening()
+        controller.submit("What is Swift?")
+
+        await yieldUntil { grok.askCalls.count == 1 }
+        XCTAssertEqual(grok.askCalls[0].effort, "low")
+        XCTAssertEqual(grok.askCalls[0].systemPrompt, AskPromptPolicy.systemInstructions)
+        XCTAssertTrue(grok.askCalls[0].prompt.contains("Question:\nWhat is Swift?"))
+        XCTAssertFalse(grok.askCalls[0].prompt.contains("READ-ONLY"))
+    }
+
+    func testThinkHarderRoutesHighEffortToGrok() async {
+        let grok = FakeGrokClient()
+        let (controller, _, _) = makeController(grok: grok)
+        controller.backend = .grok
+        controller.saveHistory = false
+
+        controller.beginListening()
+        controller.submit("think harder, what is entropy?")
+
+        await yieldUntil { grok.askCalls.count == 1 }
+        XCTAssertEqual(grok.askCalls[0].effort, "high")
+        XCTAssertTrue(grok.askCalls[0].prompt.contains("what is entropy?"))
+        XCTAssertFalse(grok.askCalls[0].prompt.lowercased().contains("think harder"))
+    }
+
+    func testGrokFollowUpPromptCarriesPriorTurns() async {
+        let grok = FakeGrokClient()
+        let (controller, _, _) = makeController(grok: grok)
+        controller.backend = .grok
+        controller.saveHistory = false
+
+        controller.beginListening()
+        controller.submit("First question")
+
+        await yieldUntil { grok.askCalls.count == 1 }
+        await pushGrok(grok, event: .text(delta: "First answer."))
+        await pushGrok(grok, event: .end(stopReason: "EndTurn", sessionId: nil))
+        await yieldUntil { controller.run?.status == .completed }
+
+        controller.beginListening()
+        controller.submit("Follow up?")
+
+        await yieldUntil { grok.askCalls.count == 2 }
+        XCTAssertTrue(grok.askCalls[1].prompt.contains("Earlier in this conversation:"))
+        XCTAssertTrue(grok.askCalls[1].prompt.contains("First question"))
+        XCTAssertTrue(grok.askCalls[1].prompt.contains("First answer."))
+    }
+
+    func testMetricsStampOrderingGrok() async {
+        let grok = FakeGrokClient()
+        let (controller, _, _) = makeController(grok: grok)
+        controller.backend = .grok
+        controller.saveHistory = false
+        var t = 0.0
+        controller.metricsClock = { t += 1; return t }
+
+        controller.beginListening()
+        controller.submit("Metrics question")
+
+        await yieldUntil { grok.askCalls.count == 1 }
+        await pushGrok(grok, event: .thought(delta: "hmm"))
+        await pushGrok(grok, event: .text(delta: "Answer."))
+        await pushGrok(grok, event: .end(stopReason: "EndTurn", sessionId: nil))
+        await yieldUntil { controller.run?.status == .completed }
+
+        let m = controller.lastRunMetrics
+        XCTAssertNotNil(m.dispatchedAt)
+        XCTAssertNotNil(m.firstEventAt)
+        XCTAssertNotNil(m.firstAnswerTokenAt)
+        XCTAssertNotNil(m.completedAt)
+        XCTAssertLessThan(m.dispatchedAt!, m.firstEventAt!)
+        XCTAssertLessThan(m.firstEventAt!, m.firstAnswerTokenAt!)
+        XCTAssertLessThan(m.firstAnswerTokenAt!, m.completedAt!)
+    }
+
+    func testMetricsStampOrderingCodex() async {
+        let codex = FakeCodexClient()
+        let (controller, _, _) = makeController(codex: codex)
+        controller.saveHistory = false
+        var t = 0.0
+        controller.metricsClock = { t += 1; return t }
+
+        controller.beginListening()
+        controller.submit("Metrics question")
+
+        await yieldUntil { codex.askCalls.count == 1 }
+        await pushCodex(codex, event: .turnStarted)
+        await pushCodex(codex, event: .agentMessageDelta(itemID: "msg1", delta: "Answer."))
+        await pushCodex(codex, event: .turnCompleted(failureMessage: nil))
+        await yieldUntil { controller.run?.status == .completed }
+
+        let m = controller.lastRunMetrics
+        XCTAssertNotNil(m.dispatchedAt)
+        XCTAssertNotNil(m.firstEventAt)
+        XCTAssertNotNil(m.firstAnswerTokenAt)
+        XCTAssertNotNil(m.completedAt)
+        XCTAssertLessThan(m.dispatchedAt!, m.firstEventAt!)
+        XCTAssertLessThan(m.firstEventAt!, m.firstAnswerTokenAt!)
+        XCTAssertLessThan(m.firstAnswerTokenAt!, m.completedAt!)
+    }
+
+    // MARK: - k. Grok router + prewarm routing
+
+    func testRouterFallsBackToOneShotOnWarmFailure() async {
+        let warm = FakeGrokClient()
+        let oneShot = FakeGrokClient()
+        warm.askError = GrokAgentClient.ClientError.notWarm
+        let router = GrokClientRouter(warm: warm, oneShot: oneShot)
+        let controller = AskController(
+            codexClient: FakeCodexClient(),
+            grokClient: router,
+            history: AskHistoryStore(directory: historyDirectory)
+        )
+        controller.backend = .grok
+        controller.saveHistory = false
+
+        controller.beginListening()
+        controller.submit("Fallback question")
+
+        await yieldUntil { oneShot.askCalls.count == 1 }
+        XCTAssertEqual(warm.askCalls.count, 1)
+        XCTAssertEqual(oneShot.askCalls[0].prompt, warm.askCalls[0].prompt)
+
+        await pushGrok(oneShot, event: .text(delta: "One-shot answer."))
+        await pushGrok(oneShot, event: .end(stopReason: "end_turn", sessionId: nil))
+        await yieldUntil { controller.run?.status == .completed }
+        XCTAssertEqual(controller.run?.answerText, "One-shot answer.")
+    }
+
+    func testGrokEndStoresSessionID() async {
+        let grok = FakeGrokClient()
+        let (controller, _, _) = makeController(grok: grok)
+        controller.backend = .grok
+        controller.saveHistory = false
+
+        controller.beginListening()
+        controller.submit("What is Swift?")
+
+        await yieldUntil { grok.askCalls.count == 1 }
+        await pushGrok(grok, event: .text(delta: "A language."))
+        await pushGrok(grok, event: .end(stopReason: "EndTurn", sessionId: "s1"))
+        await yieldUntil { controller.run?.status == .completed }
+
+        XCTAssertEqual(controller.run?.grokSessionID, "s1")
+    }
+
+    func testGrokFollowUpUsesResumeAndBareQuestion() async {
+        let grok = FakeGrokClient()
+        let (controller, _, _) = makeController(grok: grok)
+        controller.backend = .grok
+        controller.saveHistory = false
+
+        controller.beginListening()
+        controller.submit("First question")
+
+        await yieldUntil { grok.askCalls.count == 1 }
+        await pushGrok(grok, event: .text(delta: "First answer."))
+        await pushGrok(grok, event: .end(stopReason: "EndTurn", sessionId: "s1"))
+        await yieldUntil { controller.run?.status == .completed }
+
+        controller.beginListening()
+        controller.submit("Follow up?")
+
+        await yieldUntil { grok.askCalls.count == 2 }
+        XCTAssertEqual(grok.askCalls[1].resumeSessionID, "s1")
+        XCTAssertTrue(grok.askCalls[1].prompt.contains("Question:\nFollow up?"))
+        XCTAssertTrue(grok.askCalls[1].prompt.contains("Context: it is"))
+        XCTAssertFalse(grok.askCalls[1].prompt.contains("Earlier in this conversation:"))
+    }
+
+    func testDispatchShowsAskingStepUntilFirstEvent() async {
+        let grok = FakeGrokClient()
+        let (controller, _, _) = makeController(grok: grok)
+        controller.backend = .grok
+        controller.saveHistory = false
+
+        controller.beginListening()
+        controller.submit("Latency question")
+
+        await yieldUntil { grok.askCalls.count == 1 }
+        let askingTitle = "Asking Composer 2.5 Fast"
+        let askingStep = controller.run?.steps.first { $0.title == askingTitle }
+        XCTAssertNotNil(askingStep)
+        XCTAssertEqual(askingStep?.state, .running)
+
+        await pushGrok(grok, event: .thought(delta: "hmm"))
+        let completedStep = controller.run?.steps.first { $0.title == askingTitle }
+        XCTAssertEqual(completedStep?.state, .completed)
+    }
+
+    func testCompletedRunCarriesLatencySeconds() async {
+        let grok = FakeGrokClient()
+        let (controller, _, _) = makeController(grok: grok)
+        controller.backend = .grok
+        controller.saveHistory = false
+        var t = 0.0
+        controller.metricsClock = { t += 1; return t }
+
+        controller.beginListening()
+        controller.submit("Latency question")
+
+        await yieldUntil { grok.askCalls.count == 1 }
+        await pushGrok(grok, event: .text(delta: "Answer."))
+        await pushGrok(grok, event: .end(stopReason: "EndTurn", sessionId: nil))
+        await yieldUntil { controller.run?.status == .completed }
+
+        XCTAssertNotNil(controller.run?.latencySeconds)
+        XCTAssertGreaterThan(controller.run?.latencySeconds ?? 0, 0)
+    }
+
+    func testGrokAfterCodexFollowUpWrapsWithoutResume() async {
+        let codex = FakeCodexClient()
+        let grok = FakeGrokClient()
+        let (controller, _, _) = makeController(codex: codex, grok: grok)
+        controller.saveHistory = false
+
+        await completeCodexRun(
+            controller: controller,
+            codex: codex,
+            question: "Codex question",
+            answer: "Codex answer."
+        )
+
+        controller.backend = .grok
+        controller.beginListening()
+        controller.submit("Grok follow up?")
+
+        await yieldUntil { grok.askCalls.count == 1 }
+        XCTAssertNil(grok.askCalls[0].resumeSessionID)
+        XCTAssertTrue(grok.askCalls[0].prompt.contains("Earlier in this conversation:"))
+    }
+
+    func testToolEventsProduceSingleSearchStep() async {
+        let grok = FakeGrokClient()
+        let (controller, _, _) = makeController(grok: grok)
+        controller.backend = .grok
+        controller.saveHistory = false
+
+        controller.beginListening()
+        controller.submit("Search question")
+
+        await yieldUntil { grok.askCalls.count == 1 }
+        await pushGrok(grok, event: .toolStarted(title: "WebFetch"))
+        await pushGrok(grok, event: .toolStarted(title: "WebFetch"))
+        await pushGrok(grok, event: .toolCompleted(title: "WebFetch", failed: false))
+        await pushGrok(grok, event: .text(delta: "Found it."))
+        await pushGrok(grok, event: .end(stopReason: "EndTurn", sessionId: nil))
+        await yieldUntil { controller.run?.status == .completed }
+
+        let searchSteps = controller.run?.steps.filter { $0.kind == .search } ?? []
+        XCTAssertEqual(searchSteps.count, 1)
+        XCTAssertEqual(searchSteps[0].state, .completed)
+    }
+
+    func testRouterPrefersWarmWhenHealthy() async {
+        let warm = FakeGrokClient()
+        let oneShot = FakeGrokClient()
+        let router = GrokClientRouter(warm: warm, oneShot: oneShot)
+
+        let request = GrokAskRequest(
+            prompt: "Warm path",
+            model: AskGrokModel.composerFast.rawValue,
+            effort: "low",
+            systemPrompt: AskPromptPolicy.systemInstructions
+        )
+        try? await router.ask(request)
+
+        XCTAssertEqual(warm.askCalls.count, 1)
+        XCTAssertTrue(oneShot.askCalls.isEmpty)
+    }
+
+    func testPrewarmRoutesBySelectedBackend() async {
+        let codex = FakeCodexClient()
+        let grok = FakeGrokClient()
+        let (controller, _, _) = makeController(codex: codex, grok: grok)
+
+        controller.backend = .grok
+        controller.prewarm()
+        await yieldUntil { grok.prewarmCount == 1 }
+        XCTAssertEqual(grok.prewarmCount, 1)
+        XCTAssertEqual(codex.prewarmCount, 0)
+
+        controller.backend = .codex
+        controller.prewarm()
+        await yieldUntil { codex.prewarmCount == 1 }
+        XCTAssertEqual(codex.prewarmCount, 1)
+        XCTAssertEqual(grok.prewarmCount, 1)
+    }
+
+    func testRouterCancelFansOut() {
+        let warm = FakeGrokClient()
+        let oneShot = FakeGrokClient()
+        let router = GrokClientRouter(warm: warm, oneShot: oneShot)
+
+        router.cancel()
+
+        XCTAssertEqual(warm.cancelCount, 1)
+        XCTAssertEqual(oneShot.cancelCount, 1)
+    }
+
+    // MARK: - l. Barge-in during streaming
+
+    func testBargeInFromWorkingInterruptsAndListens() async {
+        let codex = FakeCodexClient()
+        let (controller, _, _) = makeController(codex: codex)
+        controller.saveHistory = false
+
+        controller.beginListening()
+        controller.submit("Streaming question")
+
+        await yieldUntil { codex.askCalls.count == 1 }
+        await pushCodex(codex, event: .turnStarted)
+        await pushCodex(codex, event: .agentMessageDelta(itemID: "msg1", delta: "Partial"))
+        await yieldUntil { controller.run?.status == .working }
+
+        controller.beginListening()
+
+        XCTAssertEqual(controller.run?.status, .listening)
+        XCTAssertEqual(codex.interruptCalls.count, 1)
+        XCTAssertEqual(codex.interruptCalls[0].threadID, "t1")
+        XCTAssertEqual(codex.interruptCalls[0].turnID, "turn1")
+        XCTAssertNil(controller.run?.answerText)
+        XCTAssertTrue(controller.run?.steps.isEmpty ?? false)
+        XCTAssertEqual(controller.run?.codexThreadID, "t1")
+        XCTAssertNil(controller.run?.codexTurnID)
+    }
+
+    func testBargeInPreservesConversationTurns() async {
+        let codex = FakeCodexClient()
+        let (controller, _, _) = makeController(codex: codex)
+        controller.saveHistory = false
+
+        await completeCodexRun(
+            controller: controller,
+            codex: codex,
+            question: "First question",
+            answer: "First answer.",
+            threadID: "t1"
+        )
+
+        controller.beginListening()
+        controller.submit("Second question")
+
+        await yieldUntil { codex.askCalls.count == 2 }
+        await pushCodex(codex, turnID: "turn2", event: .turnStarted)
+        await pushCodex(codex, turnID: "turn2", event: .agentMessageDelta(itemID: "msg1", delta: "Partial"))
+        await yieldUntil { controller.run?.status == .working }
+
+        controller.beginListening()
+
+        XCTAssertEqual(controller.run?.status, .listening)
+        XCTAssertEqual(controller.run?.turns.count, 1)
+        XCTAssertEqual(controller.run?.turns[0].question, "First question")
+        XCTAssertEqual(controller.run?.turns[0].answer, "First answer.")
+    }
+
+    func testBargeInThenSubmitContinuesThread() async {
+        let codex = FakeCodexClient()
+        let (controller, _, _) = makeController(codex: codex)
+        controller.saveHistory = false
+
+        controller.beginListening()
+        controller.submit("Interrupted question")
+
+        await yieldUntil { codex.askCalls.count == 1 }
+        await pushCodex(codex, threadID: "t1", turnID: "turn1", event: .turnStarted)
+        await pushCodex(codex, threadID: "t1", turnID: "turn1", event: .agentMessageDelta(itemID: "msg1", delta: "Partial"))
+        await yieldUntil { controller.run?.status == .working }
+
+        controller.beginListening()
+        controller.submit("follow up")
+
+        await yieldUntil { codex.askCalls.count == 2 }
+        XCTAssertEqual(codex.askCalls[1].continuingThread, "t1")
+    }
+
+    // MARK: - m. Stale turn rejection
+
+    func testStaleTurnEventRejectedOnFollowUp() async {
+        let codex = FakeCodexClient()
+        let (controller, _, _) = makeController(codex: codex)
+        controller.saveHistory = false
+
+        await completeCodexRun(
+            controller: controller,
+            codex: codex,
+            question: "First?",
+            answer: "First answer.",
+            threadID: "t1",
+            turnID: "turn1"
+        )
+
+        controller.beginListening()
+        controller.submit("Follow up?")
+
+        await yieldUntil { codex.askCalls.count == 2 }
+        XCTAssertNil(controller.run?.codexTurnID)
+
+        await pushCodex(codex, threadID: "t1", turnID: "turn1", event: .agentMessageDelta(itemID: "msg1", delta: "stale"))
+        await Task.yield()
+        await Task.yield()
+
+        XCTAssertNil(controller.run?.answerText)
+        XCTAssertNil(controller.run?.codexTurnID)
+
+        await pushCodex(codex, threadID: "t1", turnID: "turn2", event: .turnStarted)
+        await pushCodex(codex, threadID: "t1", turnID: "turn2", event: .agentMessageDelta(itemID: "msg2", delta: "Fresh"))
+        await pushCodex(codex, threadID: "t1", turnID: "turn2", event: .turnCompleted(failureMessage: nil))
+        await yieldUntil { controller.run?.status == .completed }
+
+        XCTAssertEqual(controller.run?.codexTurnID, "turn2")
+        XCTAssertEqual(controller.run?.answerText, "Fresh")
+    }
+
+    // MARK: - n. Retry preserves think harder
+
+    func testRetryPreservesThinkHarderEffort() async {
+        let grok = FakeGrokClient()
+        let (controller, _, _) = makeController(grok: grok)
+        controller.backend = .grok
+        controller.saveHistory = false
+
+        controller.beginListening()
+        controller.submit("think harder, why is the sky blue")
+
+        await yieldUntil { grok.askCalls.count == 1 }
+        XCTAssertEqual(grok.askCalls[0].effort, "high")
+        await pushGrok(grok, event: .text(delta: "Because of Rayleigh scattering."))
+        await pushGrok(grok, event: .end(stopReason: "EndTurn", sessionId: nil))
+        await yieldUntil { controller.run?.status == .completed }
+
+        controller.retry()
+
+        await yieldUntil { grok.askCalls.count == 2 }
+        XCTAssertEqual(grok.askCalls[1].effort, "high")
+    }
+
+    // MARK: - o. First-activity watchdog
+
+    func testFirstActivityWatchdogFailsSilentBackend() async {
+        let grok = FakeGrokClient()
+        let (controller, _, _) = makeController(grok: grok)
+        controller.backend = .grok
+        controller.saveHistory = false
+        controller.firstActivityTimeout = 0.05
+
+        controller.beginListening()
+        controller.submit("Silent question")
+
+        await yieldUntil { grok.askCalls.count == 1 }
+        try? await Task.sleep(nanoseconds: 100_000_000)
+        await yieldUntil { controller.run?.status == .failed }
+
+        XCTAssertTrue(controller.run?.result?.contains("No response") == true)
+    }
+
+    func testBargeInFromGrokWorkingCancelsClient() async {
+        let grok = FakeGrokClient()
+        let (controller, _, _) = makeController(grok: grok)
+        controller.backend = .grok
+        controller.saveHistory = false
+
+        controller.beginListening()
+        controller.submit("Grok question")
+
+        await yieldUntil { grok.askCalls.count == 1 }
+        await pushGrok(grok, event: .thought(delta: "hmm"))
+        await yieldUntil { controller.run?.status == .working }
+
+        controller.beginListening()
+
+        XCTAssertEqual(grok.cancelCount, 1)
+        XCTAssertEqual(controller.run?.status, .listening)
+    }
+    // MARK: - Security: grok tool allowlist
+
+    func testGrokNonResearchToolFailsRunAndCancels() async {
+        let grok = FakeGrokClient()
+        let (controller, _, _) = makeController(grok: grok)
+        controller.backend = .grok
+        controller.saveHistory = false
+
+        controller.beginListening()
+        controller.submit("Do something")
+        await yieldUntil { grok.askCalls.count == 1 }
+
+        await pushGrok(grok, event: .toolStarted(title: "Bash"))
+
+        await yieldUntil { controller.run?.status == .failed }
+        XCTAssertEqual(controller.run?.result, "Ask tried to use a blocked tool and was stopped.")
+        XCTAssertEqual(grok.cancelCount, 1)
+    }
+
+    func testGrokResearchToolStillMakesASearchStep() async {
+        let grok = FakeGrokClient()
+        let (controller, _, _) = makeController(grok: grok)
+        controller.backend = .grok
+        controller.saveHistory = false
+
+        controller.beginListening()
+        controller.submit("What is new today?")
+        await yieldUntil { grok.askCalls.count == 1 }
+
+        await pushGrok(grok, event: .toolStarted(title: "WebFetch"))
+        XCTAssertEqual(controller.run?.status, .working)
+        XCTAssertEqual(controller.run?.steps.filter { $0.kind == .search }.count, 1)
+    }
+
+}

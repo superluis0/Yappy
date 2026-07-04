@@ -24,6 +24,14 @@
 		B100000200000000000000A1 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200000200000000000000A1 /* AppDelegate.swift */; };
 		B100000300000000000000A1 /* AudioRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200000300000000000000A1 /* AudioRecorder.swift */; };
 		B100000400000000000000A1 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200000400000000000000A1 /* AppState.swift */; };
+		B10000AE00000000000000A1 /* AskSources.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000AE00000000000000A1 /* AskSources.swift */; };
+		B10000AC00000000000000A1 /* AskPromptPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000AC00000000000000A1 /* AskPromptPolicy.swift */; };
+		B10000A900000000000000A1 /* AskHistoryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000A900000000000000A1 /* AskHistoryStore.swift */; };
+		B10000A700000000000000A1 /* AskAnswerBlocks.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000A700000000000000A1 /* AskAnswerBlocks.swift */; };
+		B100009800000000000000A1 /* AskRun.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200009800000000000000A1 /* AskRun.swift */; };
+		B100009900000000000000A1 /* CodexEvent.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200009900000000000000A1 /* CodexEvent.swift */; };
+		B100009A00000000000000A1 /* GrokEvent.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200009A00000000000000A1 /* GrokEvent.swift */; };
+		B100009B00000000000000A1 /* AskHotkeyStateMachine.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200009B00000000000000A1 /* AskHotkeyStateMachine.swift */; };
 		B100000500000000000000A1 /* Settings.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200000500000000000000A1 /* Settings.swift */; };
 		B100000600000000000000A1 /* Constants.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200000600000000000000A1 /* Constants.swift */; };
 		B100000700000000000000A1 /* HistoryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200000700000000000000A1 /* HistoryStore.swift */; };
@@ -33,9 +41,19 @@
 		B100009400000000000000A1 /* UpdateChecker.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200009400000000000000A1 /* UpdateChecker.swift */; };
 		B100009500000000000000A1 /* WhatsNew.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200009500000000000000A1 /* WhatsNew.swift */; };
 		B100000A00000000000000A1 /* HotkeyManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200000A00000000000000A1 /* HotkeyManager.swift */; };
+		B10000AG00000000000000A1 /* AskBackendClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000AG00000000000000A1 /* AskBackendClient.swift */; };
+		B10000A400000000000000A1 /* AskController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000A400000000000000A1 /* AskController.swift */; };
+		B10000A000000000000000A1 /* VLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000A000000000000000A1 /* VLog.swift */; };
+		B10000A100000000000000A1 /* AskHotkey.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000A100000000000000A1 /* AskHotkey.swift */; };
+		B10000A200000000000000A1 /* GrokAskClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000A200000000000000A1 /* GrokAskClient.swift */; };
+		B10000AI00000000000000A1 /* GrokAgentClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000AI00000000000000A1 /* GrokAgentClient.swift */; };
+		B10000A300000000000000A1 /* CodexAskClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000A300000000000000A1 /* CodexAskClient.swift */; };
 		B100000B00000000000000A1 /* TextInserter.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200000B00000000000000A1 /* TextInserter.swift */; };
 		B100000C00000000000000A1 /* RecordingPillController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200000C00000000000000A1 /* RecordingPillController.swift */; };
 		B100000D00000000000000A1 /* RecordingPillView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200000D00000000000000A1 /* RecordingPillView.swift */; };
+		B10000AA00000000000000A1 /* AskHistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000AA00000000000000A1 /* AskHistoryView.swift */; };
+		B10000A500000000000000A1 /* AskPillView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000A500000000000000A1 /* AskPillView.swift */; };
+		B10000A600000000000000A1 /* AskPillController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000A600000000000000A1 /* AskPillController.swift */; };
 		B100000E00000000000000A1 /* MainWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200000E00000000000000A1 /* MainWindow.swift */; };
 		B100000F00000000000000A1 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200000F00000000000000A1 /* HomeView.swift */; };
 		B100001000000000000000A1 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200001000000000000000A1 /* SettingsView.swift */; };
@@ -95,6 +113,15 @@
 		B100001400000000000000A1 /* AppStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200001400000000000000A1 /* AppStateTests.swift */; };
 		B100001500000000000000A1 /* SettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200001500000000000000A1 /* SettingsTests.swift */; };
 		B100001600000000000000A1 /* HotkeyStateMachineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200001600000000000000A1 /* HotkeyStateMachineTests.swift */; };
+		B10000AH00000000000000A1 /* AskControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000AH00000000000000A1 /* AskControllerTests.swift */; };
+		B10000AF00000000000000A1 /* AskSourcesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000AF00000000000000A1 /* AskSourcesTests.swift */; };
+		B10000AD00000000000000A1 /* AskPromptPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000AD00000000000000A1 /* AskPromptPolicyTests.swift */; };
+		B10000AB00000000000000A1 /* AskHistoryStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000AB00000000000000A1 /* AskHistoryStoreTests.swift */; };
+		B10000A800000000000000A1 /* AskAnswerBlocksTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000A800000000000000A1 /* AskAnswerBlocksTests.swift */; };
+		B100009C00000000000000A1 /* AskRunTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200009C00000000000000A1 /* AskRunTests.swift */; };
+		B100009D00000000000000A1 /* CodexEventTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200009D00000000000000A1 /* CodexEventTests.swift */; };
+		B100009E00000000000000A1 /* GrokEventTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200009E00000000000000A1 /* GrokEventTests.swift */; };
+		B100009F00000000000000A1 /* AskHotkeyStateMachineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200009F00000000000000A1 /* AskHotkeyStateMachineTests.swift */; };
 		B100001700000000000000A1 /* HistoryStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200001700000000000000A1 /* HistoryStoreTests.swift */; };
 		B100009600000000000000A1 /* WhatsNewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200009600000000000000A1 /* WhatsNewTests.swift */; };
 		B100009700000000000000A1 /* FoundationModelsCleanupProviderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200009700000000000000A1 /* FoundationModelsCleanupProviderTests.swift */; };
@@ -128,6 +155,14 @@
 		B200000200000000000000A1 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		B200000300000000000000A1 /* AudioRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioRecorder.swift; sourceTree = "<group>"; };
 		B200000400000000000000A1 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
+		B20000AE00000000000000A1 /* AskSources.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AskSources.swift; sourceTree = "<group>"; };
+		B20000AC00000000000000A1 /* AskPromptPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AskPromptPolicy.swift; sourceTree = "<group>"; };
+		B20000A900000000000000A1 /* AskHistoryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AskHistoryStore.swift; sourceTree = "<group>"; };
+		B20000A700000000000000A1 /* AskAnswerBlocks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AskAnswerBlocks.swift; sourceTree = "<group>"; };
+		B200009800000000000000A1 /* AskRun.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AskRun.swift; sourceTree = "<group>"; };
+		B200009900000000000000A1 /* CodexEvent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexEvent.swift; sourceTree = "<group>"; };
+		B200009A00000000000000A1 /* GrokEvent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrokEvent.swift; sourceTree = "<group>"; };
+		B200009B00000000000000A1 /* AskHotkeyStateMachine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AskHotkeyStateMachine.swift; sourceTree = "<group>"; };
 		B200000500000000000000A1 /* Settings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Settings.swift; sourceTree = "<group>"; };
 		B200000600000000000000A1 /* Constants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Constants.swift; sourceTree = "<group>"; };
 		B200000700000000000000A1 /* HistoryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryStore.swift; sourceTree = "<group>"; };
@@ -137,9 +172,19 @@
 		B200009400000000000000A1 /* UpdateChecker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateChecker.swift; sourceTree = "<group>"; };
 		B200009500000000000000A1 /* WhatsNew.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhatsNew.swift; sourceTree = "<group>"; };
 		B200000A00000000000000A1 /* HotkeyManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HotkeyManager.swift; sourceTree = "<group>"; };
+		B20000AG00000000000000A1 /* AskBackendClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AskBackendClient.swift; sourceTree = "<group>"; };
+		B20000A400000000000000A1 /* AskController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AskController.swift; sourceTree = "<group>"; };
+		B20000A000000000000000A1 /* VLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VLog.swift; sourceTree = "<group>"; };
+		B20000A100000000000000A1 /* AskHotkey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AskHotkey.swift; sourceTree = "<group>"; };
+		B20000A200000000000000A1 /* GrokAskClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrokAskClient.swift; sourceTree = "<group>"; };
+		B20000AI00000000000000A1 /* GrokAgentClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrokAgentClient.swift; sourceTree = "<group>"; };
+		B20000A300000000000000A1 /* CodexAskClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexAskClient.swift; sourceTree = "<group>"; };
 		B200000B00000000000000A1 /* TextInserter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextInserter.swift; sourceTree = "<group>"; };
 		B200000C00000000000000A1 /* RecordingPillController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingPillController.swift; sourceTree = "<group>"; };
 		B200000D00000000000000A1 /* RecordingPillView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingPillView.swift; sourceTree = "<group>"; };
+		B20000AA00000000000000A1 /* AskHistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AskHistoryView.swift; sourceTree = "<group>"; };
+		B20000A500000000000000A1 /* AskPillView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AskPillView.swift; sourceTree = "<group>"; };
+		B20000A600000000000000A1 /* AskPillController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AskPillController.swift; sourceTree = "<group>"; };
 		B200000E00000000000000A1 /* MainWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainWindow.swift; sourceTree = "<group>"; };
 		B200000F00000000000000A1 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
 		B200001000000000000000A1 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
@@ -198,6 +243,15 @@
 		B200001400000000000000A1 /* AppStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStateTests.swift; sourceTree = "<group>"; };
 		B200001500000000000000A1 /* SettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsTests.swift; sourceTree = "<group>"; };
 		B200001600000000000000A1 /* HotkeyStateMachineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HotkeyStateMachineTests.swift; sourceTree = "<group>"; };
+		B20000AH00000000000000A1 /* AskControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AskControllerTests.swift; sourceTree = "<group>"; };
+		B20000AF00000000000000A1 /* AskSourcesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AskSourcesTests.swift; sourceTree = "<group>"; };
+		B20000AD00000000000000A1 /* AskPromptPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AskPromptPolicyTests.swift; sourceTree = "<group>"; };
+		B20000AB00000000000000A1 /* AskHistoryStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AskHistoryStoreTests.swift; sourceTree = "<group>"; };
+		B20000A800000000000000A1 /* AskAnswerBlocksTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AskAnswerBlocksTests.swift; sourceTree = "<group>"; };
+		B200009C00000000000000A1 /* AskRunTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AskRunTests.swift; sourceTree = "<group>"; };
+		B200009D00000000000000A1 /* CodexEventTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexEventTests.swift; sourceTree = "<group>"; };
+		B200009E00000000000000A1 /* GrokEventTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrokEventTests.swift; sourceTree = "<group>"; };
+		B200009F00000000000000A1 /* AskHotkeyStateMachineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AskHotkeyStateMachineTests.swift; sourceTree = "<group>"; };
 		B200001700000000000000A1 /* HistoryStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryStoreTests.swift; sourceTree = "<group>"; };
 		B200009600000000000000A1 /* WhatsNewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhatsNewTests.swift; sourceTree = "<group>"; };
 		B200009700000000000000A1 /* FoundationModelsCleanupProviderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FoundationModelsCleanupProviderTests.swift; sourceTree = "<group>"; };
@@ -277,6 +331,14 @@
 				B200005600000000000000A1 /* NotesStore.swift */,
 				B200005300000000000000A1 /* BuiltInDictionary.swift */,
 				B200000400000000000000A1 /* AppState.swift */,
+				B20000AE00000000000000A1 /* AskSources.swift */,
+				B20000AC00000000000000A1 /* AskPromptPolicy.swift */,
+				B20000A900000000000000A1 /* AskHistoryStore.swift */,
+				B20000A700000000000000A1 /* AskAnswerBlocks.swift */,
+				B200009800000000000000A1 /* AskRun.swift */,
+				B200009900000000000000A1 /* CodexEvent.swift */,
+				B200009A00000000000000A1 /* GrokEvent.swift */,
+				B200009B00000000000000A1 /* AskHotkeyStateMachine.swift */,
 				B200000500000000000000A1 /* Settings.swift */,
 				B200000600000000000000A1 /* Constants.swift */,
 				B200000700000000000000A1 /* HistoryStore.swift */,
@@ -306,6 +368,13 @@
 				B200009300000000000000A1 /* FoundationModelsCleanupProvider.swift */,
 				B200009400000000000000A1 /* UpdateChecker.swift */,
 				B200000A00000000000000A1 /* HotkeyManager.swift */,
+				B20000AG00000000000000A1 /* AskBackendClient.swift */,
+				B20000A400000000000000A1 /* AskController.swift */,
+				B20000A000000000000000A1 /* VLog.swift */,
+				B20000A100000000000000A1 /* AskHotkey.swift */,
+				B20000A200000000000000A1 /* GrokAskClient.swift */,
+				B20000AI00000000000000A1 /* GrokAgentClient.swift */,
+				B20000A300000000000000A1 /* CodexAskClient.swift */,
 				B200000B00000000000000A1 /* TextInserter.swift */,
 				B200002100000000000000A1 /* ShortcutExpander.swift */,
 				B200003600000000000000A1 /* SpokenNumberFormatter.swift */,
@@ -329,6 +398,9 @@
 				B200005700000000000000A1 /* ScratchpadView.swift */,
 				B200000C00000000000000A1 /* RecordingPillController.swift */,
 				B200000D00000000000000A1 /* RecordingPillView.swift */,
+				B20000AA00000000000000A1 /* AskHistoryView.swift */,
+				B20000A500000000000000A1 /* AskPillView.swift */,
+				B20000A600000000000000A1 /* AskPillController.swift */,
 				B200000E00000000000000A1 /* MainWindow.swift */,
 				B200000F00000000000000A1 /* HomeView.swift */,
 				B200001000000000000000A1 /* SettingsView.swift */,
@@ -357,6 +429,15 @@
 				B200001400000000000000A1 /* AppStateTests.swift */,
 				B200001500000000000000A1 /* SettingsTests.swift */,
 				B200001600000000000000A1 /* HotkeyStateMachineTests.swift */,
+				B20000AH00000000000000A1 /* AskControllerTests.swift */,
+				B20000AF00000000000000A1 /* AskSourcesTests.swift */,
+				B20000AD00000000000000A1 /* AskPromptPolicyTests.swift */,
+				B20000AB00000000000000A1 /* AskHistoryStoreTests.swift */,
+				B20000A800000000000000A1 /* AskAnswerBlocksTests.swift */,
+				B200009C00000000000000A1 /* AskRunTests.swift */,
+				B200009D00000000000000A1 /* CodexEventTests.swift */,
+				B200009E00000000000000A1 /* GrokEventTests.swift */,
+				B200009F00000000000000A1 /* AskHotkeyStateMachineTests.swift */,
 				B200001700000000000000A1 /* HistoryStoreTests.swift */,
 				B200009600000000000000A1 /* WhatsNewTests.swift */,
 				B200009700000000000000A1 /* FoundationModelsCleanupProviderTests.swift */,
@@ -503,6 +584,14 @@
 				B100000200000000000000A1 /* AppDelegate.swift in Sources */,
 				B100000300000000000000A1 /* AudioRecorder.swift in Sources */,
 				B100000400000000000000A1 /* AppState.swift in Sources */,
+				B10000AE00000000000000A1 /* AskSources.swift in Sources */,
+				B10000AC00000000000000A1 /* AskPromptPolicy.swift in Sources */,
+				B10000A900000000000000A1 /* AskHistoryStore.swift in Sources */,
+				B10000A700000000000000A1 /* AskAnswerBlocks.swift in Sources */,
+				B100009800000000000000A1 /* AskRun.swift in Sources */,
+				B100009900000000000000A1 /* CodexEvent.swift in Sources */,
+				B100009A00000000000000A1 /* GrokEvent.swift in Sources */,
+				B100009B00000000000000A1 /* AskHotkeyStateMachine.swift in Sources */,
 				B100000500000000000000A1 /* Settings.swift in Sources */,
 				B100000600000000000000A1 /* Constants.swift in Sources */,
 				B100000700000000000000A1 /* HistoryStore.swift in Sources */,
@@ -512,9 +601,19 @@
 				B100009400000000000000A1 /* UpdateChecker.swift in Sources */,
 				B100009500000000000000A1 /* WhatsNew.swift in Sources */,
 				B100000A00000000000000A1 /* HotkeyManager.swift in Sources */,
+				B10000AG00000000000000A1 /* AskBackendClient.swift in Sources */,
+				B10000A400000000000000A1 /* AskController.swift in Sources */,
+				B10000A000000000000000A1 /* VLog.swift in Sources */,
+				B10000A100000000000000A1 /* AskHotkey.swift in Sources */,
+				B10000A200000000000000A1 /* GrokAskClient.swift in Sources */,
+				B10000AI00000000000000A1 /* GrokAgentClient.swift in Sources */,
+				B10000A300000000000000A1 /* CodexAskClient.swift in Sources */,
 				B100000B00000000000000A1 /* TextInserter.swift in Sources */,
 				B100000C00000000000000A1 /* RecordingPillController.swift in Sources */,
 				B100000D00000000000000A1 /* RecordingPillView.swift in Sources */,
+				B10000AA00000000000000A1 /* AskHistoryView.swift in Sources */,
+				B10000A500000000000000A1 /* AskPillView.swift in Sources */,
+				B10000A600000000000000A1 /* AskPillController.swift in Sources */,
 				B100000E00000000000000A1 /* MainWindow.swift in Sources */,
 				B100000F00000000000000A1 /* HomeView.swift in Sources */,
 				B100001000000000000000A1 /* SettingsView.swift in Sources */,
@@ -564,6 +663,15 @@
 				B100001400000000000000A1 /* AppStateTests.swift in Sources */,
 				B100001500000000000000A1 /* SettingsTests.swift in Sources */,
 				B100001600000000000000A1 /* HotkeyStateMachineTests.swift in Sources */,
+				B10000AH00000000000000A1 /* AskControllerTests.swift in Sources */,
+				B10000AF00000000000000A1 /* AskSourcesTests.swift in Sources */,
+				B10000AD00000000000000A1 /* AskPromptPolicyTests.swift in Sources */,
+				B10000AB00000000000000A1 /* AskHistoryStoreTests.swift in Sources */,
+				B10000A800000000000000A1 /* AskAnswerBlocksTests.swift in Sources */,
+				B100009C00000000000000A1 /* AskRunTests.swift in Sources */,
+				B100009D00000000000000A1 /* CodexEventTests.swift in Sources */,
+				B100009E00000000000000A1 /* GrokEventTests.swift in Sources */,
+				B100009F00000000000000A1 /* AskHotkeyStateMachineTests.swift in Sources */,
 				B100001700000000000000A1 /* HistoryStoreTests.swift in Sources */,
 				B100009600000000000000A1 /* WhatsNewTests.swift in Sources */,
 				B100009700000000000000A1 /* FoundationModelsCleanupProviderTests.swift in Sources */,
@@ -742,7 +850,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 2.4;
+				MARKETING_VERSION = 2.5;
 				PRODUCT_BUNDLE_IDENTIFIER = com.yappy.app.debug;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -774,7 +882,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 2.4;
+				MARKETING_VERSION = 2.5;
 				PRODUCT_BUNDLE_IDENTIFIER = com.yappy.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;

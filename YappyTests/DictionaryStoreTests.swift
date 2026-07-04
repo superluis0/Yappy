@@ -137,6 +137,41 @@ final class DictionaryStoreTests: XCTestCase {
         XCTAssertEqual(supabase.first?.aliases, ["my custom alias"], "User's own term is preserved")
     }
 
+    // MARK: - Vocabulary-boosting replacement plausibility
+
+    func testImplausibleBoostReplacementRejected() {
+        // Field regression: the CTC rescorer acoustically matched spoken "error"
+        // to the term "Terraform" and rewrote every occurrence. Textually the two
+        // share almost nothing — the guard must reject it.
+        XCTAssertFalse(ParakeetTranscriptionService.plausibleBoostReplacement(
+            original: "error", term: "Terraform", aliases: ["terra form"]))
+    }
+
+    func testPlausibleBoostReplacementsAccepted() {
+        // Real mishearings are textually close to the term or an alias.
+        XCTAssertTrue(ParakeetTranscriptionService.plausibleBoostReplacement(
+            original: "terra form", term: "Terraform", aliases: ["terra form"]))
+        XCTAssertTrue(ParakeetTranscriptionService.plausibleBoostReplacement(
+            original: "harkonen", term: "Harkonnen", aliases: []))
+        XCTAssertTrue(ParakeetTranscriptionService.plausibleBoostReplacement(
+            original: "super base", term: "Supabase", aliases: ["super base"]))
+        // Alias-only similarity counts too ("veet" is nothing like "Vite" spelled,
+        // but it IS the alias).
+        XCTAssertTrue(ParakeetTranscriptionService.plausibleBoostReplacement(
+            original: "veet", term: "Vite", aliases: ["veet"]))
+    }
+
+    func testEditSimilarityBounds() {
+        XCTAssertEqual(ParakeetTranscriptionService.editSimilarity("same", "same"), 1.0)
+        XCTAssertEqual(ParakeetTranscriptionService.editSimilarity("", ""), 1.0)
+        XCTAssertEqual(ParakeetTranscriptionService.editSimilarity("abc", ""), 0.0)
+        XCTAssertTrue(ParakeetTranscriptionService.editSimilarity("Error", "error") == 1.0)
+        // "error" is a SUBSEQUENCE of "terraform" (4 insertions, similarity ~0.56)
+        // — deceptively high, which is exactly why the threshold sits above it.
+        XCTAssertLessThan(ParakeetTranscriptionService.editSimilarity("error", "terraform"),
+                          ParakeetTranscriptionService.boostReplacementMinSimilarity)
+    }
+
     // MARK: - Vocabulary-boosting term builder
 
     func testBuildBoostTermsIsEmptyForNoInput() {

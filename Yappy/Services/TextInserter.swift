@@ -38,6 +38,29 @@ final class TextInserter {
         let items: [[NSPasteboard.PasteboardType: Data]]
     }
 
+    /// Marker stamped on every keyboard event this class synthesizes (the paste,
+    /// Return, backspace, and selection keystrokes), so the app's own event taps
+    /// can tell our events from the user's. Without it, our synthetic Cmd+V
+    /// would count as "user typed something" and invalidate the very insertion
+    /// context it belongs to.
+    static let syntheticEventTag: Int64 = 0x59415050
+
+    /// True once the user has typed a key, clicked, or switched apps since our
+    /// last insertion — the caret can no longer be assumed to sit right after
+    /// what we inserted. Gates the OPAQUE-app fallbacks only (leading-space and
+    /// voice-edit trust); AX-verified paths don't need it. This is what stops
+    /// the stray leading space in apps like Google Docs, whose canvas editor
+    /// exposes no focused element to the accessibility API at all (measured):
+    /// there the 45 s fallback used to fire even after Enter or a click moved
+    /// the caret somewhere a speculative space makes no sense.
+    private var contextInvalidatedByUserInput = false
+
+    /// Called (via the app's event taps/monitors) when the user types, clicks,
+    /// or switches apps. Cheap and idempotent.
+    func noteUserInputOccurred() {
+        contextInvalidatedByUserInput = true
+    }
+
     /// Last character we inserted, used to space consecutive dictations when the
     /// destination app doesn't expose its text to the accessibility API.
     private var lastInsertedTrailingCharacter: Character?
@@ -106,6 +129,9 @@ final class TextInserter {
         lastInsertedTrailingCharacter = payload.last
         lastInsertedText = payload
         lastInsertionDate = Date()
+        // A fresh insertion re-establishes the context the fallbacks reason
+        // about; anything the user does after this re-invalidates it.
+        contextInvalidatedByUserInput = false
     }
 
     private func clearLastInsertion() {
@@ -208,7 +234,10 @@ final class TextInserter {
         case .character(let actual):
             guard actual == expectedTrailing else { return false }  // caret moved
         case .unknown:
-            break                                          // opaque app — trust the time window
+            // Opaque app: the time window alone can't see a moved caret. If the
+            // user typed/clicked/switched apps since we inserted, refuse rather
+            // than risk selecting and deleting the wrong text.
+            guard !contextInvalidatedByUserInput else { return false }
         }
 
         // Re-entrancy guard: a burst of Shift+Left events (fallback) must not
@@ -291,7 +320,12 @@ final class TextInserter {
         case .character(let previous):
             return shouldSpace(after: previous)
         case .unknown:
-            guard let previous = lastInsertedTrailingCharacter,
+            // Opaque app (Google Docs exposes no focused element at all): only
+            // trust the last-insertion memory if the user hasn't typed, clicked,
+            // or switched apps since — any of those moves the caret somewhere a
+            // speculative space would be wrong (the "stray leading space" bug).
+            guard !contextInvalidatedByUserInput,
+                  let previous = lastInsertedTrailingCharacter,
                   let when = lastInsertionDate,
                   Date().timeIntervalSince(when) < fallbackValidityWindow else {
                 return false
@@ -368,7 +402,9 @@ final class TextInserter {
     }
 
     /// Posts a single key chord. Pins flags to exactly `flags` so a modifier the
-    /// user is still releasing (the recording hotkey) can't corrupt it.
+    /// user is still releasing (the recording hotkey) can't corrupt it. Every
+    /// event is stamped with `syntheticEventTag` so the app's own keyDown tap
+    /// can distinguish it from real typing (see `noteUserInputOccurred`).
     @discardableResult
     private func postKey(_ keyCode: CGKeyCode, flags: CGEventFlags = []) -> Bool {
         let source = CGEventSource(stateID: .hidSystemState)
@@ -378,6 +414,8 @@ final class TextInserter {
         }
         keyDown.flags = flags
         keyUp.flags = flags
+        keyDown.setIntegerValueField(.eventSourceUserData, value: Self.syntheticEventTag)
+        keyUp.setIntegerValueField(.eventSourceUserData, value: Self.syntheticEventTag)
         keyDown.post(tap: .cghidEventTap)
         usleep(5_000)
         keyUp.post(tap: .cghidEventTap)

@@ -15,6 +15,7 @@ struct MainWindowView: View {
         case shortcuts = "Shortcuts"
         case dictionary = "Dictionary"
         case modes = "Modes"
+        case ask = "Answers"
         case settings = "Settings"
 
         var id: String { rawValue }
@@ -25,6 +26,7 @@ struct MainWindowView: View {
             case .shortcuts: return "text.badge.plus"
             case .dictionary: return "character.book.closed"
             case .modes: return "slider.horizontal.3"
+            case .ask: return "questionmark.bubble"
             case .settings: return "gearshape"
             }
         }
@@ -38,6 +40,7 @@ struct MainWindowView: View {
     @ObservedObject var transcriptionService: ParakeetTranscriptionService
     @ObservedObject var updateChecker: UpdateChecker
     @ObservedObject var whatsNewPresenter: WhatsNewPresenter
+    @ObservedObject var askController: AskController
 
     @State private var selection: SidebarItem = .home
     /// Per-session dismissal of the update banner ("Later"). The menu-bar item and
@@ -91,7 +94,7 @@ struct MainWindowView: View {
                 .padding(.horizontal, 18).padding(.bottom, 8)
 
             VStack(spacing: 4) {
-                ForEach(SidebarItem.allCases) { item in
+                ForEach(visibleSidebarItems) { item in
                     SidebarNavRow(item: item, isSelected: selection == item) { selection = item }
                 }
             }
@@ -113,6 +116,10 @@ struct MainWindowView: View {
         }
     }
 
+    private var visibleSidebarItems: [SidebarItem] {
+        SidebarItem.allCases
+    }
+
     @ViewBuilder
     private var detailContent: some View {
         switch selection {
@@ -124,6 +131,8 @@ struct MainWindowView: View {
             DictionaryView(store: dictionaryStore, settings: settings, transcriptionService: transcriptionService)
         case .modes:
             ModesView(store: modeStore, settings: settings)
+        case .ask:
+            AskHistoryView(store: askController.history, controller: askController)
         case .settings:
             SettingsView(settings: settings, transcriptionService: transcriptionService, updateChecker: updateChecker,
                          historyStore: history,
@@ -146,7 +155,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         modeStore: ModeStore,
         transcriptionService: ParakeetTranscriptionService,
         updateChecker: UpdateChecker,
-        whatsNewPresenter: WhatsNewPresenter
+        whatsNewPresenter: WhatsNewPresenter,
+        askController: AskController
     ) {
         let view = MainWindowView(
             settings: settings,
@@ -156,7 +166,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             modeStore: modeStore,
             transcriptionService: transcriptionService,
             updateChecker: updateChecker,
-            whatsNewPresenter: whatsNewPresenter
+            whatsNewPresenter: whatsNewPresenter,
+            askController: askController
         )
 
         let window = NSWindow(

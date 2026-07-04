@@ -75,6 +75,10 @@ final class Settings: ObservableObject {
         static let autoUpdateChecksEnabled = "com.yappy.autoUpdateChecksEnabled"
         static let legacyCleanupMigrated = "com.yappy.legacyCleanupMigrated"
         static let cleanupDefaultOnMigrated = "com.yappy.cleanupDefaultOnMigrated"
+        static let askEnabled = "com.yappy.askEnabled"
+        static let askBackend = "com.yappy.askBackend"
+        static let askGrokModel = "com.yappy.askGrokModel"
+        static let askSaveHistoryEnabled = "com.yappy.askSaveHistoryEnabled"
 
         /// Keys from the cloud-based versions of Yappy; removed on first launch.
         static let staleKeys = [
@@ -273,6 +277,30 @@ final class Settings: ObservableObject {
     // MARK: - Private Properties
 
     private let defaults: UserDefaults
+    // MARK: - Ask (hold-Fn voice questions)
+
+    /// Whether the Fn "Ask" key is armed. Default OFF — this is the privacy
+    /// gate: until the user flips it, nothing Yappy does touches the network.
+    @Published var askEnabled: Bool = false {
+        didSet { if !isLoading { save() } }
+    }
+
+    /// Which backend answers Ask questions.
+    @Published var askBackend: AskBackend = .codex {
+        didSet { if !isLoading { save() } }
+    }
+
+    /// Which xAI model the Grok backend routes to.
+    @Published var askGrokModel: AskGrokModel = .composerFast {
+        didSet { if !isLoading { save() } }
+    }
+
+    /// Whether completed Ask Q&A pairs are kept in the local Ask history log.
+    /// On by default. When off, nothing new is written — existing entries stay.
+    @Published var askSaveHistoryEnabled: Bool = true {
+        didSet { if !isLoading { save() } }
+    }
+
     private var isLoading = false
 
     // MARK: - Initialization
@@ -317,6 +345,10 @@ final class Settings: ObservableObject {
         defaults.set(hasAddedDictionaryTerm, forKey: Keys.hasAddedDictionaryTerm)
         defaults.set(hasOpenedScratchpad, forKey: Keys.hasOpenedScratchpad)
         defaults.set(autoUpdateChecksEnabled, forKey: Keys.autoUpdateChecksEnabled)
+        defaults.set(askEnabled, forKey: Keys.askEnabled)
+        defaults.set(askBackend.rawValue, forKey: Keys.askBackend)
+        defaults.set(askGrokModel.rawValue, forKey: Keys.askGrokModel)
+        defaults.set(askSaveHistoryEnabled, forKey: Keys.askSaveHistoryEnabled)
 
         let overrides = Dictionary(uniqueKeysWithValues: toneOverrides.map { ($0.key.rawValue, $0.value.rawValue) })
         defaults.set(overrides, forKey: Keys.toneOverrides)
@@ -453,6 +485,22 @@ final class Settings: ObservableObject {
             autoUpdateChecksEnabled = defaults.bool(forKey: Keys.autoUpdateChecksEnabled)
         } else {
             autoUpdateChecksEnabled = true
+        }
+
+        askEnabled = defaults.bool(forKey: Keys.askEnabled)
+        if let backendRaw = defaults.string(forKey: Keys.askBackend),
+           let loadedBackend = AskBackend(rawValue: backendRaw) {
+            askBackend = loadedBackend
+        }
+        if let grokModelRaw = defaults.string(forKey: Keys.askGrokModel),
+           let loadedGrokModel = AskGrokModel(rawValue: grokModelRaw) {
+            askGrokModel = loadedGrokModel
+        }
+
+        if defaults.object(forKey: Keys.askSaveHistoryEnabled) != nil {
+            askSaveHistoryEnabled = defaults.bool(forKey: Keys.askSaveHistoryEnabled)
+        } else {
+            askSaveHistoryEnabled = true
         }
 
         if let raw = defaults.dictionary(forKey: Keys.toneOverrides) as? [String: String] {

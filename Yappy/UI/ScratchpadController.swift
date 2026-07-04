@@ -70,6 +70,13 @@ final class ScratchpadController {
 final class ScratchpadHotkey {
     var onTrigger: (() -> Void)?
 
+    /// Fired (async, main) for every REAL user keyDown — synthetic events posted
+    /// by Yappy itself (tagged with `TextInserter.syntheticEventTag`) are
+    /// excluded. Piggybacks on this always-on tap so `TextInserter` can learn
+    /// the caret context moved, without adding another event tap. The callback
+    /// receives no key information — only that a keystroke happened.
+    var onUserKeyDown: (() -> Void)?
+
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
 
@@ -125,6 +132,13 @@ final class ScratchpadHotkey {
         }
 
         guard type == .keyDown else { return Unmanaged.passUnretained(event) }
+
+        // Yappy's own synthetic keystrokes (the paste, Return, voice-edit
+        // selection keys) pass through untouched and never count as user input.
+        if event.getIntegerValueField(.eventSourceUserData) == TextInserter.syntheticEventTag {
+            return Unmanaged.passUnretained(event)
+        }
+        DispatchQueue.main.async { [weak self] in self?.onUserKeyDown?() }
 
         let keycode = event.getIntegerValueField(.keyboardEventKeycode)
         let flags = event.flags

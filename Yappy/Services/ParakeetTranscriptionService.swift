@@ -214,6 +214,57 @@ final class ParakeetTranscriptionService: ObservableObject {
             .map { BoostTerm(text: $0.text, aliases: $0.allAliases) }
     }
 
+    /// A boost replacement is only trusted when the replaced word could plausibly
+    /// be a *mishearing of the term* — i.e. it is textually close to the term or
+    /// one of its aliases ("terra form" -> "Terraform", "harkonen" -> "Harkonnen").
+    /// The CTC rescorer matches on acoustics alone and can false-positive on real
+    /// words (field case: every spoken "error" was rewritten to "Terraform");
+    /// text similarity is the cheap, deterministic backstop the acoustic match
+    /// lacks. Below this normalized-edit-distance similarity, the whole rescue is
+    /// rejected and the plain transcript kept.
+    ///
+    /// 0.6, not 0.5: a short word EMBEDDED in a term scores deceptively high on
+    /// pure edit distance — "error" is a subsequence of "t-err-af-or-m", distance
+    /// 4/9 = 0.56 similarity — and embedded words are exactly how the acoustic
+    /// false positive arises. Genuine mishearings score 0.78+ ("harkonen" 0.89,
+    /// "and tropic" -> "anthropic" 0.78, space-stripped aliases 1.0), and
+    /// phonetically-distant mishearings are covered by their trained aliases in
+    /// the candidate set, so 0.6 rejects the trap without losing real fixes.
+    nonisolated static let boostReplacementMinSimilarity = 0.6
+
+    /// Normalized edit-distance similarity in [0, 1]: 1 = identical, 0 = nothing
+    /// shared. Case-insensitive. Pure and `nonisolated` for direct unit testing.
+    nonisolated static func editSimilarity(_ a: String, _ b: String) -> Double {
+        let s = Array(a.lowercased()), t = Array(b.lowercased())
+        if s.isEmpty || t.isEmpty { return s.isEmpty && t.isEmpty ? 1 : 0 }
+        var prev = Array(0...t.count)
+        var curr = [Int](repeating: 0, count: t.count + 1)
+        for i in 1...s.count {
+            curr[0] = i
+            for j in 1...t.count {
+                let cost = s[i - 1] == t[j - 1] ? 0 : 1
+                curr[j] = min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + cost)
+            }
+            swap(&prev, &curr)
+        }
+        let distance = prev[t.count]
+        return 1.0 - Double(distance) / Double(max(s.count, t.count))
+    }
+
+    /// Whether replacing `original` with `term` is plausible as a mishearing fix:
+    /// the original must be textually similar to the term or one of its aliases,
+    /// compared both as-spoken and with spaces stripped (so the multi-word alias
+    /// "terra form" matches "Terraform"). Pure; see `boostReplacementMinSimilarity`.
+    nonisolated static func plausibleBoostReplacement(original: String, term: String, aliases: [String]) -> Bool {
+        let strippedOriginal = original.replacingOccurrences(of: " ", with: "")
+        for candidate in [term] + aliases {
+            let strippedCandidate = candidate.replacingOccurrences(of: " ", with: "")
+            if editSimilarity(original, candidate) >= boostReplacementMinSimilarity { return true }
+            if editSimilarity(strippedOriginal, strippedCandidate) >= boostReplacementMinSimilarity { return true }
+        }
+        return false
+    }
+
     /// Configures (or tears down) speech-model vocabulary biasing from the user's
     /// dictionary. Loading the auxiliary CTC model, tokenizer, and rescorer is
     /// expensive, so ALL of it happens here — never on the dictation path.
@@ -383,6 +434,26 @@ final class ParakeetTranscriptionService: ObservableObject {
             )
 
             guard rescoreOutput.wasModified else { return text }
+
+            // Plausibility guard: only accept the rescue when every applied
+            // replacement is textually close to its term (or an alias) — the
+            // signature of a real mishearing. The acoustic match alone can
+            // false-positive on genuine words (field case: "error" rewritten to
+            // "Terraform"); one implausible replacement rejects the whole rescue
+            // and the plain transcript ships instead. Notice-level (persisted)
+            // so a rejected rescue is diagnosable in the field — counts only.
+            for replacement in rescoreOutput.replacements where replacement.shouldReplace {
+                guard let term = replacement.replacementWord else { continue }
+                let aliases = vocabulary.terms.first {
+                    $0.textLowercased == term.lowercased()
+                }?.aliases ?? []
+                guard Self.plausibleBoostReplacement(original: replacement.originalWord,
+                                                     term: term, aliases: aliases) else {
+                    Self.logger.notice("Vocabulary boosting rejected an implausible replacement; keeping the plain transcript")
+                    return text
+                }
+            }
+
             Self.logger.info("Vocabulary boosting applied \(rescoreOutput.replacements.count, privacy: .public) replacement(s)")
             return rescoreOutput.text.trimmingCharacters(in: .whitespacesAndNewlines)
         } catch {

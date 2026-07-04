@@ -7,13 +7,15 @@
 <h3>Voice-to-text for macOS that runs entirely on your Mac.</h3>
 
 <p>Hold a key, speak, release — your words appear at the cursor in any app, usually in under a second.<br>
-No API keys. No cloud. No subscriptions. Your voice never leaves the device.</p>
+No API keys. No cloud. No subscriptions. Dictation never leaves the device.</p>
+
+<p>And when you want an <i>answer</i> instead of typing: hold <b>Fn</b> and ask. <b>Answers</b> is an optional, off-by-default assistant<br>that researches with web search through <i>your own</i> ChatGPT (Codex) or Grok account. Hold Fn again to follow up,<br>or say <i>"insert that"</i> to drop the answer straight into whatever you're writing.</p>
 
 <p>
 <img src="https://img.shields.io/badge/macOS-14%2B-000000?style=flat-square&logo=apple&logoColor=white" alt="macOS 14+">
 <img src="https://img.shields.io/badge/Swift-5.9-FF6B35?style=flat-square&logo=swift&logoColor=white" alt="Swift 5.9">
 <img src="https://img.shields.io/badge/Engine-Parakeet%20on%20ANE-5b8cff?style=flat-square" alt="Parakeet on the Apple Neural Engine">
-<img src="https://img.shields.io/badge/Privacy-100%25%20on--device-37d39a?style=flat-square" alt="100% on-device">
+<img src="https://img.shields.io/badge/Dictation-100%25%20on--device-37d39a?style=flat-square" alt="Dictation 100% on-device">
 <img src="https://img.shields.io/badge/License-MIT-555?style=flat-square" alt="MIT License">
 </p>
 
@@ -55,6 +57,39 @@ Everything is configurable in one place — hotkey, sounds, number formatting, n
 
 <div align="center">
 <img src="Documentation/assets/settings.png" alt="Yappy settings — hotkey, sounds, number formatting, filler removal, spoken commands, and voice editing" width="560">
+</div>
+
+## Answers — hold Fn, get an answer
+
+Dictation types what you say. **Answers researches what you ask.** Hold the **Fn (Globe)** key, say the question out loud — *"what were the top AI headlines this week?"*, *"compare the M4 chips in a table"* — and release. The answer streams into a floating dark-glass card at the bottom of your screen: live research steps while the model searches the web, then the answer itself, with the domains it cited shown as clickable **source chips** and a badge naming the model that answered. Tables render as real tables, code as code boxes, lists as lists, images load on click — and a wide table widens the card to fit. The card auto-dismisses on its own (longer answers linger longer); **hover to pause it, click to pin it.**
+
+<div align="center">
+<img src="Documentation/assets/ask-pill.png" alt="The Answers card answering a spoken question with a rendered comparison table and a cited source" width="520">
+</div>
+
+It goes further than a one-shot answer:
+
+- **Follow up without touching the keyboard.** With an answer on screen, hold **Fn** again and ask the next thing — the conversation continues on the same thread, the card shows the question chain, and every turn is saved.
+- **Land the answer where you're working.** Hit **Insert**, or just say *"insert that"*, and the answer drops in as clean plain text at the cursor of the app you were in (tables become tab-separated). The card never stole your focus, so it goes exactly where you left off. **Copy** and **Ask again** are a click away too.
+- **Drive the card by voice.** Whole-utterance commands only, so a real question is never mistaken for one: *"copy that"*, *"insert that"*, *"pin that"*, *"dismiss"*, *"try again"*.
+- **Ask for more thinking when it matters.** Prefix a question with *"think harder, …"* and Yappy routes that one question at higher reasoning effort.
+
+A few honest facts about how it works:
+
+- **It is the one Yappy feature that uses the cloud — and it's off by default.** Nothing about Answers runs, listens, or connects until you flip it on in Settings.
+- **It uses accounts you already have.** No API keys and no Yappy account: if the [Codex CLI](https://github.com/openai/codex) (ChatGPT) or the Grok CLI is installed and signed in on your Mac, Yappy detects it automatically — a green light in Settings and you're done. Your spoken question goes to *your* model account; Yappy has no server in the middle.
+- **Only the transcribed question leaves your Mac.** Speech-to-text still happens on-device; the audio itself never goes anywhere.
+- **The model can only answer — it can't act.** Answers runs the model read-only: it researches and replies, and any attempt to run a command or control your Mac ends the turn on the spot. Both backends answer under one strict contract: be concise, cite sources, don't narrate.
+- **You stay in control of the moment.** Click an answer to pin it (a pin icon unpins); press Esc or the stop button to interrupt mid-answer; ask right after launch and Yappy shows a brief *Getting ready…* while the speech model loads, then starts recording the instant it's set.
+
+<div align="center">
+<img src="Documentation/assets/ask-settings.png" alt="Answers setup in Settings — a silent readiness check with a green light, one toggle, and a model picker" width="560">
+</div>
+
+Pick your answering model — **Codex (gpt-5.5)** or **Grok** (Composer 2.5 Fast or Grok Build) — and switch anytime. Every completed answer lands in a **searchable, local-only history** in the main window: full-text search across questions and answers, filter by backend, star the ones worth keeping (favorites float to the top), and copy, re-show in the pill, or delete any of them — or **Clear all**. *Show Last Answer* in the menu bar re-summons the newest one, pinned.
+
+<div align="center">
+<img src="Documentation/assets/ask-history.png" alt="Answers history in the main window — past questions and fully rendered answers, stored locally" width="560">
 </div>
 
 ## Features
@@ -101,11 +136,11 @@ Everything is configurable in one place — hotkey, sounds, number formatting, n
 
 **Activity at a glance** — a "time saved versus typing" headline, words-per-minute, streaks and personal records, a day-by-hour heatmap of when you dictate, the apps you use it in most, and a shareable *"Year in Voice"* recap.
 
-**Polished hotkeys** — hold Right ⌘, double-tap Right ⌘, hold Right ⌥, or hold Right ⌃. A debounced state machine ignores key repeats and accidental taps, so it never fires when you don't mean it. Press **Esc** to cancel while recording — or while Yappy is still transcribing, to stop the text *before* it lands.
+**Polished hotkeys** — hold Right ⌘, double-tap Right ⌘, hold Right ⌥, or hold Right ⌃ for dictation; hold **Fn** for Answers (when enabled). A debounced state machine ignores key repeats and accidental taps, so it never fires when you don't mean it. Press **Esc** to cancel while recording — or while Yappy is still transcribing, to stop the text *before* it lands.
 
 **Considered details** — a molten-glass recording pill whose glow breathes with your voice and shifts into a quiet *Polishing* state while AI cleanup runs, a menu bar icon that animates while recording, and subtle custom start/stop/done sounds — including a distinct cue when something goes wrong, so failure never sounds like success.
 
-**Private by design** — audio is transcribed on-device and never written to disk; no telemetry, no account. After the one-time model download, Yappy runs fully offline — nothing you say leaves your Mac. A privacy panel on the home screen reflects this state at a glance.
+**Private by design** — audio is transcribed on-device and never written to disk; no telemetry, no account. After the one-time model download, dictation runs fully offline — nothing you dictate leaves your Mac. The only exception is opt-in and clearly labeled: the **Answers** feature, off by default, which sends your transcribed question (never the audio) to the model account you connect, and runs that model read-only — it can research and answer, but a tool or command event kills the turn. A privacy panel on the home screen reflects this state at a glance.
 
 ## Download
 
@@ -150,11 +185,23 @@ It's **on by default** and everything stays on your machine — no API keys, no 
 
 ## Privacy
 
+Yappy's two capabilities have different privacy stories, and we'd rather you know exactly which is which:
+
+**Dictation — 100% on-device, always.**
+
 - Audio is transcribed on-device and held only in memory — the recording itself is never written to disk.
 - Your dictation history, shortcuts, and custom dictionary are stored locally under `~/Library/Application Support/Yappy/`, written with owner-only file permissions. Clear your history anytime from the home window or Settings.
 - History is under your control: turn it off entirely, or set a retention window (7/30/90 days) and older entries prune themselves. Nothing is ever recorded while a password field (secure input) is focused.
 - No telemetry, no analytics, no account.
-- The single one-time network request is the model download from Hugging Face. After that, Yappy runs fully offline.
+- The single one-time network request is the model download from Hugging Face. After that, dictation runs fully offline.
+
+**Answers — opt-in, and only your question travels.**
+
+- Off by default. Until you enable it in Settings, Yappy makes no network requests beyond the one-time model download above.
+- When you use it, your spoken question is transcribed **on-device** first; only the resulting text is sent — to the Codex (ChatGPT) or Grok account *you* signed into, using the CLI already on your Mac. The audio never leaves.
+- Yappy operates no server and stores no keys: it talks to your locally installed, locally authenticated CLI, the same one you use in a terminal. Web searches the model performs happen under your account, per that provider's privacy policy.
+- The connected model is run **read-only** — it answers, it can't act. Any tool or command event during a turn ends that turn, enforced at runtime.
+- *Save answer history* is its own toggle. When it's on, answers are saved to a local answer history under the same folder and permissions as everything else — browse, delete individually, or clear it all anytime. Logs never contain your question text, and answer images load only when you click them.
 
 ## Architecture
 
@@ -168,7 +215,8 @@ It's **on by default** and everything stays on your machine — no API keys, no 
 | Transcript formatting | `Services/TranscriptPipeline.swift` + `Spoken*Formatter.swift` | Fillers, numbers, lists, line breaks, punctuation — deterministic, on-device |
 | Custom dictionary | `Core/DictionaryStore.swift`, `Core/BuiltInDictionary.swift` | Built-in dev terms + learned aliases corrected back to canonical spelling |
 | Scratchpad | `UI/ScratchpadController.swift`, `Core/NotesStore.swift` | Floating notepad (⌥⇧S) with local note storage |
-| Pill & windows | `UI/` | Floating pill, home window, settings, onboarding |
+| Answers (optional) | `Services/AskController.swift`, `CodexAskClient.swift`, `GrokAskClient.swift` | Fn-key voice questions via your own Codex/Grok CLI; block-rendered answers, local history |
+| Pill & windows | `UI/` | Floating pill, Answers card, home window, settings, onboarding |
 
 ## Tests
 
@@ -176,7 +224,7 @@ It's **on by default** and everything stays on your machine — no API keys, no 
 xcodebuild -project Yappy.xcodeproj -scheme Yappy test
 ```
 
-Covers the hotkey state machine, settings persistence and migration, the transcript pipeline (numbers, lists, spoken punctuation, cross-stage interactions), the AI-cleanup accept/reject guard policy (never answer, never invent, never drop), deterministic tone transforms, the custom dictionary with speech-model term boosting and correction mining, the notes store, history-based shortcut suggestions, voice-command parsing, adaptive per-app mode resolution, dictation history and stats, voice-shortcut expansion, and app-context classification.
+580 tests cover the hotkey state machine, settings persistence and migration, the transcript pipeline (numbers, lists, spoken punctuation, cross-stage interactions), the AI-cleanup accept/reject guard policy (never answer, never invent, never drop), deterministic tone transforms, the custom dictionary with speech-model term boosting and correction mining, the notes store, history-based shortcut suggestions, voice-command parsing, adaptive per-app mode resolution, dictation history and stats, voice-shortcut expansion, app-context classification, and the Answers stack (run state machine, Fn-hold state machine, controller orchestration driven through injected fakes — follow-ups, insert-at-cursor, and card voice commands, Codex/Grok wire-format parsers, block markdown rendering, and answer history persistence).
 
 ## Built with
 
