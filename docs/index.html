@@ -361,6 +361,19 @@ a { color: inherit; text-decoration: none; }
 .ah-copy h3 { font-family: var(--display); font-weight: 600; font-size: clamp(1.5rem, 3vw, 2.15rem); color: var(--white); line-height: 1.06; letter-spacing: -0.025em; margin-bottom: 1rem; text-wrap: balance; }
 .ah-copy p { color: var(--grey); font-size: 1rem; max-width: 48ch; }
 
+/* Read answers aloud (Answers, new in 2.6): orange is the voice */
+.read-aloud { margin-top: clamp(2.6rem, 5vw, 3.8rem); display: grid; grid-template-columns: 1fr 1.05fr; gap: clamp(2.2rem, 5vw, 4.5rem); align-items: center; }
+.ra-copy h3 { font-family: var(--display); font-weight: 600; font-size: clamp(1.5rem, 3vw, 2.15rem); color: var(--white); line-height: 1.06; letter-spacing: -0.025em; margin: 1rem 0; text-wrap: balance; }
+.ra-copy p { color: var(--grey); font-size: 1rem; max-width: 48ch; }
+.ra-chips { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1.5rem; }
+.ra-chip { font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.02em; color: var(--grey); padding: 0.38rem 0.78rem; border-radius: var(--r-pill); border: 1px solid var(--line); }
+.ra-chip b { color: var(--white); font-weight: 500; }
+.ra-wave-card { position: relative; border-radius: var(--r-card); border: 1px solid var(--line); background: radial-gradient(130% 130% at 50% 0%, var(--orange-dim), transparent 62%), var(--black-2); padding: clamp(2.2rem, 5vw, 3.4rem) clamp(1.4rem, 4vw, 2.4rem); box-shadow: 0 34px 80px rgba(0,0,0,0.55); }
+.ra-wave { display: flex; align-items: center; justify-content: center; gap: 5px; height: 104px; }
+.ra-wave i { width: 5px; border-radius: 4px; background: linear-gradient(180deg, var(--orange-soft), var(--orange)); height: 40%; animation: wave 1.3s ease-in-out infinite; box-shadow: 0 0 14px rgba(255,92,26,0.45); }
+.ra-wave-label { display: flex; align-items: center; justify-content: center; gap: 0.5rem; margin-top: 1.5rem; font-family: var(--mono); font-size: 0.78rem; letter-spacing: 0.02em; color: var(--grey); }
+.ra-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--orange); box-shadow: 0 0 10px var(--orange); animation: pulse 1.7s ease-in-out infinite; }
+
 /* === SETUP === */
 .setup { padding: 0 0 var(--section); }
 .setup-card {
@@ -496,6 +509,7 @@ footer { border-top: 1px solid var(--line-2); padding: clamp(3rem, 6vw, 4.5rem) 
   .ask-grid { grid-template-columns: 1fr; }
   .ask-caps { grid-template-columns: repeat(2, 1fr); }
   .ask-history { grid-template-columns: 1fr; }
+  .read-aloud { grid-template-columns: 1fr; }
   .setup-grid { grid-template-columns: 1fr; }
   .split { grid-template-columns: 1fr; }
   .bento { grid-template-columns: repeat(2, 1fr); }
@@ -711,6 +725,27 @@ footer { border-top: 1px solid var(--line-2); padding: clamp(3rem, 6vw, 4.5rem) 
           <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4v7M4 4l16 16M20 13v7h-7"/></svg></div>
           <h4>Kept and searchable</h4>
           <p>Every answer saves to a local history you can search, filter by model, and star. Show Last Answer re-summons the newest.</p>
+        </div>
+      </div>
+
+      <!-- Read answers aloud (new in 2.6) -->
+      <div class="read-aloud">
+        <div class="ra-copy prep" data-reveal>
+          <span class="eyebrow"><span class="dot"></span>New · reads aloud, 100% on your Mac</span>
+          <h3>Then it reads the answer back to you.</h3>
+          <p>Switch on read-aloud and a natural voice speaks the answer the moment it lands, or just say <span class="said">"read that"</span>. Eight voices across American and British accents. This part never reaches the cloud, even though Answers does: the voice runs entirely on your Mac, so the words you hear never leave it.</p>
+          <div class="ra-chips">
+            <span class="ra-chip">Eight voices</span>
+            <span class="ra-chip">American and British</span>
+            <span class="ra-chip">On request, or every answer</span>
+            <span class="ra-chip"><b>Never leaves your Mac</b></span>
+          </div>
+        </div>
+        <div class="ra-visual prep" data-reveal aria-hidden="true">
+          <div class="ra-wave-card">
+            <span class="ra-wave" id="raWave"></span>
+            <div class="ra-wave-label"><span class="ra-dot"></span>Reading the answer aloud</div>
+          </div>
         </div>
       </div>
 
@@ -983,6 +1018,7 @@ footer { border-top: 1px solid var(--line-2); padding: clamp(3rem, 6vw, 4.5rem) 
   fillWave(document.getElementById('h1Wave'), 7);
   fillWave(document.getElementById('heroPillWave'), 13);
   fillWave(document.getElementById('ctaWave'), 9);
+  fillWave(document.getElementById('raWave'), 26);
 
   /* === nav scrolled state === */
   var nav = document.getElementById('nav');
