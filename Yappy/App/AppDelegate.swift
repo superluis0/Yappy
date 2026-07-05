@@ -1470,11 +1470,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func showSetupWindowIfNotReady() {
         guard transcriptionService.modelState != .ready else { return }
         if setupWindow == nil {
-            let window = NSWindow(contentViewController: NSHostingController(
+            // Pin the window size: an auto-sizing NSHostingController animates the
+            // window to fit its content, and on macOS 26 that animated resize
+            // crashes in the safe-area-corner-inset pass. ModelSetupView's height
+            // shifts as the model state changes, so honor a fixed frame instead.
+            let hosting = NSHostingController(
                 rootView: ModelSetupView(transcriptionService: transcriptionService)
-            ))
+            )
+            hosting.sizingOptions = []
+            let window = NSWindow(contentViewController: hosting)
             window.title = "Yappy"
             window.styleMask = [.titled, .closable]
+            window.setContentSize(NSSize(width: 380, height: 320))
             window.isReleasedWhenClosed = false
             window.center()
             setupWindow = window
@@ -2031,9 +2038,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     self.startTaps()
                 }
             )
-            let window = NSWindow(contentViewController: NSHostingController(rootView: view))
+            // Pin the window size: an auto-sizing NSHostingController animates the
+            // window to fit its content, and on macOS 26 that animated resize
+            // crashes in the safe-area-corner-inset pass (first-run only, which is
+            // why it escaped testing). OnboardingView is a fixed 460x500.
+            let hosting = NSHostingController(rootView: view)
+            hosting.sizingOptions = []
+            let window = NSWindow(contentViewController: hosting)
             window.title = "Welcome to Yappy"
             window.styleMask = [.titled, .closable]
+            window.setContentSize(NSSize(width: 460, height: 500))
             window.isReleasedWhenClosed = false
             window.center()
             onboardingWindow = window
