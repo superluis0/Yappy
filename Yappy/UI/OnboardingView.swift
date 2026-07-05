@@ -481,7 +481,14 @@ struct OnboardingView: View {
                 Text("Preparing speech model…").font(.caption).foregroundStyle(Brand.ink4)
             }
         case .failed(let message):
-            Text(message).font(.caption).foregroundStyle(Brand.danger)
+            VStack(spacing: 8) {
+                Text(message).font(.caption).foregroundStyle(Brand.danger)
+                    .multilineTextAlignment(.center)
+                Button("Try Again") {
+                    Task { await transcriptionService.warmUp() }
+                }
+                .controlSize(.small)
+            }
         }
     }
 

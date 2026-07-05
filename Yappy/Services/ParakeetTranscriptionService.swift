@@ -68,6 +68,12 @@ final class ParakeetTranscriptionService: ObservableObject {
     private var asrManager: AsrManager?
     private var decoderLayers: Int = 2
 
+    // Download stall supervision (see warmUp).
+    private var warmUpTask: Task<Void, Never>?
+    private var downloadStalled = false
+    private var lastDownloadAdvance = Date()
+    private var lastDownloadFraction: Double = -1
+
     /// English-only Parakeet — same model variant Spokenly uses.
     private static let modelVersion: AsrModelVersion = .v2
 
@@ -98,14 +104,59 @@ final class ParakeetTranscriptionService: ObservableObject {
 
     /// Loads (downloading first if necessary) the active model and pre-warms it.
     /// Safe to call again after a failure, or after `activeModel` changes.
+    ///
+    /// The download leg is watchdogged: FluidAudio's per-request timeout is 30
+    /// minutes, so a silently stalled connection would otherwise pin the app at
+    /// "Downloading…" with a frozen bar. If byte progress stops advancing for
+    /// 60s the in-flight attempt is cancelled (URLSession's async download
+    /// honors Task cancellation) and retried, twice, before failing honestly.
     func warmUp() async {
         guard modelState == .notLoaded || isFailed else { return }
 
-        switch activeModel {
-        case .parakeet:
-            await warmUpParakeet()
-        case .nemotron:
-            await warmUpNemotron()
+        var attemptsLeft = 3
+        repeat {
+            attemptsLeft -= 1
+            downloadStalled = false
+            lastDownloadAdvance = Date()
+            lastDownloadFraction = -1
+
+            let attempt = Task { [weak self] in
+                guard let self else { return }
+                switch self.activeModel {
+                case .parakeet: await self.warmUpParakeet()
+                case .nemotron: await self.warmUpNemotron()
+                }
+            }
+            warmUpTask = attempt
+            // Nemotron's download reports no granular progress, so a byte-advance
+            // watchdog can only supervise Parakeet.
+            let watchdog = activeModel == .parakeet ? startDownloadStallWatchdog(cancelling: attempt) : nil
+            await attempt.value
+            watchdog?.cancel()
+            warmUpTask = nil
+
+            if downloadStalled, attemptsLeft > 0 {
+                Self.logger.warning("Model download stalled — retrying (\(attemptsLeft) attempts left)")
+                modelState = .notLoaded
+            }
+        } while downloadStalled && attemptsLeft > 0 && modelState == .notLoaded
+    }
+
+    /// Cancels the running warm-up attempt when byte progress stops advancing.
+    private func startDownloadStallWatchdog(cancelling attempt: Task<Void, Never>) -> Task<Void, Never> {
+        Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 10_000_000_000)
+                guard let self, !Task.isCancelled else { return }
+                // Only the download leg can stall silently; loading/compiling is
+                // local work that legitimately reports nothing for a while.
+                guard case .downloading = self.modelState else { continue }
+                if Date().timeIntervalSince(self.lastDownloadAdvance) > 60 {
+                    self.downloadStalled = true
+                    attempt.cancel()
+                    return
+                }
+            }
         }
     }
 
@@ -121,7 +172,13 @@ final class ParakeetTranscriptionService: ObservableObject {
                 progressHandler: { progress in
                     Task { @MainActor [weak self] in
                         guard let self, case .downloading = self.modelState else { return }
-                        self.modelState = .downloading(progress: progress.fractionCompleted)
+                        let fraction = progress.fractionCompleted
+                        // Feed the stall watchdog: only genuine forward motion counts.
+                        if fraction > self.lastDownloadFraction + 0.0005 {
+                            self.lastDownloadFraction = fraction
+                            self.lastDownloadAdvance = Date()
+                        }
+                        self.modelState = .downloading(progress: fraction)
                     }
                 }
             )
@@ -142,7 +199,13 @@ final class ParakeetTranscriptionService: ObservableObject {
             modelState = .ready
         } catch {
             asrManager = nil
-            modelState = .failed(error.localizedDescription)
+            // A watchdog cancellation is a stall, not a real error — report it in
+            // words a user can act on (warmUp may retry before this ever shows).
+            if downloadStalled || error is CancellationError {
+                modelState = .failed("The model download stalled. Check your internet connection and try again.")
+            } else {
+                modelState = .failed(error.localizedDescription)
+            }
         }
     }
 

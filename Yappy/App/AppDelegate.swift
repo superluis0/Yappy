@@ -1469,6 +1469,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @MainActor
     private func showSetupWindowIfNotReady() {
         guard transcriptionService.modelState != .ready else { return }
+        // Never stack the setup window over onboarding: the guided flow has its
+        // own model-status step, and the download continues in the background
+        // while the user walks through it.
+        guard onboardingWindow == nil else { return }
         if setupWindow == nil {
             // Pin the window size: an auto-sizing NSHostingController animates the
             // window to fit its content, and on macOS 26 that animated resize

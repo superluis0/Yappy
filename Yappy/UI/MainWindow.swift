@@ -124,7 +124,8 @@ struct MainWindowView: View {
     private var detailContent: some View {
         switch selection {
         case .home:
-            HomeView(history: history, settings: settings, shortcutStore: shortcutStore)
+            HomeView(history: history, settings: settings, shortcutStore: shortcutStore,
+                     transcriptionService: transcriptionService)
         case .shortcuts:
             ShortcutsView(store: shortcutStore)
         case .dictionary:

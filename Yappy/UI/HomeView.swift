@@ -9,6 +9,7 @@ struct HomeView: View {
     @ObservedObject var history: HistoryStore
     @ObservedObject var settings: Settings
     @ObservedObject var shortcutStore: ShortcutStore
+    @ObservedObject var transcriptionService: ParakeetTranscriptionService
 
     @State private var editingSuggestion: ShortcutSuggestion?
     @State private var searchText = ""
@@ -28,6 +29,7 @@ struct HomeView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
                 header
+                modelDownloadCard
                 timeSavedCard
                 gettingStartedCard
                 milestoneLine
@@ -106,6 +108,78 @@ struct HomeView: View {
     }
 
     // MARK: - Stats
+
+    /// Live progress while the speech model downloads or loads, and an honest
+    /// retry when it fails. Dictation can't work until the model is ready, so
+    /// this is the first thing a brand-new user should see on Home — and it
+    /// disappears the moment the model is ready.
+    @ViewBuilder
+    private var modelDownloadCard: some View {
+        switch transcriptionService.modelState {
+        case .downloading(let progress):
+            GlassCard(tint: Color.accentColor.opacity(0.14)) {
+                HStack(spacing: 14) {
+                    Image(systemName: "arrow.down.circle")
+                        .font(.system(size: 22, weight: .semibold))
+                        .foregroundStyle(Color.accentColor)
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Text("Downloading the speech model")
+                                .font(.system(size: 13, weight: .semibold))
+                            Spacer()
+                            if let progress {
+                                Text("\(Int(progress * 100))%")
+                                    .font(.system(size: 12, weight: .medium).monospacedDigit())
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        if let progress {
+                            ProgressView(value: progress)
+                        } else {
+                            ProgressView()
+                                .controlSize(.small)
+                        }
+                        Text("One time, about 443 MB. Dictation lights up the moment it finishes.")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+        case .loading:
+            GlassCard(tint: Color.accentColor.opacity(0.14)) {
+                HStack(spacing: 14) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("Preparing the speech model…")
+                        .font(.system(size: 13, weight: .semibold))
+                    Spacer()
+                }
+            }
+        case .failed(let message):
+            GlassCard(tint: Color.orange.opacity(0.14)) {
+                HStack(spacing: 14) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(.orange)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Speech model setup failed")
+                            .font(.system(size: 13, weight: .semibold))
+                        Text(message)
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                    }
+                    Spacer()
+                    Button("Try Again") {
+                        Task { await transcriptionService.warmUp() }
+                    }
+                    .buttonStyle(.bordered)
+                }
+            }
+        case .ready, .notLoaded:
+            EmptyView()
+        }
+    }
 
     /// Full-width hero: how much time talking has saved over typing.
     @ViewBuilder
