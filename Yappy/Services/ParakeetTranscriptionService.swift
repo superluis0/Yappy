@@ -5,6 +5,7 @@
 
 import Foundation
 import FluidAudio
+import CryptoKit
 import os
 
 /// Local speech-to-text via a FluidAudio CoreML model (Apple Neural Engine).
@@ -62,7 +63,7 @@ final class ParakeetTranscriptionService: ObservableObject {
         }
     }
 
-    private static let logger = Logger(subsystem: "com.yappy.app", category: "transcription")
+    nonisolated private static let logger = Logger(subsystem: "com.yappy.app", category: "transcription")
 
     // Parakeet (TDT) backing state.
     private var asrManager: AsrManager?
@@ -75,7 +76,31 @@ final class ParakeetTranscriptionService: ObservableObject {
     private var lastDownloadFraction: Double = -1
 
     /// English-only Parakeet — same model variant Spokenly uses.
-    private static let modelVersion: AsrModelVersion = .v2
+    nonisolated private static let modelVersion: AsrModelVersion = .v2
+
+    /// Public zip for the exact Parakeet v2 CoreML model from the `models-1`
+    /// GitHub release. Seeding FluidAudio's cache from this keeps first run off
+    /// HuggingFace when the hosted artifact is healthy.
+    nonisolated private static let selfHostedParakeetZipURLString =
+        "https://github.com/superluis0/Yappy/releases/download/models-1/parakeet-tdt-0.6b-v2-coreml.zip"
+
+    /// SHA-256 for the `models-1` GitHub release zip.
+    nonisolated private static let selfHostedParakeetZipSHA256 =
+        "d1cbd181e0d5f3c47e477dba6bea91baf6a16322ca7d540df5edf300a6bec982"
+
+    /// Top-level folder inside the `models-1` GitHub release zip.
+    nonisolated private static let selfHostedParakeetFolderName =
+        "parakeet-tdt-0.6b-v2-coreml"
+
+    /// FluidAudio cache entries expected inside the `models-1` GitHub release zip.
+    nonisolated private static let selfHostedParakeetRequiredEntries = [
+        "Decoder.mlmodelc",
+        "Encoder.mlmodelc",
+        "JointDecision.mlmodelc",
+        "Preprocessor.mlmodelc",
+        "config.json",
+        "parakeet_vocab.json",
+    ]
 
     // Nemotron (multilingual) backing state.
     private var nemotronManager: StreamingNemotronMultilingualAsrManager?
@@ -166,6 +191,15 @@ final class ParakeetTranscriptionService: ObservableObject {
         let cached = AsrModels.modelsExist(at: cacheDir, version: Self.modelVersion)
         modelState = cached ? .loading : .downloading(progress: 0)
 
+        if !cached {
+            let installedSelfHostedModel = await installSelfHostedParakeetIfPossible()
+            if !installedSelfHostedModel && !Task.isCancelled {
+                lastDownloadFraction = -1
+                lastDownloadAdvance = Date()
+                modelState = .downloading(progress: 0)
+            }
+        }
+
         do {
             let models = try await AsrModels.downloadAndLoad(
                 version: Self.modelVersion,
@@ -207,6 +241,309 @@ final class ParakeetTranscriptionService: ObservableObject {
                 modelState = .failed(error.localizedDescription)
             }
         }
+    }
+
+    /// Best-effort cache seeding from Yappy's hosted Parakeet zip.
+    ///
+    /// This never becomes a correctness dependency: all errors are contained and
+    /// the caller always falls through to FluidAudio's existing download/load path.
+    /// Heavy work runs in nonisolated helpers; this actor-isolated wrapper only
+    /// feeds the same progress state the stall watchdog already supervises.
+    private func installSelfHostedParakeetIfPossible() async -> Bool {
+        await Self.installSelfHostedParakeetIfPossible(
+            progressHandler: { [weak self] fraction in
+                await MainActor.run { [weak self] in
+                    guard let self, case .downloading = self.modelState else { return }
+                    if fraction > self.lastDownloadFraction + 0.0005 {
+                        self.lastDownloadFraction = fraction
+                        self.lastDownloadAdvance = Date()
+                    }
+                    self.modelState = .downloading(progress: fraction)
+                }
+            },
+            loadingHandler: { [weak self] in
+                await MainActor.run { [weak self] in
+                    guard let self else { return }
+                    self.modelState = .loading
+                }
+            }
+        )
+    }
+
+    private enum SelfHostedParakeetInstallError: Error {
+        case invalidURL
+        case nonHTTPResponse
+        case httpStatus(Int)
+        case missingContentLength
+        case zipFileCreationFailed
+        case checksumMismatch
+        case dittoFailed(Int32)
+        case stagedModelInvalid(missingCount: Int)
+        case cacheValidationFailed
+
+        var logMessage: String {
+            switch self {
+            case .invalidURL:
+                return "Self-hosted Parakeet install failed: invalid release URL"
+            case .nonHTTPResponse:
+                return "Self-hosted Parakeet install failed: non-HTTP response"
+            case .httpStatus(let status):
+                return "Self-hosted Parakeet install failed: HTTP status \(status)"
+            case .missingContentLength:
+                return "Self-hosted Parakeet install failed: missing content length"
+            case .zipFileCreationFailed:
+                return "Self-hosted Parakeet install failed: temporary zip creation failed"
+            case .checksumMismatch:
+                return "Self-hosted Parakeet install failed: checksum mismatch"
+            case .dittoFailed(let status):
+                return "Self-hosted Parakeet install failed: ditto exited with status \(status)"
+            case .stagedModelInvalid(let missingCount):
+                return "Self-hosted Parakeet install failed: staged model missing \(missingCount) required item(s)"
+            case .cacheValidationFailed:
+                return "Self-hosted Parakeet install failed: cache validation failed"
+            }
+        }
+    }
+
+    /// Performs the self-hosted install off the main actor, reporting only coarse
+    /// progress back to the caller. Returning `false` is intentionally silent to
+    /// users: FluidAudio's HuggingFace-backed path remains the fallback for every
+    /// failure mode, including cancellation by the stall watchdog.
+    nonisolated private static func installSelfHostedParakeetIfPossible(
+        progressHandler: (Double) async -> Void,
+        loadingHandler: () async -> Void
+    ) async -> Bool {
+        do {
+            try Task.checkCancellation()
+
+            guard let url = URL(string: selfHostedParakeetZipURLString) else {
+                throw SelfHostedParakeetInstallError.invalidURL
+            }
+
+            let fileManager = FileManager.default
+            let downloadDirectory = fileManager.temporaryDirectory
+                .appendingPathComponent("YappyParakeetDownload-\(UUID().uuidString)", isDirectory: true)
+            let stagingDirectory = fileManager.temporaryDirectory
+                .appendingPathComponent("YappyParakeetStaging-\(UUID().uuidString)", isDirectory: true)
+            defer {
+                try? fileManager.removeItem(at: downloadDirectory)
+                try? fileManager.removeItem(at: stagingDirectory)
+            }
+
+            try fileManager.createDirectory(at: downloadDirectory, withIntermediateDirectories: true)
+            try fileManager.createDirectory(at: stagingDirectory, withIntermediateDirectories: true)
+
+            let zipURL = downloadDirectory.appendingPathComponent("parakeet.zip", isDirectory: false)
+            try await downloadSelfHostedParakeetZip(from: url, to: zipURL, progressHandler: progressHandler)
+            try Task.checkCancellation()
+
+            let digest = try await sha256HexDigest(of: zipURL) { fraction in
+                await progressHandler(0.85 + (fraction * 0.05))
+            }
+            guard digest == selfHostedParakeetZipSHA256 else {
+                throw SelfHostedParakeetInstallError.checksumMismatch
+            }
+            await progressHandler(0.90)
+            try Task.checkCancellation()
+
+            try await unzipSelfHostedParakeet(zipURL: zipURL, to: stagingDirectory)
+            await progressHandler(0.96)
+            try Task.checkCancellation()
+
+            let stagedModelDirectory = stagingDirectory
+                .appendingPathComponent(selfHostedParakeetFolderName, isDirectory: true)
+            let missingEntries = missingRequiredModelEntries(
+                in: stagedModelDirectory,
+                requiredEntries: selfHostedParakeetRequiredEntries,
+                fileManager: fileManager
+            )
+            guard missingEntries.isEmpty else {
+                throw SelfHostedParakeetInstallError.stagedModelInvalid(missingCount: missingEntries.count)
+            }
+            await progressHandler(0.99)
+            try Task.checkCancellation()
+
+            let cacheDirectory = AsrModels.defaultCacheDirectory(for: modelVersion)
+            let cacheParent = cacheDirectory.deletingLastPathComponent()
+            try fileManager.createDirectory(at: cacheParent, withIntermediateDirectories: true)
+            if fileManager.fileExists(atPath: cacheDirectory.path) {
+                try fileManager.removeItem(at: cacheDirectory)
+            }
+
+            try fileManager.moveItem(at: stagedModelDirectory, to: cacheDirectory)
+            guard AsrModels.modelsExist(at: cacheDirectory, version: modelVersion) else {
+                throw SelfHostedParakeetInstallError.cacheValidationFailed
+            }
+
+            await loadingHandler()
+            Self.logger.info("Self-hosted Parakeet install completed")
+            return true
+        } catch is CancellationError {
+            Self.logger.warning("Self-hosted Parakeet install cancelled")
+            return false
+        } catch let error as SelfHostedParakeetInstallError {
+            Self.logger.warning("\(error.logMessage, privacy: .public)")
+            return false
+        } catch {
+            Self.logger.warning("Self-hosted Parakeet install failed: unexpected local or network error")
+            return false
+        }
+    }
+
+    nonisolated private static func downloadSelfHostedParakeetZip(
+        from url: URL,
+        to destinationURL: URL,
+        progressHandler: (Double) async -> Void
+    ) async throws {
+        var request = URLRequest(url: url)
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+
+        let (bytes, response) = try await URLSession.shared.bytes(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw SelfHostedParakeetInstallError.nonHTTPResponse
+        }
+        guard (200...299).contains(httpResponse.statusCode) else {
+            throw SelfHostedParakeetInstallError.httpStatus(httpResponse.statusCode)
+        }
+        guard response.expectedContentLength > 0 else {
+            throw SelfHostedParakeetInstallError.missingContentLength
+        }
+
+        guard FileManager.default.createFile(atPath: destinationURL.path, contents: nil) else {
+            throw SelfHostedParakeetInstallError.zipFileCreationFailed
+        }
+
+        let fileHandle = try FileHandle(forWritingTo: destinationURL)
+        defer { try? fileHandle.close() }
+
+        let totalBytes = Double(response.expectedContentLength)
+        let chunkSize = 1_048_576
+        var pending = Data()
+        pending.reserveCapacity(chunkSize)
+        var bytesReceived = 0
+        var bytesAtLastReport = 0
+
+        for try await byte in bytes {
+            if Task.isCancelled {
+                throw CancellationError()
+            }
+
+            pending.append(byte)
+            if pending.count >= chunkSize {
+                try fileHandle.write(contentsOf: pending)
+                bytesReceived += pending.count
+                pending.removeAll(keepingCapacity: true)
+
+                if bytesReceived - bytesAtLastReport >= chunkSize {
+                    bytesAtLastReport = bytesReceived
+                    await progressHandler((Double(bytesReceived) / totalBytes) * 0.85)
+                }
+            }
+        }
+
+        if !pending.isEmpty {
+            try fileHandle.write(contentsOf: pending)
+            bytesReceived += pending.count
+        }
+        await progressHandler(0.85)
+    }
+
+    nonisolated private static func sha256HexDigest(
+        of fileURL: URL,
+        progressHandler: (Double) async -> Void
+    ) async throws -> String {
+        let fileHandle = try FileHandle(forReadingFrom: fileURL)
+        defer { try? fileHandle.close() }
+
+        let totalBytes = Double((try fileHandle.seekToEnd()))
+        try fileHandle.seek(toOffset: 0)
+
+        var hasher = SHA256()
+        let chunkSize = 1_048_576
+        var bytesRead = 0
+        var bytesAtLastReport = 0
+
+        while true {
+            if Task.isCancelled {
+                throw CancellationError()
+            }
+
+            guard let data = try fileHandle.read(upToCount: chunkSize), !data.isEmpty else {
+                break
+            }
+            hasher.update(data: data)
+            bytesRead += data.count
+
+            if totalBytes > 0, bytesRead - bytesAtLastReport >= chunkSize {
+                bytesAtLastReport = bytesRead
+                await progressHandler(Double(bytesRead) / totalBytes)
+            }
+        }
+
+        return hasher.finalize()
+            .map { String(format: "%02x", $0) }
+            .joined()
+    }
+
+    nonisolated private static func unzipSelfHostedParakeet(zipURL: URL, to stagingDirectory: URL) async throws {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
+        process.arguments = ["-x", "-k", zipURL.path, stagingDirectory.path]
+        process.standardOutput = Pipe()
+        process.standardError = Pipe()
+
+        let terminationStatus = try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                process.terminationHandler = { terminatedProcess in
+                    continuation.resume(returning: terminatedProcess.terminationStatus)
+                }
+
+                do {
+                    try process.run()
+                } catch {
+                    process.terminationHandler = nil
+                    continuation.resume(throwing: error)
+                }
+            }
+        } onCancel: {
+            if process.isRunning {
+                process.terminate()
+            }
+        }
+
+        if Task.isCancelled {
+            throw CancellationError()
+        }
+        guard terminationStatus == 0 else {
+            throw SelfHostedParakeetInstallError.dittoFailed(terminationStatus)
+        }
+    }
+
+    nonisolated static func modelDirectoryContainsRequiredEntries(
+        presentEntries: Set<String>,
+        requiredEntries: [String]
+    ) -> Bool {
+        requiredEntries.allSatisfy { presentEntries.contains($0) }
+    }
+
+    nonisolated private static func missingRequiredModelEntries(
+        in directoryURL: URL,
+        requiredEntries: [String],
+        fileManager: FileManager
+    ) -> [String] {
+        let presentEntries = Set(
+            requiredEntries.filter { entry in
+                fileManager.fileExists(atPath: directoryURL.appendingPathComponent(entry).path)
+            }
+        )
+
+        guard modelDirectoryContainsRequiredEntries(
+            presentEntries: presentEntries,
+            requiredEntries: requiredEntries
+        ) else {
+            return requiredEntries.filter { !presentEntries.contains($0) }
+        }
+        return []
     }
 
     /// Downloads (if needed) and loads the Nemotron multilingual model.
