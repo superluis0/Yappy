@@ -6,12 +6,12 @@
     <description>Most recent updates to Yappy.</description>
     <language>en</language>
     <item>
-      <title>Version 2.6.1</title>
-      <pubDate>Sun, 05 Jul 2026 19:20:01 +0000</pubDate>
-      <sparkle:version>80</sparkle:version>
-      <sparkle:shortVersionString>2.6.1</sparkle:shortVersionString>
+      <title>Version 2.6.2</title>
+      <pubDate>Sun, 05 Jul 2026 19:51:29 +0000</pubDate>
+      <sparkle:version>82</sparkle:version>
+      <sparkle:shortVersionString>2.6.2</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-      <enclosure url="https://github.com/superluis0/Yappy/releases/download/v2.6.1/Yappy-2.6.1.zip" sparkle:edSignature="PoRvNODQOvuFsrzpTNKKutE8ESH1kpp9nP3j2ibut81UUe1LiJ3tMr6atVphFXmF1C8ElyaW6JJx74gohw5dAQ==" length="9797321" type="application/zip" />
+      <enclosure url="https://github.com/superluis0/Yappy/releases/download/v2.6.2/Yappy-2.6.2.zip" sparkle:edSignature="SmpAarD7lAFm7KjAjec2+CqwzTi8RkhpCEqHtF7qYcLParx+QFC5YVrDboF8gGDDqJxY3W9gTJN3RQU9jWXpAA==" length="9821606" type="application/zip" />
     </item>
   </channel>
 </rss>
