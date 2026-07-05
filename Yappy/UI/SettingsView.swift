@@ -13,6 +13,9 @@ struct SettingsView: View {
     @ObservedObject var settings: Settings
     @ObservedObject var transcriptionService: ParakeetTranscriptionService
     @ObservedObject var updateChecker: UpdateChecker
+    /// Drives the voice-preview play/stop button (`previewingVoice`) and triggers
+    /// the sample synthesis. Optional so call sites that don't wire it still build.
+    @ObservedObject var askController: AskController
     /// Optional history store, used only for the "Clear history now" button. When
     /// nil (e.g. a call site that hasn't wired it yet) the button is hidden.
     var historyStore: HistoryStore? = nil
@@ -30,9 +33,16 @@ struct SettingsView: View {
         case needsLogin
         case notInstalled
     }
+    enum TTSReadyState {
+        case checking
+        case ready
+        case notInstalled
+    }
     @State private var askCodexReadiness: AskBackendReadiness = .notInstalled
     @State private var askGrokReadiness: AskBackendReadiness = .notInstalled
+    @State private var ttsReadiness: TTSReadyState = .checking
     @State private var copiedLoginCommand = false
+    @State private var copiedTTSInstallCommand = false
 
     var body: some View {
         ScrollView {
@@ -54,12 +64,16 @@ struct SettingsView: View {
         }
         .scrollContentBackground(.hidden)
         .background(Color.clear)
-        .onAppear { refreshAskReadiness() }
+        .onAppear {
+            refreshAskReadiness()
+            refreshTTSReadiness()
+        }
         .onReceive(NotificationCenter.default.publisher(
             for: NSApplication.didBecomeActiveNotification)) { _ in
             microphoneGranted = AudioRecorder.hasPermission
             accessibilityGranted = AXIsProcessTrusted()
             refreshAskReadiness()
+            refreshTTSReadiness()
         }
     }
 
@@ -71,6 +85,21 @@ struct SettingsView: View {
         askGrokReadiness = GrokAskClient.isAvailable
             ? (GrokAskClient.isSignedIn ? .ready : .needsLogin)
             : .notInstalled
+    }
+
+    private func refreshTTSReadiness() {
+        // Once confirmed ready, don't re-probe: refreshReadiness() spawns a
+        // Python process that loads misaki's G2P (~1-3s of CPU), and this runs on
+        // every app activation while Settings is open. Re-probe only when
+        // not-yet-ready, which still catches an install completed while open.
+        if ttsReadiness == .ready { return }
+        ttsReadiness = .checking
+        Task {
+            let ok = await TTSSpeakClient.refreshReadiness()
+            await MainActor.run {
+                ttsReadiness = ok ? .ready : .notInstalled
+            }
+        }
     }
 
     private var header: some View {
@@ -235,6 +264,35 @@ struct SettingsView: View {
                               subtitle: "Keeps questions and answers in a local log on this Mac. Turn off and nothing is stored.",
                               isOn: $settings.askSaveHistoryEnabled)
                 RowDivider()
+                ttsReadinessRow
+                RowDivider()
+                SettingToggle(icon: "speaker.wave.2", title: "Read answers aloud",
+                              subtitle: "Adds a Speak button to the answer card, and the “read that” voice command.",
+                              isOn: $settings.answersSpeakEnabled)
+                    .disabled(ttsReadiness != .ready && !settings.answersSpeakEnabled)
+                    .opacity(ttsReadiness == .ready || settings.answersSpeakEnabled ? 1 : 0.55)
+                if settings.answersSpeakEnabled {
+                    RowDivider()
+                    SettingToggle(icon: "speaker.wave.2.bubble.left", title: "Speak every answer",
+                                  subtitle: "Read each answer aloud automatically as it finishes.",
+                                  isOn: $settings.answersAutoSpeak)
+                    RowDivider()
+                    SettingRow(icon: "waveform", title: "Voice",
+                               subtitle: "Eight on-device voices, American and British. Tap play to hear a sample.") {
+                        HStack(spacing: 10) {
+                            voicePreviewButton
+                            Picker("", selection: $settings.answersVoice) {
+                                ForEach(AnswersVoice.allCases) { Text($0.displayName).tag($0.rawValue) }
+                            }
+                            .labelsHidden().fixedSize()
+                            .onChange(of: settings.answersVoice) { _, _ in
+                                // Switching voices cancels a sample in progress.
+                                askController.stopVoicePreview()
+                            }
+                        }
+                    }
+                }
+                RowDivider()
                 SettingRow(icon: "globe", title: "Set the Globe key free",
                            subtitle: "For reliable Fn capture, set System Settings → Keyboard → “Press 🌐 to” = Do Nothing.") {
                     Button("Open Keyboard Settings") {
@@ -365,6 +423,67 @@ struct SettingsView: View {
                         .buttonStyle(.bordered)
                     }
                 }
+            }
+        }
+    }
+
+    /// Play/stop toggle beside the voice picker: hear a sample of the selected
+    /// voice before committing to it.
+    private var voicePreviewButton: some View {
+        let isPreviewing = askController.previewingVoice == settings.answersVoice
+        return Button {
+            if isPreviewing {
+                askController.stopVoicePreview()
+            } else {
+                askController.startVoicePreview(settings.answersVoice)
+            }
+        } label: {
+            Image(systemName: isPreviewing ? "stop.fill" : "play.fill")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(Color.accentColor)
+                .frame(width: 26, height: 26)
+                .background(Circle().fill(Color.accentColor.opacity(0.14)))
+        }
+        .buttonStyle(.plain)
+        .help(isPreviewing ? "Stop the sample" : "Hear a sample of this voice")
+    }
+
+    @ViewBuilder
+    private var ttsReadinessRow: some View {
+        switch ttsReadiness {
+        case .ready:
+            SettingRow(
+                icon: "speaker.wave.2",
+                title: "Speak answers ready",
+                subtitle: "A local neural voice reads answers aloud. Runs 100% on this Mac.",
+                iconColor: Brand.ready
+            ) {
+                Image(systemName: "checkmark.seal.fill")
+                    .foregroundStyle(Brand.ready)
+            }
+        case .notInstalled:
+            SettingRow(
+                icon: "speaker.wave.2",
+                title: "Install the voice engine",
+                subtitle: "Reads answers aloud with a fully local voice. Needs Homebrew; a small voice model downloads on first use.",
+                iconColor: Brand.ink4
+            ) {
+                let command = "brew install espeak-ng && pip3 install mlx-audio \"misaki[en]\" && python3 -m spacy download en_core_web_sm"
+                Button(copiedTTSInstallCommand ? "Copied" : "Copy command") {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(command, forType: .string)
+                    copiedTTSInstallCommand = true
+                    Task { try? await Task.sleep(nanoseconds: 1_500_000_000); copiedTTSInstallCommand = false }
+                }
+                .buttonStyle(.bordered)
+            }
+        case .checking:
+            SettingRow(
+                icon: "speaker.wave.2",
+                title: "Checking for the voice engine…",
+                iconColor: Brand.ink4
+            ) {
+                EmptyView()
             }
         }
     }

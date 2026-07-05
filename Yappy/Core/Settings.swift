@@ -79,6 +79,9 @@ final class Settings: ObservableObject {
         static let askBackend = "com.yappy.askBackend"
         static let askGrokModel = "com.yappy.askGrokModel"
         static let askSaveHistoryEnabled = "com.yappy.askSaveHistoryEnabled"
+        static let answersSpeakEnabled = "com.yappy.answersSpeakEnabled"
+        static let answersAutoSpeak = "com.yappy.answersAutoSpeak"
+        static let answersVoice = "com.yappy.answersVoice"
 
         /// Keys from the cloud-based versions of Yappy; removed on first launch.
         static let staleKeys = [
@@ -301,6 +304,21 @@ final class Settings: ObservableObject {
         didSet { if !isLoading { save() } }
     }
 
+    /// Whether completed Ask answers can be read aloud locally.
+    @Published var answersSpeakEnabled: Bool = false {
+        didSet { if !isLoading { save() } }
+    }
+
+    /// Whether completed Ask answers are read aloud automatically.
+    @Published var answersAutoSpeak: Bool = false {
+        didSet { if !isLoading { save() } }
+    }
+
+    /// Selected on-device voice for reading completed Ask answers.
+    @Published var answersVoice: String = AnswersVoice.afHeart.rawValue {
+        didSet { if !isLoading { save() } }
+    }
+
     private var isLoading = false
 
     // MARK: - Initialization
@@ -349,6 +367,9 @@ final class Settings: ObservableObject {
         defaults.set(askBackend.rawValue, forKey: Keys.askBackend)
         defaults.set(askGrokModel.rawValue, forKey: Keys.askGrokModel)
         defaults.set(askSaveHistoryEnabled, forKey: Keys.askSaveHistoryEnabled)
+        defaults.set(answersSpeakEnabled, forKey: Keys.answersSpeakEnabled)
+        defaults.set(answersAutoSpeak, forKey: Keys.answersAutoSpeak)
+        defaults.set(answersVoice, forKey: Keys.answersVoice)
 
         let overrides = Dictionary(uniqueKeysWithValues: toneOverrides.map { ($0.key.rawValue, $0.value.rawValue) })
         defaults.set(overrides, forKey: Keys.toneOverrides)
@@ -502,6 +523,15 @@ final class Settings: ObservableObject {
         } else {
             askSaveHistoryEnabled = true
         }
+        answersSpeakEnabled = defaults.bool(forKey: Keys.answersSpeakEnabled)
+        answersAutoSpeak = defaults.bool(forKey: Keys.answersAutoSpeak)
+        if let rawVoice = defaults.string(forKey: Keys.answersVoice),
+           AnswersVoice(rawValue: rawVoice) != nil {
+            answersVoice = rawVoice
+        } else {
+            answersVoice = AnswersVoice.afHeart.rawValue
+            defaults.set(answersVoice, forKey: Keys.answersVoice)
+        }
 
         if let raw = defaults.dictionary(forKey: Keys.toneOverrides) as? [String: String] {
             var parsed: [AppCategory: ToneStyle] = [:]
@@ -544,6 +574,9 @@ final class Settings: ObservableObject {
         activeModeID = nil
         useCases = []
         autoUpdateChecksEnabled = true
+        answersSpeakEnabled = false
+        answersAutoSpeak = false
+        answersVoice = AnswersVoice.afHeart.rawValue
         // onboardingComplete and the has* checklist flags are intentionally not
         // reset — like onboarding completion, they track lifetime "ever did this"
         // state, so a settings reset shouldn't resurrect the getting-started card.
@@ -560,6 +593,7 @@ final class Settings: ObservableObject {
             Keys.voiceEditingEnabled, Keys.voiceControlEnabled,
             Keys.saveHistoryEnabled, Keys.historyRetentionDays, Keys.activeModeID,
             Keys.useCases, Keys.autoUpdateChecksEnabled,
+            Keys.answersSpeakEnabled, Keys.answersAutoSpeak, Keys.answersVoice,
         ] {
             defaults.removeObject(forKey: key)
         }

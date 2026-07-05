@@ -8,6 +8,7 @@ import Carbon.HIToolbox
 import Cocoa
 import Combine
 import os
+import QuartzCore
 import ServiceManagement
 import SwiftUI
 
@@ -29,6 +30,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let audioRecorder = AudioRecorder()
     private let textInserter = TextInserter()
     private let soundPlayer = SoundPlayer()
+    private let ttsClient = TTSSpeakClient()
     private lazy var cleanupCoordinator = CleanupCoordinator(
         settings: settings, provider: FoundationModelsCleanupProvider())
     private lazy var hotkeyManager = HotkeyManager(mode: settings.hotkeyOption)
@@ -55,6 +57,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var askGeneration = 0
     private var askProcessingTask: Task<Void, Never>?
     private var askRecordingStartTime: Date?
+    private var speakGeneration = 0
+    private var speakPipelineTask: Task<Void, Never>?
+    /// When Fn went down for an Ask — used to log the press→listening latency.
+    private var askFnDownAt: Double?
+    private var previewGeneration = 0
+    private var previewPipelineTask: Task<Void, Never>?
 
     /// Precompiled custom-dictionary matcher, rebuilt only when the dictionary
     /// changes (not per dictation). Kept in sync via a `dictionaryStore` sink.
@@ -144,6 +152,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// How fresh a `pendingCorrection` must be to pair with a re-dictation.
     private static let correctionPairingWindow: TimeInterval = 30
+    private static let answerSpeakFallbackVoice = AnswersVoice.afHeart.rawValue
 
     /// The pre-cleanup transcript of the last insertion, when AI cleanup changed
     /// the words — the safety net behind "use what I said". Nil when cleanup
@@ -174,6 +183,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         bindStateToMenuBar()
         bindModelReadyAutostart()
         bindSettings()
+        bindAnswerSpeech()
 
         // Surface a found update through our own UI (gentle reminders). Starting
         // Sparkle and the launch-time background check are DEFERRED below so the
@@ -306,6 +316,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         scratchpadHotkey.stop()
         askHotkey.stop()
         askController.shutdown()
+        ttsClient.stop()
         notesStore.flush()
         maxDurationTimer?.invalidate()
         accessibilityPollTimer?.invalidate()
@@ -350,6 +361,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     ///     drop the result before it's inserted (the "abort before text lands"
     ///     path). The hotkey isn't active during processing, so no deactivate.
     private func escapeCancel() {
+        if askController.speakingPhase != .idle {
+            stopAnswerSpeech()
+            return
+        }
         // Ask owns the session — abort its capture / turn (Stop-button equivalent).
         if askController.isBusy {
             askHotkey.deactivate()
@@ -456,6 +471,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Begins the actual audio-capture session. Precondition: the speech model is
     /// `.ready` (the audio engine must never run concurrently with a model load).
     private func beginDictationRecording() {
+        stopAnswerSpeech()
         guard !appState.isRecording else { return }
         // Resolve context and show the pill FIRST, so visual feedback is instant
         // on key-press; the slower audio-engine start runs right after, in the
@@ -1001,6 +1017,213 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         pillController.hide()
     }
 
+    // MARK: - Answer Speech
+
+    private func bindAnswerSpeech() {
+        ttsClient.onPhaseChange = { [weak self] phase in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                // Only reflect the helper's load phase while a real speak or
+                // preview is running. A background prewarm (fired on Fn-down while
+                // the user is still asking) must NOT look like in-flight speech —
+                // otherwise stopAnswerSpeech would read `.synthesizing` and tear
+                // down the very helper the prewarm just spent ~1.7s warming.
+                guard self.speakPipelineTask != nil || self.previewPipelineTask != nil else { return }
+                if phase == "loading" || phase == "downloading" {
+                    self.askController.setSpeakingPhase(.synthesizing)
+                }
+            }
+        }
+        updateAnswerSpeakAvailability()
+        askController.autoSpeak = settings.answersAutoSpeak
+        Task { @MainActor [weak self] in
+            _ = await TTSSpeakClient.probeReadiness()
+            self?.updateAnswerSpeakAvailability()
+        }
+    }
+
+    private func updateAnswerSpeakAvailability() {
+        askController.speakAvailable = settings.answersSpeakEnabled && (TTSSpeakClient.cachedReady ?? false)
+        // If the feature is on but readiness is still unknown (the probe hasn't
+        // resolved, or Settings ran it on another path), probe once and recompute
+        // so the Speak button reliably appears without waiting for a relaunch.
+        if settings.answersSpeakEnabled, TTSSpeakClient.cachedReady == nil {
+            Task { @MainActor [weak self] in
+                _ = await TTSSpeakClient.probeReadiness()
+                self?.recomputeSpeakAvailable()
+            }
+        }
+    }
+
+    private func recomputeSpeakAvailable() {
+        askController.speakAvailable = settings.answersSpeakEnabled && (TTSSpeakClient.cachedReady ?? false)
+    }
+
+    private func speakAnswerText(_ raw: String) {
+        stopAnswerSpeech()
+        speakGeneration += 1
+        let generation = speakGeneration
+
+        askController.setSpeakingPhase(.synthesizing)
+        let text = AskAnswerBlock.speakableText(from: raw).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else {
+            askController.setSpeakingPhase(.idle)
+            return
+        }
+
+        // Small first chunk → first audio in ~1s; larger chunks after keep the
+        // stream gapless while they render during playback.
+        let chunks = AskController.speechChunks(text, firstLimit: 90)
+        guard !chunks.isEmpty else {
+            askController.setSpeakingPhase(.idle)
+            return
+        }
+
+        speakPipelineTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            var chunkIndex = 0
+            do {
+                var pending = try await self.synthesizeAnswerChunk(chunks[0], padStart: true)
+                var completedNaturally = true
+
+                for index in chunks.indices {
+                    guard self.speakGeneration == generation, !Task.isCancelled else {
+                        completedNaturally = false
+                        break
+                    }
+
+                    if index + 1 < chunks.count {
+                        async let nextURL = self.synthesizeAnswerChunk(chunks[index + 1])
+                        self.askController.setSpeakingPhase(.speaking)
+                        let finished = await self.playFileAndWait(pending, generation: generation)
+                        guard finished, self.speakGeneration == generation, !Task.isCancelled else {
+                            completedNaturally = false
+                            break
+                        }
+                        chunkIndex = index + 1
+                        pending = try await nextURL
+                    } else {
+                        self.askController.setSpeakingPhase(.speaking)
+                        let finished = await self.playFileAndWait(pending, generation: generation)
+                        guard finished, self.speakGeneration == generation, !Task.isCancelled else {
+                            completedNaturally = false
+                            break
+                        }
+                    }
+                }
+
+                if completedNaturally, self.speakGeneration == generation, !Task.isCancelled {
+                    self.askController.setSpeakingPhase(.idle)
+                    self.ttsClient.noteIdle()
+                    self.speakPipelineTask = nil
+                }
+            } catch {
+                if self.speakGeneration == generation {
+                    self.askController.setSpeakingPhase(.idle)
+                    VLog.tts("pipeline failed (chunk \(chunkIndex))")
+                    self.ttsClient.noteIdle()
+                    self.speakPipelineTask = nil
+                }
+            }
+        }
+    }
+
+    private func synthesizeAnswerChunk(_ chunk: String, padStart: Bool = false) async throws -> URL {
+        let voice = AnswersVoice(rawValue: settings.answersVoice)?.rawValue ?? Self.answerSpeakFallbackVoice
+        return try await ttsClient.synthesize(text: chunk, voice: voice, padStart: padStart)
+    }
+
+    private func playFileAndWait(_ url: URL, generation: Int) async -> Bool {
+        await withCheckedContinuation { continuation in
+            soundPlayer.playFile(url: url, volume: settings.audioFeedbackVolume) { [weak self] finished in
+                guard let self else {
+                    continuation.resume(returning: false)
+                    return
+                }
+                continuation.resume(returning: finished && self.speakGeneration == generation)
+            }
+        }
+    }
+
+    // MARK: - Voice preview (Settings)
+
+    /// Speaks a short sample in `voice` so the user can hear it before choosing.
+    /// Reuses the shared TTS helper + player; any answer speech or prior preview
+    /// is stopped first (one voice at a time).
+    private func playVoicePreview(_ voice: String) {
+        stopAnswerSpeech()
+        // Only ever hand the helper a known Kokoro voice id. mlx-audio's voice
+        // loader falls back to a network fetch for an unknown id (pipeline.py
+        // drops local_files_only), which would break the on-device guarantee;
+        // the answer-speech path guards the same way, so keep the two in lockstep.
+        guard let resolved = AnswersVoice(rawValue: voice) else { return }
+        previewGeneration += 1
+        let generation = previewGeneration
+        let sample = "Hi, I'm \(resolved.spokenName). This is how I read your answers."
+        askController.previewingVoice = voice
+
+        previewPipelineTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer {
+                if self.previewGeneration == generation {
+                    self.askController.previewingVoice = nil
+                    self.ttsClient.noteIdle()
+                    self.previewPipelineTask = nil
+                }
+            }
+            do {
+                let url = try await self.ttsClient.synthesize(text: sample, voice: resolved.rawValue, padStart: true)
+                guard self.previewGeneration == generation, !Task.isCancelled else { return }
+                _ = await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
+                    self.soundPlayer.playFile(url: url, volume: self.settings.audioFeedbackVolume) { finished in
+                        continuation.resume(returning: finished)
+                    }
+                }
+            } catch {
+                if self.previewGeneration == generation { VLog.tts("voice preview failed") }
+            }
+        }
+    }
+
+    private func stopVoicePreview() {
+        previewGeneration += 1
+        previewPipelineTask?.cancel()
+        previewPipelineTask = nil
+        if askController.previewingVoice != nil {
+            soundPlayer.stopFile()
+            askController.previewingVoice = nil
+            ttsClient.noteIdle()
+        }
+    }
+
+    private func stopAnswerSpeech() {
+        // Was there actually speech in flight (synthesizing or playing), or is
+        // this a no-op stop over a warm-but-idle helper (e.g. one a prewarm just
+        // warmed)? Only real in-flight speech justifies tearing the helper down.
+        let hadActiveSpeech = speakPipelineTask != nil || previewPipelineTask != nil
+        speakGeneration += 1
+        speakPipelineTask?.cancel()
+        speakPipelineTask = nil
+        // A voice preview shares the one player + helper; stop it too.
+        previewGeneration += 1
+        previewPipelineTask?.cancel()
+        previewPipelineTask = nil
+        askController.previewingVoice = nil
+
+        soundPlayer.stopFile()
+        if hadActiveSpeech {
+            // Abort an in-flight synthesis by killing the helper (a busy synth
+            // can't be cancelled otherwise); once playback has started the synth
+            // is done, so just let the helper idle out and stay warm.
+            if askController.speakingPhase == .synthesizing {
+                ttsClient.stop()
+            } else {
+                ttsClient.noteIdle()
+            }
+        }
+        askController.setSpeakingPhase(.idle)
+    }
+
     // MARK: - Ask Flow (hold-Fn voice questions)
 
     private func wireAskCallbacks() {
@@ -1018,6 +1241,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         askController.copyText = { text in
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(text, forType: .string)
+        }
+        askController.speakAnswer = { [weak self] raw in
+            self?.speakAnswerText(raw)
+        }
+        askController.stopSpeaking = { [weak self] in
+            self?.stopAnswerSpeech()
+        }
+        askController.startVoicePreview = { [weak self] voice in
+            self?.playVoicePreview(voice)
+        }
+        askController.stopVoicePreview = { [weak self] in
+            self?.stopVoicePreview()
         }
         askController.backendUsable = { backend in
             switch backend {
@@ -1045,11 +1280,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// A press during a streaming answer barges in; a press during an active
     /// capture (listening / transcribing / preparing) is still ignored.
     private func beginAsk() {
+        let fnDownAt = CACurrentMediaTime()
+        stopAnswerSpeech()
         guard settings.askEnabled else { return }
         guard !appState.isRecording, !appState.isPreparing, !appState.isProcessing else { return }
         let askStatus = askController.status
         guard askStatus != .listening, askStatus != .transcribing, askStatus != .preparing
         else { return }
+        askFnDownAt = fnDownAt
+
+        // If the user has auto-speak on, warm the TTS helper NOW so the model is
+        // loaded by the time the answer arrives — the ~2s cold load then overlaps
+        // the transcription + model answer instead of stalling before speech.
+        if askController.speakAvailable, settings.answersAutoSpeak {
+            ttsClient.prewarm()
+        }
 
         switch transcriptionService.modelState {
         case .ready:
@@ -1083,6 +1328,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         askGeneration += 1
         askRecordingStartTime = Date()
+        if let down = askFnDownAt {
+            VLog.store("Fn→listening \(Int((CACurrentMediaTime() - down) * 1000))ms")
+            askFnDownAt = nil
+        }
         playFeedback(start: true)
         armMaxDurationTimer { [weak self] in self?.finishAsk() }
         escapeInterceptor.start()  // stays live through the whole turn (see bindStateToMenuBar)
@@ -1629,6 +1878,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settings.$askGrokModel
             .removeDuplicates()
             .sink { [weak self] model in self?.askController.grokModel = model }
+            .store(in: &cancellables)
+
+        settings.$answersSpeakEnabled
+            .dropFirst()
+            .removeDuplicates()
+            .sink { [weak self] enabled in
+                guard let self else { return }
+                self.updateAnswerSpeakAvailability()
+                if !enabled {
+                    self.stopAnswerSpeech()
+                    self.ttsClient.stop()
+                }
+            }
+            .store(in: &cancellables)
+
+        settings.$answersAutoSpeak
+            .dropFirst()
+            .removeDuplicates()
+            .sink { [weak self] enabled in
+                self?.askController.autoSpeak = enabled
+            }
             .store(in: &cancellables)
 
         // Switch the active speech model when the user changes it. Updating

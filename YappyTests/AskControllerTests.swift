@@ -907,4 +907,253 @@ final class AskControllerTests: XCTestCase {
         XCTAssertEqual(controller.run?.steps.filter { $0.kind == .search }.count, 1)
     }
 
+    // MARK: - p. Speak answers
+
+    func testSpeechChunksShortTextReturnsOneChunk() {
+        XCTAssertEqual(AskController.speechChunks("Short answer."), ["Short answer."])
+    }
+
+    func testSpeechChunksPacksSentencesUnderLimitAndPreservesTerminators() {
+        let sentence = String(repeating: "a", count: 95) + ". "
+        let text = String(repeating: sentence, count: 8)
+
+        let chunks = AskController.speechChunks(text)
+
+        XCTAssertGreaterThan(chunks.count, 1)
+        XCTAssertTrue(chunks.allSatisfy { $0.count <= 280 })
+        XCTAssertEqual(chunks.joined(), text.trimmingCharacters(in: .whitespacesAndNewlines))
+        XCTAssertTrue(chunks.dropLast().allSatisfy { $0.hasSuffix(". ") })
+    }
+
+    func testSpeechChunksKeepsSingleOverlongSentenceWhole() {
+        let sentence = String(repeating: "x", count: 340) + "."
+
+        XCTAssertEqual(AskController.speechChunks(sentence), [sentence])
+    }
+
+    func testSpeechChunksFirstLimitCapsOnlyTheFirstChunk() {
+        // Six ~30-char sentences. With a small firstLimit the first chunk holds
+        // just the opening sentence (fast first audio); the rest pack to 280.
+        let sentence = String(repeating: "a", count: 28) + ". "
+        let text = String(repeating: sentence, count: 6)
+
+        let chunks = AskController.speechChunks(text, firstLimit: 40)
+
+        XCTAssertGreaterThan(chunks.count, 1)
+        XCTAssertLessThanOrEqual(chunks[0].count, 40)
+        XCTAssertGreaterThan(chunks[1].count, 40, "later chunks use the full limit, not the first cap")
+        XCTAssertEqual(chunks.joined(), text.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
+    func testSpeakCardCommandsParse() {
+        XCTAssertEqual(AskController.parseCardCommand("read that"), .speak)
+        XCTAssertEqual(AskController.parseCardCommand("stop talking"), .stopSpeaking)
+        XCTAssertNil(AskController.parseCardCommand("read me a poem"))
+    }
+
+    func testAnswersVoiceRosterIsBalancedKokoroSet() {
+        // Eight curated Kokoro voices, balanced two-per-accent-and-gender, with
+        // the grade-A flagship af_heart first (the Settings default).
+        XCTAssertEqual(AnswersVoice.allCases.count, 8)
+        XCTAssertEqual(AnswersVoice.allCases.first, .afHeart)
+        XCTAssertEqual(AnswersVoice.afHeart.rawValue, "af_heart")
+
+        let american = AnswersVoice.allCases.filter { !$0.rawValue.hasPrefix("b") }
+        let british = AnswersVoice.allCases.filter { $0.rawValue.hasPrefix("b") }
+        XCTAssertEqual(american.count, 4)
+        XCTAssertEqual(british.count, 4)
+    }
+
+    func testAnswersVoiceNamesEncodeAccentButPreviewStaysBare() {
+        // The picker label carries the accent; the spoken name (used when a voice
+        // introduces itself in a preview) must stay a bare given name so the
+        // sample never reads "(American)" aloud.
+        XCTAssertEqual(AnswersVoice.afHeart.displayName, "Heart (American)")
+        XCTAssertEqual(AnswersVoice.bmGeorge.displayName, "George (British)")
+        XCTAssertEqual(AnswersVoice.afHeart.spokenName, "Heart")
+        for voice in AnswersVoice.allCases {
+            XCTAssertFalse(voice.spokenName.contains("("), "\(voice.rawValue) preview name should be bare")
+        }
+    }
+
+    func testSpeakCardCommandRestoresCompletedCardAndSpeaksAnswer() async {
+        let codex = FakeCodexClient()
+        let (controller, _, _) = makeController(codex: codex)
+        controller.saveHistory = false
+        controller.speakAvailable = true
+        var spoken: [String] = []
+        controller.speakAnswer = { spoken.append($0) }
+
+        await completeCodexRun(
+            controller: controller,
+            codex: codex,
+            question: "Original question",
+            answer: "Previous answer."
+        )
+
+        controller.beginListening()
+        controller.submit("read that")
+
+        XCTAssertEqual(spoken, ["Previous answer."])
+        XCTAssertEqual(controller.run?.status, .completed)
+        XCTAssertEqual(controller.run?.rawTranscript, "Original question")
+        XCTAssertEqual(controller.run?.answerText, "Previous answer.")
+    }
+
+    func testSpeakCardCommandFallsThroughWhenUnavailable() async {
+        let codex = FakeCodexClient()
+        let (controller, _, _) = makeController(codex: codex)
+        controller.saveHistory = false
+        controller.speakAvailable = false
+        var spoken: [String] = []
+        controller.speakAnswer = { spoken.append($0) }
+
+        await completeCodexRun(
+            controller: controller,
+            codex: codex,
+            question: "Original question",
+            answer: "Previous answer."
+        )
+
+        controller.beginListening()
+        controller.submit("read that")
+
+        await yieldUntil { codex.askCalls.count == 2 }
+        XCTAssertTrue(spoken.isEmpty)
+        XCTAssertEqual(controller.run?.status, .thinking)
+        XCTAssertEqual(codex.askCalls[1].transcript.contains("Question:\nread that"), true)
+    }
+
+    func testStopSpeakingCardCommandRestoresCompletedCardAndStops() async {
+        let codex = FakeCodexClient()
+        let (controller, _, _) = makeController(codex: codex)
+        controller.saveHistory = false
+        var stopCount = 0
+        controller.stopSpeaking = { stopCount += 1 }
+
+        await completeCodexRun(
+            controller: controller,
+            codex: codex,
+            question: "Original question",
+            answer: "Previous answer."
+        )
+
+        controller.beginListening()
+        stopCount = 0
+        controller.submit("stop talking")
+
+        XCTAssertEqual(stopCount, 1)
+        XCTAssertEqual(controller.run?.status, .completed)
+        XCTAssertEqual(controller.run?.answerText, "Previous answer.")
+    }
+
+    func testAutoSpeakFiresOnceWhenEnabledAndAvailable() async {
+        let codex = FakeCodexClient()
+        let (controller, _, _) = makeController(codex: codex)
+        controller.saveHistory = false
+        controller.autoSpeak = true
+        controller.speakAvailable = true
+        var spoken: [String] = []
+        controller.speakAnswer = { spoken.append($0) }
+
+        await completeCodexRun(
+            controller: controller,
+            codex: codex,
+            question: "Question?",
+            answer: "Answer."
+        )
+
+        XCTAssertEqual(spoken, ["Answer."])
+    }
+
+    func testAutoSpeakDoesNotFireWhenDisabledOrUnavailable() async {
+        let unavailableCodex = FakeCodexClient()
+        let (unavailable, _, _) = makeController(codex: unavailableCodex)
+        unavailable.saveHistory = false
+        unavailable.autoSpeak = true
+        unavailable.speakAvailable = false
+        var unavailableSpoken = 0
+        unavailable.speakAnswer = { _ in unavailableSpoken += 1 }
+
+        await completeCodexRun(
+            controller: unavailable,
+            codex: unavailableCodex,
+            question: "Question?",
+            answer: "Answer."
+        )
+        XCTAssertEqual(unavailableSpoken, 0)
+
+        let disabledCodex = FakeCodexClient()
+        let (disabled, _, _) = makeController(codex: disabledCodex)
+        disabled.saveHistory = false
+        disabled.autoSpeak = false
+        disabled.speakAvailable = true
+        var disabledSpoken = 0
+        disabled.speakAnswer = { _ in disabledSpoken += 1 }
+
+        await completeCodexRun(
+            controller: disabled,
+            codex: disabledCodex,
+            question: "Question?",
+            answer: "Answer."
+        )
+        XCTAssertEqual(disabledSpoken, 0)
+    }
+
+    func testDismissAbortAndBargeInStopSpeaking() async {
+        let dismissCodex = FakeCodexClient()
+        let (dismissController, _, _) = makeController(codex: dismissCodex)
+        dismissController.saveHistory = false
+        var dismissStops = 0
+        dismissController.stopSpeaking = { dismissStops += 1 }
+        await completeCodexRun(
+            controller: dismissController,
+            codex: dismissCodex,
+            question: "Question?",
+            answer: "Answer."
+        )
+        dismissController.dismiss()
+        XCTAssertEqual(dismissStops, 1)
+
+        let abortCodex = FakeCodexClient()
+        let (abortController, _, _) = makeController(codex: abortCodex)
+        abortController.saveHistory = false
+        var abortStops = 0
+        abortController.stopSpeaking = { abortStops += 1 }
+        abortController.beginListening()
+        abortController.submit("Streaming question")
+        await yieldUntil { abortCodex.askCalls.count == 1 }
+        await pushCodex(abortCodex, event: .turnStarted)
+        abortController.abort()
+        XCTAssertEqual(abortStops, 1)
+
+        let bargeCodex = FakeCodexClient()
+        let (bargeController, _, _) = makeController(codex: bargeCodex)
+        bargeController.saveHistory = false
+        var bargeStops = 0
+        bargeController.stopSpeaking = { bargeStops += 1 }
+        bargeController.beginListening()
+        bargeController.submit("Streaming question")
+        await yieldUntil { bargeCodex.askCalls.count == 1 }
+        await pushCodex(bargeCodex, event: .turnStarted)
+        await pushCodex(bargeCodex, event: .agentMessageDelta(itemID: "msg1", delta: "Partial"))
+        await yieldUntil { bargeController.run?.status == .working }
+        bargeController.beginListening()
+        XCTAssertEqual(bargeStops, 1)
+
+        let completedCodex = FakeCodexClient()
+        let (completedController, _, _) = makeController(codex: completedCodex)
+        completedController.saveHistory = false
+        var completedStops = 0
+        completedController.stopSpeaking = { completedStops += 1 }
+        await completeCodexRun(
+            controller: completedController,
+            codex: completedCodex,
+            question: "Original question",
+            answer: "Previous answer."
+        )
+        completedController.beginListening()
+        XCTAssertEqual(completedStops, 1)
+    }
+
 }

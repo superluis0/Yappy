@@ -26,6 +26,7 @@ enum VLog {
         case store
         case codex
         case grok
+        case tts
         case ask
     }
 
@@ -81,5 +82,6 @@ enum VLog {
     static func store(_ message: @autoclosure () -> String)  { log(.store, message()) }
     static func codex(_ message: @autoclosure () -> String)  { log(.codex, message()) }
     static func grok(_ message: @autoclosure () -> String)   { log(.grok, message()) }
+    static func tts(_ message: @autoclosure () -> String)    { log(.tts, message()) }
     static func ask(_ message: @autoclosure () -> String)    { log(.ask, message()) }
 }

@@ -45,6 +45,20 @@ enum WhatsNew {
     /// announcing; upgraders from any earlier version see the entry for the
     /// version they land on.
     static let entries: [String: Entry] = [
+        "2.6": Entry(
+            version: "2.6",
+            headline: "Answers can speak now.",
+            highlights: [
+                Highlight(icon: "speaker.wave.2.fill",
+                          title: "Read answers aloud",
+                          detail: "A new Speak button on the answer card — or just say “read that” — reads the reply out loud in a natural voice. Say “stop talking” to stop, or hold Fn to interrupt and ask something else."),
+                Highlight(icon: "lock.laptopcomputer",
+                          title: "100% on your Mac",
+                          detail: "The voice runs entirely on-device — nothing spoken aloud ever leaves your computer. Optional: install mlx-audio once and it lights up green in Settings."),
+                Highlight(icon: "waveform",
+                          title: "Eight voices, American and British",
+                          detail: "Pick from eight on-device voices across American and British accents, and choose whether to speak on request or read every answer automatically as it finishes."),
+            ]),
         "2.5": Entry(
             version: "2.5",
             headline: "Ask out loud. Answers arrive.",

@@ -47,6 +47,7 @@
 		B10000A100000000000000A1 /* AskHotkey.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000A100000000000000A1 /* AskHotkey.swift */; };
 		B10000A200000000000000A1 /* GrokAskClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000A200000000000000A1 /* GrokAskClient.swift */; };
 		B10000AI00000000000000A1 /* GrokAgentClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000AI00000000000000A1 /* GrokAgentClient.swift */; };
+		B10000AJ00000000000000A1 /* TTSSpeakClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000AJ00000000000000A1 /* TTSSpeakClient.swift */; };
 		B10000A300000000000000A1 /* CodexAskClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000A300000000000000A1 /* CodexAskClient.swift */; };
 		B100000B00000000000000A1 /* TextInserter.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200000B00000000000000A1 /* TextInserter.swift */; };
 		B100000C00000000000000A1 /* RecordingPillController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200000C00000000000000A1 /* RecordingPillController.swift */; };
@@ -102,6 +103,7 @@
 		B100003500000000000000A1 /* SpeechDetectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200003500000000000000A1 /* SpeechDetectionTests.swift */; };
 		B100003700000000000000A1 /* SpokenNumberFormatterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200003700000000000000A1 /* SpokenNumberFormatterTests.swift */; };
 		B100003200000000000000A1 /* record-start.wav in Resources */ = {isa = PBXBuildFile; fileRef = B200003200000000000000A1 /* record-start.wav */; };
+		B10000AK00000000000000A1 /* yappy-tts-helper.py in Resources */ = {isa = PBXBuildFile; fileRef = B20000AK00000000000000A1 /* yappy-tts-helper.py */; };
 		B100003300000000000000A1 /* record-stop.wav in Resources */ = {isa = PBXBuildFile; fileRef = B200003300000000000000A1 /* record-stop.wav */; };
 		B100003400000000000000A1 /* success.wav in Resources */ = {isa = PBXBuildFile; fileRef = B200003400000000000000A1 /* success.wav */; };
 		B100002500000000000000A1 /* ShortcutExpanderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200002500000000000000A1 /* ShortcutExpanderTests.swift */; };
@@ -178,6 +180,7 @@
 		B20000A100000000000000A1 /* AskHotkey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AskHotkey.swift; sourceTree = "<group>"; };
 		B20000A200000000000000A1 /* GrokAskClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrokAskClient.swift; sourceTree = "<group>"; };
 		B20000AI00000000000000A1 /* GrokAgentClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrokAgentClient.swift; sourceTree = "<group>"; };
+		B20000AJ00000000000000A1 /* TTSSpeakClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TTSSpeakClient.swift; sourceTree = "<group>"; };
 		B20000A300000000000000A1 /* CodexAskClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexAskClient.swift; sourceTree = "<group>"; };
 		B200000B00000000000000A1 /* TextInserter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextInserter.swift; sourceTree = "<group>"; };
 		B200000C00000000000000A1 /* RecordingPillController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingPillController.swift; sourceTree = "<group>"; };
@@ -233,6 +236,7 @@
 		B200003500000000000000A1 /* SpeechDetectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechDetectionTests.swift; sourceTree = "<group>"; };
 		B200003700000000000000A1 /* SpokenNumberFormatterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpokenNumberFormatterTests.swift; sourceTree = "<group>"; };
 		B200003200000000000000A1 /* record-start.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = "record-start.wav"; sourceTree = "<group>"; };
+		B20000AK00000000000000A1 /* yappy-tts-helper.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; name = "yappy-tts-helper.py"; path = "Resources/yappy-tts-helper.py"; sourceTree = "<group>"; };
 		B200003300000000000000A1 /* record-stop.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = "record-stop.wav"; sourceTree = "<group>"; };
 		B200003400000000000000A1 /* success.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = "success.wav"; sourceTree = "<group>"; };
 		B200002500000000000000A1 /* ShortcutExpanderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortcutExpanderTests.swift; sourceTree = "<group>"; };
@@ -297,6 +301,7 @@
 				B800000500000000000000A1 /* Services */,
 				B800000600000000000000A1 /* UI */,
 				B800000900000000000000A1 /* Sounds */,
+				B20000AK00000000000000A1 /* yappy-tts-helper.py */,
 				B200001200000000000000A1 /* Assets.xcassets */,
 				B200001900000000000000A1 /* Info.plist */,
 				B200001A00000000000000A1 /* Yappy.entitlements */,
@@ -374,6 +379,7 @@
 				B20000A100000000000000A1 /* AskHotkey.swift */,
 				B20000A200000000000000A1 /* GrokAskClient.swift */,
 				B20000AI00000000000000A1 /* GrokAgentClient.swift */,
+				B20000AJ00000000000000A1 /* TTSSpeakClient.swift */,
 				B20000A300000000000000A1 /* CodexAskClient.swift */,
 				B200000B00000000000000A1 /* TextInserter.swift */,
 				B200002100000000000000A1 /* ShortcutExpander.swift */,
@@ -560,6 +566,7 @@
 			files = (
 				B100001200000000000000A1 /* Assets.xcassets in Resources */,
 				B100003200000000000000A1 /* record-start.wav in Resources */,
+				B10000AK00000000000000A1 /* yappy-tts-helper.py in Resources */,
 				B100003300000000000000A1 /* record-stop.wav in Resources */,
 				B100003400000000000000A1 /* success.wav in Resources */,
 			);
@@ -607,6 +614,7 @@
 				B10000A100000000000000A1 /* AskHotkey.swift in Sources */,
 				B10000A200000000000000A1 /* GrokAskClient.swift in Sources */,
 				B10000AI00000000000000A1 /* GrokAgentClient.swift in Sources */,
+				B10000AJ00000000000000A1 /* TTSSpeakClient.swift in Sources */,
 				B10000A300000000000000A1 /* CodexAskClient.swift in Sources */,
 				B100000B00000000000000A1 /* TextInserter.swift in Sources */,
 				B100000C00000000000000A1 /* RecordingPillController.swift in Sources */,
@@ -850,7 +858,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 2.5;
+				MARKETING_VERSION = 2.6;
 				PRODUCT_BUNDLE_IDENTIFIER = com.yappy.app.debug;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -882,7 +890,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 2.5;
+				MARKETING_VERSION = 2.6;
 				PRODUCT_BUNDLE_IDENTIFIER = com.yappy.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;

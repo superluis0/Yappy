@@ -42,3 +42,7 @@ dist/
 
 # Local agent/editor state
 .claude/
+
+# Python bytecode (bundled TTS helper)
+__pycache__/
+*.pyc

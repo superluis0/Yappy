@@ -19,7 +19,7 @@ No API keys. No cloud. No subscriptions. Dictation never leaves the device.</p>
 <img src="https://img.shields.io/badge/License-MIT-555?style=flat-square" alt="MIT License">
 </p>
 
-<p><b><a href="https://superluis0.github.io/Yappy/">Website</a></b> &nbsp;&middot;&nbsp; <b><a href="https://github.com/superluis0/Yappy/releases/latest">Download</a></b></p>
+<p><b><a href="https://superluis0.github.io/Yappy/">Website</a></b> &nbsp;&middot;&nbsp; <b><a href="https://github.com/superluis0/Yappy/releases/latest">Download</a></b> &nbsp;&middot;&nbsp; <b><a href="#setup">Setup</a></b></p>
 
 </div>
 
@@ -73,6 +73,7 @@ It goes further than a one-shot answer:
 - **Land the answer where you're working.** Hit **Insert**, or just say *"insert that"*, and the answer drops in as clean plain text at the cursor of the app you were in (tables become tab-separated). The card never stole your focus, so it goes exactly where you left off. **Copy** and **Ask again** are a click away too.
 - **Drive the card by voice.** Whole-utterance commands only, so a real question is never mistaken for one: *"copy that"*, *"insert that"*, *"pin that"*, *"dismiss"*, *"try again"*.
 - **Ask for more thinking when it matters.** Prefix a question with *"think harder, …"* and Yappy routes that one question at higher reasoning effort.
+- **Hear the answer, hands-free.** Turn on *Read answers aloud* and a **Speak** button appears on the card (or just say *"read that"*); *"stop talking"* stops it. This one is **100% local** — a neural voice runs entirely on your Mac, so the answer text never leaves it. Optional and off by default: it lights up green once the voice engine is installed (`brew install espeak-ng && pip3 install mlx-audio "misaki[en]" && python3 -m spacy download en_core_web_sm`, Apple Silicon), then downloads a small voice model on first use. Pick from eight American and British voices, or have every answer read automatically.
 
 A few honest facts about how it works:
 
@@ -142,22 +143,54 @@ Pick your answering model — **Codex (gpt-5.5)** or **Grok** (Composer 2.5 Fast
 
 **Private by design** — audio is transcribed on-device and never written to disk; no telemetry, no account. After the one-time model download, dictation runs fully offline — nothing you dictate leaves your Mac. The only exception is opt-in and clearly labeled: the **Answers** feature, off by default, which sends your transcribed question (never the audio) to the model account you connect, and runs that model read-only — it can research and answer, but a tool or command event kills the turn. A privacy panel on the home screen reflects this state at a glance.
 
-## Download
+## Setup
 
-The easiest way to run Yappy — no Xcode required. macOS 14+ (Apple Silicon recommended).
+**Dictation works after Step 1 — about two minutes.** Steps 2–4 are optional; turn them on whenever you want them.
 
-1. Download the latest **`Yappy.dmg`** from the [**Releases**](https://github.com/superluis0/Yappy/releases/latest) page.
-2. Open the DMG and drag **Yappy** into your **Applications** folder.
-3. Double-click **Yappy** to launch it.
+| To use… | You'll need |
+|---|---|
+| **Dictation** (required) | Install the app, grant Microphone + Accessibility |
+| **Answers** (hold Fn to ask) | The Codex or Grok CLI, signed in |
+| **Read answers aloud** | One setup command (Homebrew + pip) |
+| **AI cleanup** | Apple Intelligence turned on (macOS 26+) |
 
-Yappy is signed with an Apple Developer ID and notarized by Apple, so it opens cleanly — no "unidentified developer" or "cannot check it for malicious software" warnings, and no terminal workarounds.
+### 1. Install Yappy (required)
 
-A short first-run flow walks you through the two permissions Yappy needs:
+macOS 14 or newer, on an Apple Silicon Mac (M1 or later).
 
-- **Microphone** — to hear you.
-- **Accessibility** — to detect the hotkey and paste text.
+1. Download **`Yappy.dmg`** from the [**Releases**](https://github.com/superluis0/Yappy/releases/latest) page, open it, and drag **Yappy** into your **Applications** folder.
+2. Launch it. Yappy is Apple-notarized, so it opens cleanly — no "unidentified developer" warning and no terminal workarounds.
+3. A short first-run flow asks for the only two permissions Yappy needs:
+   - **Microphone** — to hear you.
+   - **Accessibility** — to detect the hotkey and paste text at your cursor.
+4. Hold **Right ⌘**, say a sentence, and release. On first use Yappy downloads its speech model once (~443 MB); after that, dictation runs fully offline.
 
-Then hold **Right ⌘** anywhere and start talking.
+**That's a complete, private dictation app.** Everything below is optional.
+
+### 2. Answers — ask questions by voice (optional)
+
+Hold **Fn** and ask out loud; the answer streams into a card at the bottom of your screen. It runs on *your own* AI account — no API keys, nothing for Yappy to bill.
+
+1. **Free the Globe key** so Fn is reliable: System Settings → Keyboard → **Press 🌐 to** → **Do Nothing**. (Yappy's Settings has a button that opens this for you.)
+2. **Install a backend and sign in** — the [**Codex CLI**](https://github.com/openai/codex) (your ChatGPT account) or the **Grok CLI** (your grok.com account). Both run on [Node.js](https://nodejs.org); install per their instructions, then sign in once from a terminal.
+3. Open **Settings → Answers**. Yappy detects the signed-in CLI automatically — a green light means you're set. Pick your model, then hold **Fn** and ask.
+
+### 3. Read answers aloud (optional)
+
+Give Answers a voice that reads replies out loud. This one is **100% on-device**: the answer text never leaves your Mac.
+
+1. Install the voice engine with one command (needs [Homebrew](https://brew.sh)):
+   ```bash
+   brew install espeak-ng && pip3 install mlx-audio "misaki[en]" && python3 -m spacy download en_core_web_sm
+   ```
+2. In **Settings → Answers**, turn on **Read answers aloud**. It lights up green, then downloads a small voice model (~336 MB) on first use.
+3. Pick from eight American and British voices — tap play to preview one — or have every answer read automatically.
+
+> Yappy uses your Homebrew Python for the voice engine. If the green light doesn't appear after installing, your `pip3` likely installed into a different Python; re-run the command with Homebrew's `python3 -m pip …`.
+
+### 4. On-device AI cleanup (optional, on by default)
+
+Tidies filler, punctuation, and capitalization as you dictate — fully on-device, with **nothing to install**. It just needs **Apple Intelligence** (macOS 26+ on a supported Mac): turn it on in System Settings and Yappy uses it automatically. Where it isn't available, Yappy inserts your raw words and nothing breaks.
 
 ## Build from source
 
@@ -176,12 +209,6 @@ Then press **Run** (⌘R) in Xcode — dependencies (FluidAudio) resolve automat
 > **Maintainer shortcut:** `Scripts/rebuild-install.sh` rebuilds the Release app, verifies it's signed with the same Apple Developer ID as public releases (so Microphone/Accessibility grants survive across dev builds **and** Sparkle updates), and installs + relaunches it — refusing to install if the signature is wrong. Use `--test` to gate on the unit suite first, or `--build-only` to just verify a build. This requires the maintainer's Developer ID certificate.
 
 > **Cutting a public release:** `Scripts/release-dmg.sh` builds a Developer ID–signed, notarized, stapled `Yappy.dmg` into `dist/` (the download that opens with no Gatekeeper warnings), and with `--publish <tag>` uploads it to a GitHub Release. Needs a one-time `notarytool` keychain profile — run `Scripts/release-dmg.sh --help` for setup. Maintainer-only.
-
-## On-device AI cleanup
-
-Yappy can tidy up filler words, punctuation, and phrasing with **Apple Intelligence** (macOS 26+), running fully on-device via Apple's Foundation Models. There's nothing to install: just turn on Apple Intelligence in System Settings.
-
-It's **on by default** and everything stays on your machine — no API keys, no cloud. Cleanup degrades gracefully: where Apple Intelligence isn't available, the raw transcript is inserted and nothing breaks.
 
 ## Privacy
 
@@ -224,7 +251,7 @@ Yappy's two capabilities have different privacy stories, and we'd rather you kno
 xcodebuild -project Yappy.xcodeproj -scheme Yappy test
 ```
 
-580 tests cover the hotkey state machine, settings persistence and migration, the transcript pipeline (numbers, lists, spoken punctuation, cross-stage interactions), the AI-cleanup accept/reject guard policy (never answer, never invent, never drop), deterministic tone transforms, the custom dictionary with speech-model term boosting and correction mining, the notes store, history-based shortcut suggestions, voice-command parsing, adaptive per-app mode resolution, dictation history and stats, voice-shortcut expansion, app-context classification, and the Answers stack (run state machine, Fn-hold state machine, controller orchestration driven through injected fakes — follow-ups, insert-at-cursor, and card voice commands, Codex/Grok wire-format parsers, block markdown rendering, and answer history persistence).
+599 tests cover the hotkey state machine, settings persistence and migration, the transcript pipeline (numbers, lists, spoken punctuation, cross-stage interactions), the AI-cleanup accept/reject guard policy (never answer, never invent, never drop), deterministic tone transforms, the custom dictionary with speech-model term boosting and correction mining, the notes store, history-based shortcut suggestions, voice-command parsing, adaptive per-app mode resolution, dictation history and stats, voice-shortcut expansion, app-context classification, and the Answers stack (run state machine, Fn-hold state machine, controller orchestration driven through injected fakes — follow-ups, insert-at-cursor, and card voice commands, Codex/Grok wire-format parsers, block markdown rendering, and answer history persistence).
 
 ## Built with
 

@@ -215,6 +215,149 @@ final class AskAnswerBlocksTests: XCTestCase {
             "Title\n\nBody\n\nChart"
         )
     }
+
+    // MARK: - Speakable text rendering
+
+    func testSpeakableTextSkipsCodeButReadsTablesAndKeepsSentencedParagraphsAndLists() {
+        let text = """
+        The top options
+
+        ```swift
+        let secret = "do not read"
+        ```
+
+        | Model | Price |
+        | --- | --- |
+        | A | $10 |
+
+        - fast
+        - cheap!
+        """
+
+        XCTAssertEqual(
+            AskAnswerBlock.speakableText(from: text),
+            "The top options.\nA: Price $10.\nfast.\ncheap!"
+        )
+    }
+
+    func testSpeakableTextLinearizesTableRowsWithHeaderLabels() {
+        let text = """
+        | Chip | CPU cores | Memory |
+        | --- | --- | --- |
+        | Apple M4 | Up to 10 | 120 GB/s |
+        | Apple M4 Pro | Up to 14 | 273 GB/s |
+        """
+
+        XCTAssertEqual(
+            AskAnswerBlock.speakableText(from: text),
+            "Apple M4: CPU cores Up to 10, Memory 120 GB/s.\nApple M4 Pro: CPU cores Up to 14, Memory 273 GB/s."
+        )
+    }
+
+    func testSpeakableTextReadsHeaderlessTableCellsInOrder() {
+        let text = """
+        | a | b |
+        | one | two |
+        """
+
+        // No `| --- |` separator, so the parser sees no header row: read cells in order.
+        XCTAssertEqual(AskAnswerBlock.speakableText(from: text), "a, b.\none, two.")
+    }
+
+    func testSpeakableTextSpeaksLinkLabelAndDropsURL() {
+        let spoken = AskAnswerBlock.speakableText(from: "According to [Reuters](https://r.com)")
+
+        XCTAssertTrue(spoken.contains("Reuters"))
+        XCTAssertFalse(spoken.contains("https://r.com"))
+    }
+
+    func testSpeakableTextReturnsEmptyForAllCodeAnswer() {
+        let text = """
+        ```swift
+        let x = 1
+        ```
+        """
+
+        XCTAssertEqual(AskAnswerBlock.speakableText(from: text), "")
+    }
+
+    func testSpeakableTextAddsPeriodWhenParagraphHasNoTerminalPunctuation() {
+        XCTAssertEqual(AskAnswerBlock.speakableText(from: "No trailing punctuation"), "No trailing punctuation.")
+    }
+
+    // MARK: - Speakable text: source-citation stripping (speech only)
+
+    func testSpeakableStripsTrailingSourceClauseKeepingTheSentence() {
+        // The most common real pattern: "Source: …" tacked onto the last sentence.
+        let text = "Bring layers, especially near the waterfront. Source: [SF Chronicle](https://sfchronicle.com/x)"
+        XCTAssertEqual(AskAnswerBlock.speakableText(from: text), "Bring layers, especially near the waterfront.")
+    }
+
+    func testSpeakableDropsStandaloneSourceLine() {
+        let text = "The match starts at 3 PM.\n\nSource: [The Guardian](https://theguardian.com/x)"
+        XCTAssertEqual(AskAnswerBlock.speakableText(from: text), "The match starts at 3 PM.")
+    }
+
+    func testSpeakableDropsPlainTextSourceLine() {
+        let text = "Apple announced it today.\n\nSource: Apple Newsroom."
+        XCTAssertEqual(AskAnswerBlock.speakableText(from: text), "Apple announced it today.")
+    }
+
+    func testSpeakableStripsSourceWithTrailingParenthetical() {
+        let text = "Mars is about 140 million miles away. Source: [Space.com](https://space.com/x) (citing NASA)"
+        XCTAssertEqual(AskAnswerBlock.speakableText(from: text), "Mars is about 140 million miles away.")
+    }
+
+    func testSpeakableStripsInlineSourceParenthetical() {
+        let text = "The M4 has up to 10 CPU cores (source: Apple)."
+        XCTAssertEqual(AskAnswerBlock.speakableText(from: text), "The M4 has up to 10 CPU cores.")
+    }
+
+    func testSpeakableStripsCitingParenthetical() {
+        let text = "The distance is 140 million miles (citing NASA)."
+        XCTAssertEqual(AskAnswerBlock.speakableText(from: text), "The distance is 140 million miles.")
+    }
+
+    func testSpeakableStripsNumericFootnoteMarkers() {
+        let text = "The launch is Monday [1] with a backup Tuesday [2]."
+        XCTAssertEqual(AskAnswerBlock.speakableText(from: text), "The launch is Monday with a backup Tuesday.")
+    }
+
+    func testSpeakableKeepsWordSourceInOrdinaryProse() {
+        // No colon, not a citation — must be untouched.
+        let text = "The source of the Nile is Lake Victoria."
+        XCTAssertEqual(AskAnswerBlock.speakableText(from: text), "The source of the Nile is Lake Victoria.")
+    }
+
+    func testSpeakableKeepsNaturalSourceMentionWovenIntoSentence() {
+        // A source named as prose is grammatically essential — dropping it would
+        // break the sentence, so it stays.
+        let text = "According to Reuters, the launch is Monday."
+        XCTAssertEqual(AskAnswerBlock.speakableText(from: text), "According to Reuters, the launch is Monday.")
+    }
+
+    func testSpeakableStripsBoldSourceClause() {
+        let text = "The eclipse is August 12, 2026. **Source:** [NASA](https://nasa.gov/x)"
+        XCTAssertEqual(AskAnswerBlock.speakableText(from: text), "The eclipse is August 12, 2026.")
+    }
+
+    func testSpeakableDropsTrailingSourcesHeadingSection() {
+        let text = """
+        The top three are A, B, and C.
+
+        ## Sources
+        - [One](https://one.com)
+        - [Two](https://two.com)
+        """
+        XCTAssertEqual(AskAnswerBlock.speakableText(from: text), "The top three are A, B, and C.")
+    }
+
+    func testPlainTextInsertionKeepsSources() {
+        // Citations are stripped for SPEECH only; pasted/inserted text keeps them.
+        let text = "The match starts at 3 PM. Source: [The Guardian](https://theguardian.com/x)"
+        XCTAssertTrue(AskAnswerBlock.plainText(from: text).contains("Guardian"))
+    }
+
     func testHTTPImageIsNotParsedAsImage() {
         let blocks = AskAnswerBlock.parse("![alt](http://insecure.example/x.png)")
         XCTAssertFalse(blocks.contains { block in

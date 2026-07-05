@@ -43,12 +43,53 @@ enum AskGrokModel: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
+/// The curated Kokoro voice roster Yappy exposes for reading Answers aloud.
+/// Balanced across American and British accents (two female, two male each),
+/// with `af_heart` (Kokoro's grade-A flagship) as the default. Every voice here
+/// synthesizes cleanly at nominal speed; the helper's speed-jitter retry is the
+/// safety net for the rare vocoder length glitch. Raw values are Kokoro voice
+/// pack IDs (a=American, b=British; f=female, m=male).
+enum AnswersVoice: String, CaseIterable, Identifiable, Sendable {
+    case afHeart = "af_heart"
+    case afBella = "af_bella"
+    case amFenrir = "am_fenrir"
+    case amPuck = "am_puck"
+    case bfEmma = "bf_emma"
+    case bfIsabella = "bf_isabella"
+    case bmGeorge = "bm_george"
+    case bmFable = "bm_fable"
+
+    var id: String { rawValue }
+
+    /// The bare given name, used when the voice introduces itself in a preview.
+    var spokenName: String {
+        switch self {
+        case .afHeart: "Heart"
+        case .afBella: "Bella"
+        case .amFenrir: "Fenrir"
+        case .amPuck: "Puck"
+        case .bfEmma: "Emma"
+        case .bfIsabella: "Isabella"
+        case .bmGeorge: "George"
+        case .bmFable: "Fable"
+        }
+    }
+
+    /// Name plus accent, shown in the Settings picker.
+    var displayName: String {
+        let accent = rawValue.hasPrefix("b") ? "British" : "American"
+        return "\(spokenName) (\(accent))"
+    }
+}
+
 enum AskCardCommand: Equatable {
     case copy
     case insert
     case dismiss
     case retry
     case pin
+    case speak
+    case stopSpeaking
 
     private static let phrases: [String: AskCardCommand] = [
         "copy that": .copy,
@@ -68,6 +109,15 @@ enum AskCardCommand: Equatable {
         "pin that": .pin,
         "pin it": .pin,
         "keep that": .pin,
+        "speak that": .speak,
+        "read that": .speak,
+        "read it": .speak,
+        "read that aloud": .speak,
+        "say it aloud": .speak,
+        "read the answer": .speak,
+        "stop talking": .stopSpeaking,
+        "stop reading": .stopSpeaking,
+        "stop speaking": .stopSpeaking,
     ]
 
     static func parse(_ transcript: String) -> AskCardCommand? {
@@ -85,10 +135,17 @@ enum AskCardCommand: Equatable {
     }
 }
 
+enum AskSpeakingPhase: Equatable {
+    case idle
+    case synthesizing
+    case speaking
+}
+
 @MainActor
 final class AskController: ObservableObject {
     /// The active run — drives the pill. Nil when idle.
     @Published private(set) var run: AskRun?
+    @Published private(set) var speakingPhase: AskSpeakingPhase = .idle
     /// Rolling microphone amplitude ring for the listening waveform. AppDelegate
     /// pushes real levels during capture.
     @Published var audioLevels: [Double] = Array(repeating: 0.18, count: 16)
@@ -115,6 +172,20 @@ final class AskController: ObservableObject {
     var insertText: (String) -> Void = { _ in }
     /// Injected by AppDelegate; keeps pasteboard writes out of this Foundation-only service.
     var copyText: (String) -> Void = { _ in }
+    /// Published so the answer card's Speak button appears the moment TTS becomes
+    /// available — the readiness probe resolves asynchronously, so a plain var
+    /// would leave an already-visible card without the button.
+    @Published var speakAvailable = false
+    var autoSpeak = false
+    var speakAnswer: (String) -> Void = { _ in }
+    var stopSpeaking: () -> Void = { }
+    /// The voice rawValue currently being previewed in Settings (synthesizing or
+    /// playing), else nil. Drives the preview button's play/stop state.
+    @Published var previewingVoice: String?
+    /// Injected by AppDelegate; synthesizes and plays a short sample in a voice.
+    var startVoicePreview: (String) -> Void = { _ in }
+    /// Injected by AppDelegate; stops any voice preview in progress.
+    var stopVoicePreview: () -> Void = { }
     /// Which xAI model the Grok backend uses. Set by AppDelegate from settings.
     var grokModel: AskGrokModel = .composerFast
     /// Whether completed runs are persisted to Ask history. Mirrors
@@ -187,6 +258,65 @@ final class AskController: ObservableObject {
         }
 
         return (trimmed, false)
+    }
+
+    /// Splits speakable text into synthesis chunks. `firstLimit` (when smaller
+    /// than `limit`) caps the FIRST chunk so first audio arrives sooner — the
+    /// opening sentence synthesizes fast while the rest render during playback.
+    nonisolated static func speechChunks(_ text: String, limit: Int = 280, firstLimit: Int? = nil) -> [String] {
+        let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return [] }
+
+        var sentences: [String] = []
+        var start = text.startIndex
+        var index = text.startIndex
+
+        func appendSentence(upTo end: String.Index) {
+            let sentence = String(text[start..<end])
+            if !sentence.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                sentences.append(sentence)
+            }
+            start = end
+        }
+
+        while index < text.endIndex {
+            let character = text[index]
+            let next = text.index(after: index)
+            if character == "\n" {
+                appendSentence(upTo: next)
+                index = start
+                continue
+            }
+            if character == "." || character == "!" || character == "?",
+               next < text.endIndex,
+               text[next] == " " {
+                appendSentence(upTo: text.index(after: next))
+                index = start
+                continue
+            }
+            index = next
+        }
+        appendSentence(upTo: text.endIndex)
+
+        let limit = max(1, limit)
+        let firstCap = max(1, firstLimit ?? limit)
+        var chunks: [String] = []
+        var current = ""
+        for sentence in sentences {
+            // The first emitted chunk uses the smaller cap; every chunk after it
+            // uses the full limit.
+            let cap = chunks.isEmpty ? firstCap : limit
+            if current.isEmpty {
+                current = sentence
+            } else if current.count + sentence.count <= cap {
+                current += sentence
+            } else {
+                chunks.append(current)
+                current = sentence
+            }
+        }
+        if !current.isEmpty { chunks.append(current) }
+        return chunks
     }
 
     init(
@@ -262,6 +392,7 @@ final class AskController: ObservableObject {
         }
         if var r = run, r.status == .thinking || r.status == .working {
             // Barge-in: interrupt the turn, keep the conversation.
+            stopSpeaking()
             dispatchTask?.cancel()
             switch activeBackend {
             case .codex:
@@ -289,6 +420,7 @@ final class AskController: ObservableObject {
             return
         }
         if var r = run, r.status == .completed {
+            stopSpeaking()
             capturedOverCompletedCard = true
             r.turns.append(AskTurn(question: r.rawTranscript, answer: r.result ?? r.answerText ?? ""))
             r.rawTranscript = ""
@@ -337,10 +469,15 @@ final class AskController: ObservableObject {
 
         if capturedOverCompletedCard {
             if let command = Self.parseCardCommand(question) {
-                performCardCommand(command)
-                return
+                if command == .speak, !speakAvailable {
+                    capturedOverCompletedCard = false
+                } else {
+                    performCardCommand(command)
+                    return
+                }
+            } else {
+                capturedOverCompletedCard = false
             }
-            capturedOverCompletedCard = false
         }
 
         let extracted = Self.extractThinkHarder(question)
@@ -379,6 +516,21 @@ final class AskController: ObservableObject {
         dismiss()
     }
 
+    func setSpeakingPhase(_ phase: AskSpeakingPhase) {
+        speakingPhase = phase
+    }
+
+    func speakCurrentAnswer() {
+        guard let r = run, r.status == .completed else { return }
+        let answer = r.result ?? r.answerText ?? ""
+        guard speakAvailable, !answer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        speakAnswer(answer)
+    }
+
+    func stopSpeakingNow() {
+        stopSpeaking()
+    }
+
     /// Fn released before anything was said, or a keyboard chord (fn+arrow) was
     /// detected while listening — discard the capture cleanly. Nothing was
     /// asked, so nothing lingers: a follow-up capture gives back the completed
@@ -400,7 +552,12 @@ final class AskController: ObservableObject {
     /// awaiting turn/start, the dispatch task's post-await cleanup interrupts
     /// the orphaned turn as soon as its IDs are known.
     func abort() {
+        abort(stopSpeech: true)
+    }
+
+    private func abort(stopSpeech: Bool) {
         guard let r = run, !r.status.isTerminal else { return }
+        if stopSpeech { stopSpeaking() }
         // During capture nothing has been dispatched — there is no turn to
         // interrupt and no partial answer worth keeping. Discard like any
         // empty capture instead of parking a "Stopped." card.
@@ -430,7 +587,8 @@ final class AskController: ObservableObject {
 
     /// Pill ✕ — clear immediately (aborts first if still running).
     func dismiss() {
-        if let r = run, !r.status.isTerminal { abort() }
+        stopSpeaking()
+        if let r = run, !r.status.isTerminal { abort(stopSpeech: false) }
         cancelActivityWatchdog()
         rejectedTurnIDs.removeAll()
         run = nil
@@ -486,6 +644,15 @@ final class AskController: ObservableObject {
         case .pin:
             guard restoreCompletedCard() != nil else { return }
             pillPinned = true
+
+        case .speak:
+            guard speakAvailable else { return }
+            guard restoreCompletedCard() != nil else { return }
+            speakCurrentAnswer()
+
+        case .stopSpeaking:
+            guard restoreCompletedCard() != nil else { return }
+            stopSpeakingNow()
         }
     }
 
@@ -1021,6 +1188,9 @@ final class AskController: ObservableObject {
                 backend: activeBackend.rawValue,
                 modelLabel: finished.modelLabel
             )
+        }
+        if finished.status == .completed, autoSpeak, speakAvailable {
+            speakCurrentAnswer()
         }
         scheduleAutoDismiss(finished)
     }

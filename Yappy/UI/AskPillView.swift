@@ -317,6 +317,8 @@ struct AskPillView: View {
             }
             .buttonStyle(.plain)
 
+            speakButton()
+
             retryButton(title: "Ask again")
             Spacer(minLength: 0)
             if let latency = run.latencySeconds, let label = run.modelLabel {
@@ -324,6 +326,43 @@ struct AskPillView: View {
                     .font(.system(size: 10))
                     .foregroundStyle(textTertiary)
             }
+        }
+    }
+
+    @ViewBuilder
+    private func speakButton() -> some View {
+        if controller.speakAvailable {
+            Button {
+                switch controller.speakingPhase {
+                case .idle:
+                    controller.speakCurrentAnswer()
+                case .synthesizing, .speaking:
+                    controller.stopSpeakingNow()
+                }
+            } label: {
+                HStack(spacing: 4) {
+                    switch controller.speakingPhase {
+                    case .idle:
+                        Image(systemName: "speaker.wave.2")
+                            .font(.system(size: 10, weight: .medium))
+                    case .synthesizing:
+                        ProgressView()
+                            .controlSize(.small)
+                            .scaleEffect(0.55)
+                            .frame(width: 10, height: 10)
+                    case .speaking:
+                        Image(systemName: "stop.fill")
+                            .font(.system(size: 10, weight: .medium))
+                    }
+                    Text(controller.speakingPhase == .speaking ? "Stop" : "Speak")
+                        .font(.system(size: 11))
+                }
+                .foregroundStyle(textSecondary)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(Capsule().fill(Color.white.opacity(0.07)))
+            }
+            .buttonStyle(.plain)
         }
     }
 

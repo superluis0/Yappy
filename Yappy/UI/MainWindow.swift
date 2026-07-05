@@ -135,6 +135,7 @@ struct MainWindowView: View {
             AskHistoryView(store: askController.history, controller: askController)
         case .settings:
             SettingsView(settings: settings, transcriptionService: transcriptionService, updateChecker: updateChecker,
+                         askController: askController,
                          historyStore: history,
                          onShowReleaseNotes: { whatsNewPresenter.entry = WhatsNew.current ?? WhatsNew.latest })
         }

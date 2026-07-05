@@ -32,6 +32,8 @@ final class SoundPlayer {
     }
 
     private var cache: [Cue: NSSound] = [:]
+    private var fileSound: NSSound?
+    private var fileDelegate: FileSoundDelegate?
 
     func play(_ cue: Cue, volume: Float) {
         guard let sound = sound(for: cue) else { return }
@@ -67,5 +69,61 @@ final class SoundPlayer {
             cache[cue] = sound
         }
         return sound
+    }
+
+    func playFile(url: URL, volume: Float, onFinish: @escaping @MainActor (Bool) -> Void) {
+        stopFile()
+
+        guard let sound = NSSound(contentsOf: url, byReference: false) else {
+            onFinish(false)
+            return
+        }
+
+        let delegate = FileSoundDelegate { [weak self, weak sound] finished in
+            if self?.fileSound === sound {
+                self?.fileSound = nil
+                self?.fileDelegate = nil
+            }
+            onFinish(finished)
+        }
+        sound.volume = volume
+        sound.delegate = delegate
+        fileSound = sound
+        fileDelegate = delegate
+
+        if !sound.play() {
+            delegate.finish(false)
+        }
+    }
+
+    func stopFile() {
+        guard let sound = fileSound else { return }
+        let delegate = fileDelegate
+        sound.stop()
+        delegate?.finish(false)
+        fileSound = nil
+        fileDelegate = nil
+    }
+}
+
+private final class FileSoundDelegate: NSObject, NSSoundDelegate, @unchecked Sendable {
+    private var didFinish = false
+    private let onFinish: @MainActor (Bool) -> Void
+
+    init(onFinish: @escaping @MainActor (Bool) -> Void) {
+        self.onFinish = onFinish
+    }
+
+    func sound(_ sound: NSSound, didFinishPlaying finishedPlaying: Bool) {
+        finish(finishedPlaying)
+    }
+
+    func finish(_ finished: Bool) {
+        guard !didFinish else { return }
+        didFinish = true
+        let onFinish = onFinish
+        Task { @MainActor in
+            onFinish(finished)
+        }
     }
 }

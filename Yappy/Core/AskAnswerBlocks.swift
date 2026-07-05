@@ -219,6 +219,46 @@ enum AskAnswerBlock: Equatable {
             .joined(separator: "\n\n")
     }
 
+    /// Renders an Ask answer as text optimized for local speech synthesis:
+    /// prose and list items only, no code/tables/images, with each segment
+    /// shaped like a sentence for cleaner chunking.
+    static func speakableText(from markdown: String) -> String {
+        let segments = droppingTrailingCitationBlocks(parse(strippingLeadingNarration(markdown)))
+            .flatMap(speakableTextSegments)
+            .map(ensureTerminalPunctuation)
+            .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            .joined(separator: "\n")
+
+        return collapseExcessNewlines(segments)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Sources are terminal: once a standalone "Sources" / "References" /
+    /// "Citations" heading or lone label line appears, everything after it is
+    /// citation apparatus. Drop from there so speech ends on the last real
+    /// sentence. Inline "Source: …" clauses tacked onto content are handled
+    /// separately (stripped in `stripInlineMarkdown` with `droppingCitations`).
+    private static func droppingTrailingCitationBlocks(_ blocks: [AskAnswerBlock]) -> [AskAnswerBlock] {
+        let markers: Set<String> = [
+            "sources", "source", "references", "reference",
+            "citations", "citation", "further reading",
+        ]
+        func isCitationHeader(_ text: String) -> Bool {
+            let bare = text
+                .lowercased()
+                .trimmingCharacters(in: CharacterSet(charactersIn: " *:_"))
+            return markers.contains(bare)
+        }
+        let cut = blocks.firstIndex { block in
+            switch block {
+            case .heading(_, let text), .paragraph(let text): isCitationHeader(text)
+            default: false
+            }
+        }
+        guard let cut else { return blocks }
+        return Array(blocks.prefix(cut))
+    }
+
     private static func plainTextBlock(_ block: AskAnswerBlock) -> String? {
         switch block {
         case .paragraph(let text):
@@ -230,7 +270,7 @@ enum AskAnswerBlock: Equatable {
         case .table(let header, let rows):
             let tableRows = (header.map { [$0] } ?? []) + rows
             return tableRows
-                .map { row in row.map(stripInlineMarkdown).joined(separator: "\t") }
+                .map { row in row.map { stripInlineMarkdown($0) }.joined(separator: "\t") }
                 .joined(separator: "\n")
         case .list(let items, let ordered):
             return items.enumerated()
@@ -245,15 +285,110 @@ enum AskAnswerBlock: Equatable {
         }
     }
 
-    private static func stripInlineMarkdown(_ text: String) -> String {
+    private static func speakableTextSegments(_ block: AskAnswerBlock) -> [String] {
+        switch block {
+        case .paragraph(let text), .heading(_, let text):
+            return [stripInlineMarkdown(text, linkStyle: .labelOnly, droppingBareURLs: true, droppingCitations: true)]
+        case .list(let items, _):
+            return items.map { stripInlineMarkdown($0, linkStyle: .labelOnly, droppingBareURLs: true, droppingCitations: true) }
+        case .table(let header, let rows):
+            // A table can't be spoken as a grid, so each row is linearized into a
+            // sentence instead of dropped.
+            return rows.compactMap { speakableTableRow($0, header: header) }
+        case .code, .image:
+            return []
+        }
+    }
+
+    /// Turns one table row into a spoken sentence: the first cell is the subject,
+    /// and each following value is labeled by its column header ("Apple M4: CPU
+    /// cores up to 10, Memory bandwidth 120 GB/s"). A header-less table reads its
+    /// non-empty cells left to right. Returns nil for a fully empty row.
+    private static func speakableTableRow(_ row: [String], header: [String]?) -> String? {
+        func clean(_ text: String) -> String {
+            stripInlineMarkdown(text, linkStyle: .labelOnly, droppingBareURLs: true, droppingCitations: true)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        let cells = row.map(clean)
+        guard cells.contains(where: { !$0.isEmpty }) else { return nil }
+
+        let labels = header?.map(clean)
+        // Without a usable multi-column header, just read the cells in order.
+        guard let labels, labels.count > 1 else {
+            return cells.filter { !$0.isEmpty }.joined(separator: ", ")
+        }
+
+        let subject = cells.first ?? ""
+        var parts: [String] = []
+        for index in 1..<cells.count where !cells[index].isEmpty {
+            let label = index < labels.count ? labels[index] : ""
+            parts.append(label.isEmpty ? cells[index] : "\(label) \(cells[index])")
+        }
+        if subject.isEmpty { return parts.isEmpty ? nil : parts.joined(separator: ", ") }
+        return parts.isEmpty ? subject : "\(subject): \(parts.joined(separator: ", "))"
+    }
+
+    private enum LinkStyle {
+        case labelAndURL
+        case labelOnly
+    }
+
+    private static func stripInlineMarkdown(
+        _ text: String,
+        linkStyle: LinkStyle = .labelAndURL,
+        droppingBareURLs: Bool = false,
+        droppingCitations: Bool = false
+    ) -> String {
         var output = text
-        output = replace(output, pattern: #"\[([^\]]+)\]\(([^)]+)\)"#, template: "$1 ($2)")
+        if droppingCitations {
+            output = strippingCitations(output)
+        }
+        output = replace(
+            output,
+            pattern: #"\[([^\]]+)\]\(([^)]+)\)"#,
+            template: linkStyle == .labelOnly ? "$1" : "$1 ($2)"
+        )
         output = replace(output, pattern: #"`([^`]+)`"#, template: "$1")
         output = replace(output, pattern: #"\*\*([^*\n]+)\*\*"#, template: "$1")
         output = replace(output, pattern: #"__([^_\n]+)__"#, template: "$1")
         output = replace(output, pattern: #"(?<!\*)\*([^*\n]+)\*(?!\*)"#, template: "$1")
         output = replace(output, pattern: #"(?<!_)_([^_\n]+)_(?!_)"#, template: "$1")
+        if droppingBareURLs {
+            output = replace(output, pattern: #"\bhttps?://\S+"#, template: "")
+            output = replace(output, pattern: #"[ \t]{2,}"#, template: " ")
+        }
         return output
+    }
+
+    /// Removes source-citation apparatus from text bound for speech, keeping the
+    /// prose grammatical. A model tends to append "Source: …" / "Sources: …" to
+    /// the last sentence or on its own line; the content before the marker is
+    /// kept and the citation dropped. Also clears inline "(source: …)" /
+    /// "(citing …)" parentheticals and bare numeric footnote markers. Ordinary
+    /// prose is safe — a marker requires a following colon or citation parens,
+    /// and the trailing form only fires at a line start or after sentence-ending
+    /// punctuation, so "the source of the Nile" is never touched.
+    private static func strippingCitations(_ text: String) -> String {
+        var output = text
+        output = replace(output, pattern: #"(?im)(?:^|(?<=[.!?]))[ \t]*\*{0,2}sources?\*{0,2}[ \t]*:.*$"#, template: "")
+        output = replace(output, pattern: #"(?i)[ \t]*\((?:sources?[ \t]*:|citing\b)[^)]*\)"#, template: "")
+        output = replace(output, pattern: #"\[\^?\d{1,3}\]"#, template: "")
+        output = replace(output, pattern: #"[ \t]+([.,;:!?])"#, template: "$1")
+        output = replace(output, pattern: #"[ \t]{2,}"#, template: " ")
+        return output
+    }
+
+    private static func ensureTerminalPunctuation(_ text: String) -> String {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "" }
+        guard let last = trimmed.last, ".!?:;".contains(last) else {
+            return trimmed + "."
+        }
+        return trimmed
+    }
+
+    private static func collapseExcessNewlines(_ text: String) -> String {
+        replace(text, pattern: #"\n{3,}"#, template: "\n\n")
     }
 
     private static func replace(_ text: String, pattern: String, template: String) -> String {
