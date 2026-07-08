@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Yappy TTS helper: loads a Kokoro TTS model once, then serves synthesis
 requests over stdio. One JSON object per line on stdin:
-  {"text": "...", "voice": "af_heart", "out": "/path/out.wav", "pad_start": false}
+  {"text": "...", "voice": "af_heart", "out": "/path/out.wav", "pad_ms": 0}
 One JSON reply per line on stdout:
   {"ok": true, "out": "...", "secs": 1.23, "duration": 4.56}  or  {"ok": false, "error": "..."}
 A first line {"ready": true, "load_secs": ...} is emitted once the model is loaded.
@@ -136,8 +136,9 @@ def main():
             arr = trim_silence(arr, sample_rate)
             # Prepend a little silence on the opening clip so the audio output
             # device warms up on silence instead of clipping the first word.
-            if req.get("pad_start"):
-                pad = np.zeros(int(sample_rate * 0.28), dtype=arr.dtype)
+            pad_ms = req.get("pad_ms", 0)
+            if pad_ms:
+                pad = np.zeros(int(sample_rate * pad_ms / 1000.0), dtype=arr.dtype)
                 arr = np.concatenate([pad, arr])
             wavfile.write(req["out"], int(sample_rate), arr)
             dur = float(arr.shape[-1]) / float(sample_rate)

@@ -45,6 +45,21 @@ final class TextInserter {
     /// context it belongs to.
     static let syntheticEventTag: Int64 = 0x59415050
 
+    /// Caps every synchronous AX IPC round-trip in this process. The system
+    /// default messaging timeout is ~6 seconds per call; on the dictation insert
+    /// path we issue several AX reads/writes, and a busy destination app can
+    /// block our main thread for that full window on each one. Healthy apps
+    /// answer AX queries in well under 10 ms, so 0.3 s is ~30× headroom; all AX
+    /// reads on Yappy's insertion path already have graceful fallbacks (opaque-
+    /// target handling, .unknown classification) if a call times out or fails,
+    /// so capping the pathological case at 0.3 s cannot break correctness — it
+    /// only bounds worst-case latency. Setting the timeout on the system-wide
+    /// accessibility element (per Apple's documentation) applies process-wide,
+    /// covering every AX call site in the app — no per-element calls needed.
+    private static let axTimeoutConfigured: Void = {
+        AXUIElementSetMessagingTimeout(AXUIElementCreateSystemWide(), 0.3)
+    }()
+
     /// True once the user has typed a key, clicked, or switched apps since our
     /// last insertion — the caret can no longer be assumed to sit right after
     /// what we inserted. Gates the OPAQUE-app fallbacks only (leading-space and
@@ -104,6 +119,7 @@ final class TextInserter {
     /// - Parameter allowLeadingSpace: when false, never prepends a separating
     ///   space (e.g. canned shortcut text the user wants inserted verbatim).
     func insert(text: String, allowLeadingSpace: Bool = true) throws {
+        _ = Self.axTimeoutConfigured
         guard !text.isEmpty else { return }
         guard AXIsProcessTrusted() else {
             throw InsertionError.accessibilityPermissionDenied

@@ -33,6 +33,11 @@ final class AskPromptPolicyTests: XCTestCase {
         XCTAssertTrue(instructions.contains("homophones"))
     }
 
+    func testSystemInstructionsPinsUSDateFormat() {
+        let instructions = AskPromptPolicy.systemInstructions
+        XCTAssertTrue(instructions.contains("month-day-year"))
+    }
+
     func testWrapIncludesInstructionsAndQuestion() {
         let question = "What is the capital of France?"
         let wrapped = AskPromptPolicy.wrap(question: question, priorTurns: [], date: pinnedDate)

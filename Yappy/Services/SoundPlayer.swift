@@ -34,6 +34,38 @@ final class SoundPlayer {
     private var cache: [Cue: NSSound] = [:]
     private var fileSound: NSSound?
     private var fileDelegate: FileSoundDelegate?
+    private var warmupSound: NSSound?
+    private(set) var lastPlaybackAt: Date?
+
+    private static let warmupWAVData: Data = {
+        let sampleRate: UInt32 = 16000
+        let numChannels: UInt16 = 1
+        let bitsPerSample: UInt16 = 16
+        let numSamples = Int(sampleRate) * 60 / 1000
+        let dataSize = numSamples * 2
+        let byteRate = sampleRate * UInt32(numChannels) * UInt32(bitsPerSample) / 8
+        let blockAlign = numChannels * bitsPerSample / 8
+        var data = Data()
+        func appendLE<T: FixedWidthInteger>(_ value: T) {
+            var le = value.littleEndian
+            data.append(Data(bytes: &le, count: MemoryLayout<T>.size))
+        }
+        data.append(contentsOf: "RIFF".utf8)
+        appendLE(UInt32(36 + dataSize))
+        data.append(contentsOf: "WAVE".utf8)
+        data.append(contentsOf: "fmt ".utf8)
+        appendLE(UInt32(16))
+        appendLE(UInt16(1))
+        appendLE(numChannels)
+        appendLE(sampleRate)
+        appendLE(byteRate)
+        appendLE(blockAlign)
+        appendLE(bitsPerSample)
+        data.append(contentsOf: "data".utf8)
+        appendLE(UInt32(dataSize))
+        data.append(Data(count: dataSize))
+        return data
+    }()
 
     func play(_ cue: Cue, volume: Float) {
         guard let sound = sound(for: cue) else { return }
@@ -44,6 +76,17 @@ final class SoundPlayer {
             sound.stop()
         }
         sound.play()
+        lastPlaybackAt = Date()
+    }
+
+    func warmOutputDevice() {
+        guard fileSound == nil else { return }
+        guard let sound = NSSound(data: Self.warmupWAVData) else { return }
+        sound.volume = 0.01
+        warmupSound = sound
+        if sound.play() {
+            lastPlaybackAt = Date()
+        }
     }
 
     private func sound(for cue: Cue) -> NSSound? {
@@ -71,13 +114,12 @@ final class SoundPlayer {
         return sound
     }
 
-    func playFile(url: URL, volume: Float, onFinish: @escaping @MainActor (Bool) -> Void) {
-        stopFile()
+    func prepareFile(url: URL) -> NSSound? {
+        NSSound(contentsOf: url, byReference: false)
+    }
 
-        guard let sound = NSSound(contentsOf: url, byReference: false) else {
-            onFinish(false)
-            return
-        }
+    func playPrepared(_ sound: NSSound, volume: Float, onFinish: @escaping @MainActor (Bool) -> Void) {
+        stopFile()
 
         let delegate = FileSoundDelegate { [weak self, weak sound] finished in
             if self?.fileSound === sound {
@@ -91,9 +133,20 @@ final class SoundPlayer {
         fileSound = sound
         fileDelegate = delegate
 
-        if !sound.play() {
+        if sound.play() {
+            lastPlaybackAt = Date()
+        } else {
             delegate.finish(false)
         }
+    }
+
+    func playFile(url: URL, volume: Float, onFinish: @escaping @MainActor (Bool) -> Void) {
+        guard let sound = prepareFile(url: url) else {
+            onFinish(false)
+            return
+        }
+
+        playPrepared(sound, volume: volume, onFinish: onFinish)
     }
 
     func stopFile() {

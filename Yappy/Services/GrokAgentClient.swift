@@ -60,7 +60,9 @@ final class GrokAgentClient: @unchecked Sendable {
     private var warmSessionID: String?
     private var lastCompletedSessionID: String?
     private var activeSessionID: String?
+    private var activePromptRequestID: Int?
     private var isStreaming = false
+    private var lastActivityAt: CFTimeInterval = 0
     private var eventGeneration = 0
     private var loggedNotificationKinds: Set<String> = []
     private var readyTask: Task<Void, Error>?
@@ -68,7 +70,7 @@ final class GrokAgentClient: @unchecked Sendable {
     private var readyModel: String?
 
     /// Default model for prewarm spawn — matches AskController's default picker.
-    private static let defaultWarmModel = AskGrokModel.composerFast.rawValue
+    private static let defaultWarmModel = AskGrokModel.grok45.rawValue
     private static let defaultSystemPrompt = AskPromptPolicy.systemInstructions
 
     // MARK: - Readiness
@@ -151,7 +153,8 @@ final class GrokAgentClient: @unchecked Sendable {
             params: [
                 "sessionId": sessionID,
                 "prompt": [["type": "text", "text": promptText]],
-            ]
+            ],
+            resetsOnActivity: true
         )
 
         guard lock.withLock({ eventGeneration == generation }) else { return }
@@ -162,13 +165,14 @@ final class GrokAgentClient: @unchecked Sendable {
     }
 
     func cancel() {
-        let snapshot: (sessionID: String?, generation: Int, wasStreaming: Bool) = lock.withLock {
+        let snapshot: (sessionID: String?, generation: Int, wasStreaming: Bool, promptID: Int?) = lock.withLock {
             eventGeneration += 1
             let sessionID = activeSessionID
             let wasStreaming = isStreaming
+            let promptID = activePromptRequestID
             activeSessionID = nil
             isStreaming = false
-            return (sessionID, eventGeneration, wasStreaming)
+            return (sessionID, eventGeneration, wasStreaming, promptID)
         }
 
         guard let sessionID = snapshot.sessionID, snapshot.wasStreaming,
@@ -187,14 +191,19 @@ final class GrokAgentClient: @unchecked Sendable {
         }
 
         let generationAtCancel = snapshot.generation
+        let promptID = snapshot.promptID
+        // If the cancelled turn's session/prompt continuation is still pending after
+        // session/cancel, tear down the agent. Abort if a newer turn advanced generation.
         Task.detached(priority: .utility) { [weak self] in
             try? await Task.sleep(nanoseconds: 300_000_000)
             guard let self else { return }
-            let stillStreaming: Bool = self.lock.withLock {
-                self.isStreaming && self.eventGeneration == generationAtCancel
+            let stillStuck: Bool = self.lock.withLock {
+                guard self.eventGeneration == generationAtCancel,
+                      let promptID = promptID else { return false }
+                return self.pending[promptID] != nil
             }
-            guard stillStreaming else { return }
-            VLog.grok("cancel — no response in 300ms, terminating agent")
+            guard stillStuck else { return }
+            VLog.grok("cancel — session/prompt still pending after 300ms, terminating agent")
             DispatchQueue.main.async { self.stop() }
         }
     }
@@ -220,6 +229,7 @@ final class GrokAgentClient: @unchecked Sendable {
         warmSessionID = nil
         lastCompletedSessionID = nil
         activeSessionID = nil
+        activePromptRequestID = nil
         isStreaming = false
         spawnedModel = nil
         lock.unlock()
@@ -273,11 +283,9 @@ final class GrokAgentClient: @unchecked Sendable {
     private func validateWarmRequest(_ request: GrokAskRequest) throws {
         if request.effort == "high" { throw ClientError.notWarm }
 
-        let trimmedModel = request.model.trimmingCharacters(in: .whitespacesAndNewlines)
-        let model = trimmedModel.isEmpty ? Self.defaultWarmModel : trimmedModel
-
-        let runningModel = lock.withLock { spawnedModel }
-        if let runningModel, runningModel != model { throw ClientError.notWarm }
+        // Model switches are handled by ensureReady's stop-and-respawn logic; the first
+        // ask after a switch pays one warm-agent spawn instead of permanently falling
+        // back to the slower one-shot cold path (nothing else respawns the warm agent).
     }
 
     // MARK: - Spawn
@@ -407,9 +415,10 @@ final class GrokAgentClient: @unchecked Sendable {
 
     // MARK: - JSON-RPC plumbing
 
+    // Fast RPCs use a flat timeout; session/prompt uses this as an inactivity watchdog.
     private static let requestTimeout: TimeInterval = 30
 
-    private func request(method: String, params: [String: Any]) async throws -> [String: Any] {
+    private func request(method: String, params: [String: Any], resetsOnActivity: Bool = false) async throws -> [String: Any] {
         guard process?.isRunning == true else {
             throw ClientError.notRunning
         }
@@ -423,18 +432,49 @@ final class GrokAgentClient: @unchecked Sendable {
         return try await withCheckedThrowingContinuation { continuation in
             lock.lock()
             pending[id] = continuation
+            if resetsOnActivity {
+                activePromptRequestID = id
+                lastActivityAt = CACurrentMediaTime()
+            }
             lock.unlock()
 
             Task.detached(priority: .utility) { [weak self] in
-                try? await Task.sleep(nanoseconds: UInt64(Self.requestTimeout * 1_000_000_000))
-                guard let self else { return }
-                let stuck: CheckedContinuation<[String: Any], Error>? = self.lock.withLock {
-                    self.pending.removeValue(forKey: id)
+                if resetsOnActivity {
+                    var sleepSeconds = Self.requestTimeout
+                    while true {
+                        try? await Task.sleep(nanoseconds: UInt64(sleepSeconds * 1_000_000_000))
+                        guard let self else { return }
+                        var nextSleep: TimeInterval?
+                        let stuck: CheckedContinuation<[String: Any], Error>? = self.lock.withLock {
+                            guard self.pending[id] != nil else { return nil }
+                            let idle = CACurrentMediaTime() - self.lastActivityAt
+                            if idle < Self.requestTimeout {
+                                nextSleep = Self.requestTimeout - idle
+                                return nil
+                            }
+                            return self.pending.removeValue(forKey: id)
+                        }
+                        guard let stuck else {
+                            guard let nextSleep else { return }
+                            sleepSeconds = nextSleep
+                            continue
+                        }
+                        VLog.grok("\(method) stalled — no activity for \(Int(Self.requestTimeout))s — restarting agent")
+                        stuck.resume(throwing: ClientError.server("Grok made no progress for \(Int(Self.requestTimeout))s."))
+                        DispatchQueue.main.async { self.stop() }
+                        return
+                    }
+                } else {
+                    try? await Task.sleep(nanoseconds: UInt64(Self.requestTimeout * 1_000_000_000))
+                    guard let self else { return }
+                    let stuck: CheckedContinuation<[String: Any], Error>? = self.lock.withLock {
+                        self.pending.removeValue(forKey: id)
+                    }
+                    guard let stuck else { return }
+                    VLog.grok("\(method) timed out after \(Int(Self.requestTimeout))s — restarting agent")
+                    stuck.resume(throwing: ClientError.server("Grok did not respond in \(Int(Self.requestTimeout))s."))
+                    DispatchQueue.main.async { self.stop() }
                 }
-                guard let stuck else { return }
-                VLog.grok("\(method) timed out after \(Int(Self.requestTimeout))s — restarting agent")
-                stuck.resume(throwing: ClientError.server("Grok did not respond in \(Int(Self.requestTimeout))s."))
-                DispatchQueue.main.async { self.stop() }
             }
 
             let object: [String: Any] = [
@@ -533,6 +573,12 @@ final class GrokAgentClient: @unchecked Sendable {
     }
 
     private func handleNotification(method: String, params: [String: Any]) {
+        lock.withLock {
+            if (params["sessionId"] as? String) == activeSessionID {
+                lastActivityAt = CACurrentMediaTime()
+            }
+        }
+
         let ignoredKinds = [
             "_x.ai/queue/changed",
             "_x.ai/session/prompt_complete",
@@ -574,6 +620,9 @@ final class GrokAgentClient: @unchecked Sendable {
     }
 
     private func handleServerRequest(id: Any, method: String, params: [String: Any]) {
+        lock.withLock {
+            lastActivityAt = CACurrentMediaTime()
+        }
         _ = params
         if method.localizedCaseInsensitiveContains("permission")
             || method.localizedCaseInsensitiveContains("request_permission") {

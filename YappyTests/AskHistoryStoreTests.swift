@@ -133,8 +133,30 @@ final class AskHistoryStoreTests: XCTestCase {
 
         store.clear()
         XCTAssertTrue(store.entries.isEmpty)
+        store.flushForTesting()
 
         let reloaded = AskHistoryStore(directory: directory)
         XCTAssertTrue(reloaded.entries.isEmpty, "clear must also remove the file")
+    }
+
+    func testClearDoesNotResurrectPendingSave() {
+        let store = AskHistoryStore(directory: directory)
+        store.add(question: "gone?", answer: "should not return", backend: "codex")
+        store.clear()
+        store.flushForTesting()
+
+        let reloaded = AskHistoryStore(directory: directory)
+        XCTAssertTrue(reloaded.entries.isEmpty, "a stale queued save must not resurrect cleared history")
+    }
+
+    func testRapidAddsPersistInNewestFirstOrder() {
+        let store = AskHistoryStore(directory: directory)
+        store.add(question: "first?", answer: "one", backend: "codex")
+        store.add(question: "second?", answer: "two", backend: "grok")
+        store.flushForTesting()
+
+        let reloaded = AskHistoryStore(directory: directory)
+        XCTAssertEqual(reloaded.entries.map(\.question), ["second?", "first?"])
+        XCTAssertEqual(reloaded.entries.map(\.answer), ["two", "one"])
     }
 }

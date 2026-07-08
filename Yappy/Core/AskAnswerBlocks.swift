@@ -227,10 +227,188 @@ enum AskAnswerBlock: Equatable {
             .flatMap(speakableTextSegments)
             .map(ensureTerminalPunctuation)
             .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-            .joined(separator: "\n")
+        return finalizeSpeakableOutput(from: segments)
+    }
 
-        return collapseExcessNewlines(segments)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+    /// Prefix of the eventual `speakableText` that is already safe to speak while
+    /// an answer is still streaming in. Monotone under append-only input and
+    /// convergent to `speakableText` once every block has closed.
+    static func stableSpeakablePrefix(fromStreaming accumulated: String) -> String {
+        guard !isNarrationOnly(accumulated) else { return "" }
+        let stripped = strippingLeadingNarration(accumulated)
+        guard !stripped.isEmpty else { return "" }
+
+        let blocks = droppingTrailingCitationBlocks(parse(stripped))
+        guard !blocks.isEmpty else { return "" }
+
+        var segments: [String] = []
+        var emissionStopped = false
+        for (index, block) in blocks.dropLast().enumerated() {
+            // STOP at the first unsafe block — never skip past one. Skipping a
+            // withheld middle block while emitting later ones would make the
+            // streamed output a non-prefix of the eventual speakableText, which
+            // corrupts the completion handoff's consumed-prefix arithmetic.
+            // Stopping keeps both guarantees: still monotone, and always a
+            // prefix of the full result (the handoff speaks the rest).
+            guard blockSafeForStreamingEmission(block, blocks: blocks, at: index) else {
+                emissionStopped = true
+                break
+            }
+            segments.append(contentsOf: finalizedSpeakableSegments(for: block))
+        }
+        if !emissionStopped, let last = blocks.last {
+            segments.append(contentsOf: stableSpeakableSegmentsFromGrowingLastBlock(
+                last,
+                rawAccumulated: accumulated
+            ))
+        }
+        return finalizeSpeakableOutput(from: segments)
+    }
+
+    /// Paragraphs that still look like an opening table/list/heading line can
+    /// reflow when more lines arrive, even when the parser temporarily closed
+    /// them because another block followed. Tables wait until the next block is
+    /// equally stable — a pipe-line "paragraph" between rows is not enough.
+    private static func blockSafeForStreamingEmission(
+        _ block: AskAnswerBlock,
+        blocks: [AskAnswerBlock],
+        at index: Int
+    ) -> Bool {
+        switch block {
+        case .paragraph(let text), .heading(_, let text):
+            return !growingBlockFirstLineBlocksStreamingEmission(text)
+        case .table:
+            guard index + 1 < blocks.count else { return false }
+            return blockSafeForStreamingEmission(blocks[index + 1], blocks: blocks, at: index + 1)
+        case .code, .list, .image:
+            return true
+        }
+    }
+
+    private static func finalizeSpeakableOutput(from segments: [String]) -> String {
+        collapseExcessNewlines(
+            segments
+                .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+                .joined(separator: "\n")
+        )
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func finalizedSpeakableSegments(for block: AskAnswerBlock) -> [String] {
+        speakableTextSegments(block)
+            .map(ensureTerminalPunctuation)
+            .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    }
+
+    /// Emits nothing from a still-growing final block unless it is closed prose
+    /// with leading sentences that are already stable in the raw stream.
+    private static func stableSpeakableSegmentsFromGrowingLastBlock(
+        _ block: AskAnswerBlock,
+        rawAccumulated: String
+    ) -> [String] {
+        switch block {
+        case .paragraph(let text), .heading(_, let text):
+            guard !growingBlockFirstLineBlocksStreamingEmission(text) else { return [] }
+            guard let stable = stableLeadingProseSegment(from: text, inRawAccumulated: rawAccumulated) else {
+                return []
+            }
+            let segment = ensureTerminalPunctuation(stable)
+            return segment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? [] : [segment]
+        case .table, .code, .list, .image:
+            return []
+        }
+    }
+
+    /// A lone `|…|`, fence opener, heading marker, or list item line can still
+    /// reflow into a different block type once more lines arrive.
+    private static func growingBlockFirstLineBlocksStreamingEmission(_ blockText: String) -> Bool {
+        let firstLine = blockText.components(separatedBy: "\n").first ?? ""
+        if firstLine.hasPrefix("|") { return true }
+        let trimmed = firstLine.trimmingCharacters(in: .whitespaces)
+        if trimmed.hasPrefix("```") { return true }
+        if trimmed.hasPrefix("#") { return true }
+        if firstLine.hasPrefix("- ") || firstLine.hasPrefix("* ") || firstLine.hasPrefix("• ") {
+            return true
+        }
+        if listItem(trimmed, ordered: true) != nil { return true }
+        if listItem(firstLine, ordered: false) != nil { return true }
+        return false
+    }
+
+    private static func stableLeadingProseSegment(
+        from text: String,
+        inRawAccumulated rawAccumulated: String
+    ) -> String? {
+        let stableRaw = extractStableCompleteSentences(from: text, inRawAccumulated: rawAccumulated)
+            .reduce(into: "") { $0 += $1 }
+        guard !stableRaw.isEmpty else { return nil }
+        let transformed = stripInlineMarkdown(
+            stableRaw,
+            linkStyle: .labelOnly,
+            droppingBareURLs: true,
+            droppingCitations: true
+        )
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+        return transformed.isEmpty ? nil : transformed
+    }
+
+    /// Leading sentences whose terminators are not at the very end of the stream.
+    /// Mirrors `AskController.speechChunks` boundary intuition locally.
+    private static func extractStableCompleteSentences(
+        from text: String,
+        inRawAccumulated rawAccumulated: String
+    ) -> [String] {
+        guard let textRange = rawAccumulated.range(of: text, options: .backwards) else { return [] }
+
+        func absoluteIndex(in text: String, at local: String.Index) -> String.Index {
+            let offset = text.distance(from: text.startIndex, to: local)
+            return rawAccumulated.index(textRange.lowerBound, offsetBy: offset)
+        }
+
+        func hasMoreStreamContent(after absolute: String.Index) -> Bool {
+            rawAccumulated.index(after: absolute) < rawAccumulated.endIndex
+        }
+
+        var sentences: [String] = []
+        var start = text.startIndex
+        var index = text.startIndex
+
+        while index < text.endIndex {
+            let character = text[index]
+            let next = text.index(after: index)
+
+            if character == "\n" {
+                let absNewline = absoluteIndex(in: text, at: index)
+                guard hasMoreStreamContent(after: absNewline) else { break }
+                sentences.append(String(text[start..<next]))
+                start = next
+                index = start
+                continue
+            }
+
+            if character == "." || character == "!" || character == "?" {
+                let absPunctuation = absoluteIndex(in: text, at: index)
+                if next < text.endIndex, text[next] == " " {
+                    guard hasMoreStreamContent(after: absPunctuation) else { break }
+                    let boundary = text.index(after: next)
+                    sentences.append(String(text[start..<boundary]))
+                    start = boundary
+                    index = start
+                    continue
+                }
+                if next == text.endIndex {
+                    guard hasMoreStreamContent(after: absPunctuation) else { break }
+                    sentences.append(String(text[start..<next]))
+                    start = next
+                    index = start
+                    continue
+                }
+            }
+
+            index = next
+        }
+
+        return sentences
     }
 
     /// Sources are terminal: once a standalone "Sources" / "References" /

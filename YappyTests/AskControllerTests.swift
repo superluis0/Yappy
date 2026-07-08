@@ -579,7 +579,7 @@ final class AskControllerTests: XCTestCase {
         controller.submit("Latency question")
 
         await yieldUntil { grok.askCalls.count == 1 }
-        let askingTitle = "Asking Composer 2.5 Fast"
+        let askingTitle = "Asking Grok 4.5"
         let askingStep = controller.run?.steps.first { $0.title == askingTitle }
         XCTAssertNotNil(askingStep)
         XCTAssertEqual(askingStep?.state, .running)
@@ -660,7 +660,7 @@ final class AskControllerTests: XCTestCase {
 
         let request = GrokAskRequest(
             prompt: "Warm path",
-            model: AskGrokModel.composerFast.rawValue,
+            model: AskGrokModel.grok45.rawValue,
             effort: "low",
             systemPrompt: AskPromptPolicy.systemInstructions
         )
@@ -907,6 +907,97 @@ final class AskControllerTests: XCTestCase {
         XCTAssertEqual(controller.run?.steps.filter { $0.kind == .search }.count, 1)
     }
 
+    // MARK: - Security: grok research tool cap
+
+    func testGrokResearchToolCapFailsRunAfterSixthSearch() async {
+        let grok = FakeGrokClient()
+        let (controller, _, _) = makeController(grok: grok)
+        controller.backend = .grok
+        controller.saveHistory = false
+
+        controller.beginListening()
+        controller.submit("Do exhaustive research")
+        await yieldUntil { grok.askCalls.count == 1 }
+
+        for _ in 0..<5 {
+            await pushGrok(grok, event: .toolStarted(title: "WebFetch"))
+            await pushGrok(grok, event: .toolCompleted(title: "WebFetch", failed: false))
+        }
+        await pushGrok(grok, event: .toolStarted(title: "WebFetch"))
+
+        await yieldUntil { controller.run?.status == .failed }
+        XCTAssertEqual(controller.run?.result, "Grok kept searching without reaching an answer — try asking again.")
+        XCTAssertEqual(grok.cancelCount, 1)
+    }
+
+    func testGrokResearchToolCapNotYetReachedAfterThreeSearches() async {
+        let grok = FakeGrokClient()
+        let (controller, _, _) = makeController(grok: grok)
+        controller.backend = .grok
+        controller.saveHistory = false
+
+        controller.beginListening()
+        controller.submit("Do some research")
+        await yieldUntil { grok.askCalls.count == 1 }
+
+        for _ in 0..<3 {
+            await pushGrok(grok, event: .toolStarted(title: "WebFetch"))
+            await pushGrok(grok, event: .toolCompleted(title: "WebFetch", failed: false))
+        }
+        await pushGrok(grok, event: .toolStarted(title: "WebFetch"))
+
+        XCTAssertEqual(controller.run?.status, .working)
+        XCTAssertNil(controller.run?.result)
+    }
+
+    func testGrokResearchToolCapResetsAcrossRuns() async {
+        let grok = FakeGrokClient()
+        let (controller, _, _) = makeController(grok: grok)
+        controller.backend = .grok
+        controller.saveHistory = false
+
+        controller.beginListening()
+        controller.submit("Do exhaustive research")
+        await yieldUntil { grok.askCalls.count == 1 }
+
+        for _ in 0..<5 {
+            await pushGrok(grok, event: .toolStarted(title: "WebFetch"))
+            await pushGrok(grok, event: .toolCompleted(title: "WebFetch", failed: false))
+        }
+        await pushGrok(grok, event: .toolStarted(title: "WebFetch"))
+        await yieldUntil { controller.run?.status == .failed }
+
+        controller.beginListening()
+        controller.submit("A fresh question")
+        await yieldUntil { grok.askCalls.count == 2 }
+
+        await pushGrok(grok, event: .toolStarted(title: "WebFetch"))
+        XCTAssertEqual(controller.run?.status, .working)
+        XCTAssertNotEqual(controller.run?.result, "Grok kept searching without reaching an answer — try asking again.")
+    }
+
+    func testGrokResearchToolCapCompletesWithPartialAnswerWhenPresent() async {
+        let grok = FakeGrokClient()
+        let (controller, _, _) = makeController(grok: grok)
+        controller.backend = .grok
+        controller.saveHistory = false
+
+        controller.beginListening()
+        controller.submit("Do exhaustive research")
+        await yieldUntil { grok.askCalls.count == 1 }
+
+        for _ in 0..<5 {
+            await pushGrok(grok, event: .toolStarted(title: "WebFetch"))
+            await pushGrok(grok, event: .toolCompleted(title: "WebFetch", failed: false))
+        }
+        await pushGrok(grok, event: .text(delta: "Here is what I found so far."))
+        await pushGrok(grok, event: .toolStarted(title: "WebFetch"))
+
+        await yieldUntil { controller.run?.status == .completed }
+        XCTAssertEqual(controller.run?.result, "Here is what I found so far.")
+        XCTAssertEqual(grok.cancelCount, 1)
+    }
+
     // MARK: - p. Speak answers
 
     func testSpeechChunksShortTextReturnsOneChunk() {
@@ -942,6 +1033,49 @@ final class AskControllerTests: XCTestCase {
         XCTAssertGreaterThan(chunks.count, 1)
         XCTAssertLessThanOrEqual(chunks[0].count, 40)
         XCTAssertGreaterThan(chunks[1].count, 40, "later chunks use the full limit, not the first cap")
+        XCTAssertEqual(chunks.joined(), text.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
+    func testSpeechChunksFirstLimitSplitsOverlongOpeningSentence() {
+        let text = String(repeating: "a", count: 200) + "."
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let chunks = AskController.speechChunks(text, firstLimit: 60)
+
+        XCTAssertLessThanOrEqual(chunks[0].count, 60)
+        XCTAssertEqual(chunks.joined(), trimmed)
+    }
+
+    func testSpeechChunksFirstLimitPrefersClauseBoundary() {
+        let text = "First clause here, second clause continues for a long while afterward."
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let firstLimit = 25
+
+        let chunks = AskController.speechChunks(text, firstLimit: firstLimit)
+
+        XCTAssertLessThanOrEqual(chunks[0].count, firstLimit)
+        XCTAssertTrue(chunks[0].hasSuffix(", "), "first chunk should split at the clause boundary")
+        XCTAssertEqual(chunks.joined(), trimmed)
+    }
+
+    func testSpeechChunksFirstLimitHardSplitsUnbrokenToken() {
+        let text = String(repeating: "a", count: 150) + "."
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let chunks = AskController.speechChunks(text, firstLimit: 50)
+
+        XCTAssertEqual(chunks[0].count, 50)
+        XCTAssertEqual(chunks.joined(), trimmed)
+    }
+
+    func testSpeechChunksFirstLimitKeepsShortOpeningSentenceWhole() {
+        let sentence = String(repeating: "b", count: 22) + ". "
+        let text = sentence + String(repeating: "c", count: 95) + "."
+
+        let chunks = AskController.speechChunks(text, firstLimit: 40)
+
+        XCTAssertEqual(chunks[0], sentence)
+        XCTAssertGreaterThan(chunks.count, 1)
         XCTAssertEqual(chunks.joined(), text.trimmingCharacters(in: .whitespacesAndNewlines))
     }
 
@@ -1066,6 +1200,144 @@ final class AskControllerTests: XCTestCase {
         XCTAssertEqual(spoken, ["Answer."])
     }
 
+    // MARK: - Streaming TTS (grok auto-speak)
+
+    func testGrokAutoSpeakStreamsIncrementalSpeech() async {
+        let grok = FakeGrokClient()
+        let (controller, _, _) = makeController(grok: grok)
+        controller.backend = .grok
+        controller.saveHistory = false
+        controller.autoSpeak = true
+        controller.speakAvailable = true
+        var streamed: [(text: String, isStart: Bool)] = []
+        var finishCount = 0
+        var fullSpoken: [String] = []
+        controller.speakStreamingText = { text, isStart in streamed.append((text, isStart)) }
+        controller.finishStreamingSpeech = { finishCount += 1 }
+        controller.speakAnswer = { fullSpoken.append($0) }
+
+        controller.beginListening()
+        controller.submit("Where is Paris?")
+        await yieldUntil { grok.askCalls.count == 1 }
+        await pushGrok(grok, event: .text(delta: "Paris is nice. "))
+        await pushGrok(grok, event: .text(delta: "It sits on the Seine. "))
+        await pushGrok(grok, event: .end(stopReason: "EndTurn", sessionId: nil))
+        await yieldUntil { controller.run?.status == .completed }
+
+        let finalAnswer = controller.run?.answerText ?? ""
+        let expected = AskAnswerBlock.speakableText(from: finalAnswer)
+        XCTAssertEqual(streamed.map(\.text).joined(), expected)
+        XCTAssertEqual(streamed.first?.isStart, true)
+        XCTAssertTrue(streamed.dropFirst().allSatisfy { !$0.isStart })
+        XCTAssertEqual(finishCount, 1)
+        XCTAssertTrue(fullSpoken.isEmpty)
+    }
+
+    func testCodexAutoSpeakUsesFullAnswerPathUnchanged() async {
+        let codex = FakeCodexClient()
+        let (controller, _, _) = makeController(codex: codex)
+        controller.saveHistory = false
+        controller.autoSpeak = true
+        controller.speakAvailable = true
+        var streamed = 0
+        var finishCount = 0
+        var spoken: [String] = []
+        controller.speakStreamingText = { _, _ in streamed += 1 }
+        controller.finishStreamingSpeech = { finishCount += 1 }
+        controller.speakAnswer = { spoken.append($0) }
+
+        await completeCodexRun(
+            controller: controller,
+            codex: codex,
+            question: "Question?",
+            answer: "Answer."
+        )
+
+        XCTAssertEqual(streamed, 0)
+        XCTAssertEqual(finishCount, 0)
+        XCTAssertEqual(spoken, ["Answer."])
+    }
+
+    func testGrokAutoSpeakDisabledSkipsStreaming() async {
+        let grok = FakeGrokClient()
+        let (controller, _, _) = makeController(grok: grok)
+        controller.backend = .grok
+        controller.saveHistory = false
+        controller.autoSpeak = false
+        controller.speakAvailable = true
+        var streamed = 0
+        var finishCount = 0
+        var fullSpoken = 0
+        controller.speakStreamingText = { _, _ in streamed += 1 }
+        controller.finishStreamingSpeech = { finishCount += 1 }
+        controller.speakAnswer = { _ in fullSpoken += 1 }
+
+        controller.beginListening()
+        controller.submit("Question?")
+        await yieldUntil { grok.askCalls.count == 1 }
+        await pushGrok(grok, event: .text(delta: "An answer."))
+        await pushGrok(grok, event: .end(stopReason: "EndTurn", sessionId: nil))
+        await yieldUntil { controller.run?.status == .completed }
+
+        XCTAssertEqual(streamed, 0)
+        XCTAssertEqual(finishCount, 0)
+        XCTAssertEqual(fullSpoken, 0)
+    }
+
+    func testGrokAbortMidStreamStopsStreamingWithoutFinish() async {
+        let grok = FakeGrokClient()
+        let (controller, _, _) = makeController(grok: grok)
+        controller.backend = .grok
+        controller.saveHistory = false
+        controller.autoSpeak = true
+        controller.speakAvailable = true
+        var streamed: [(text: String, isStart: Bool)] = []
+        var finishCount = 0
+        controller.speakStreamingText = { text, isStart in streamed.append((text, isStart)) }
+        controller.finishStreamingSpeech = { finishCount += 1 }
+
+        controller.beginListening()
+        controller.submit("Question?")
+        await yieldUntil { grok.askCalls.count == 1 }
+        await pushGrok(grok, event: .text(delta: "Partial answer. "))
+        XCTAssertFalse(streamed.isEmpty)
+
+        let countBeforeAbort = streamed.count
+        controller.abort()
+        await pushGrok(grok, event: .text(delta: "More text. "))
+        await pushGrok(grok, event: .end(stopReason: "EndTurn", sessionId: nil))
+        await yieldUntil { controller.run?.status == .cancelled }
+
+        XCTAssertEqual(streamed.count, countBeforeAbort)
+        XCTAssertEqual(finishCount, 0)
+    }
+
+    func testGrokStreamingSpeechThrottleRequiresSentenceTerminator() async {
+        let grok = FakeGrokClient()
+        let (controller, _, _) = makeController(grok: grok)
+        controller.backend = .grok
+        controller.saveHistory = false
+        controller.autoSpeak = true
+        controller.speakAvailable = true
+        var streamed: [(text: String, isStart: Bool)] = []
+        controller.speakStreamingText = { text, isStart in streamed.append((text, isStart)) }
+
+        controller.beginListening()
+        controller.submit("Question?")
+        await yieldUntil { grok.askCalls.count == 1 }
+        await pushGrok(grok, event: .text(delta: "abc"))
+        await pushGrok(grok, event: .text(delta: "def"))
+        XCTAssertTrue(streamed.isEmpty)
+
+        // Terminator at the buffer end is held until more stream follows it
+        // (see AskAnswerBlocksTests.testStablePrefixHoldsSentenceAtBufferEnd).
+        await pushGrok(grok, event: .text(delta: "ghi. "))
+        XCTAssertFalse(streamed.isEmpty)
+        let expected = AskAnswerBlock.speakableText(from: "abcdefghi. ")
+        XCTAssertEqual(streamed.map(\.text).joined(), expected)
+        XCTAssertEqual(streamed.first?.isStart, true)
+    }
+
     func testAutoSpeakDoesNotFireWhenDisabledOrUnavailable() async {
         let unavailableCodex = FakeCodexClient()
         let (unavailable, _, _) = makeController(codex: unavailableCodex)
@@ -1156,4 +1428,36 @@ final class AskControllerTests: XCTestCase {
         XCTAssertEqual(completedStops, 1)
     }
 
+}
+
+// MARK: - TTS first-chunk pad
+
+final class FirstChunkPadMsTests: XCTestCase {
+    func testBuiltInRecentOutputGetsShortPad() {
+        XCTAssertEqual(
+            AppDelegate.firstChunkPadMs(isBuiltInOutput: true, secondsSinceLastOutput: 5.0),
+            80
+        )
+    }
+
+    func testBuiltInStaleOutputGetsFullPad() {
+        XCTAssertEqual(
+            AppDelegate.firstChunkPadMs(isBuiltInOutput: true, secondsSinceLastOutput: 15.0),
+            280
+        )
+    }
+
+    func testBuiltInNoPriorOutputGetsFullPad() {
+        XCTAssertEqual(
+            AppDelegate.firstChunkPadMs(isBuiltInOutput: true, secondsSinceLastOutput: nil),
+            280
+        )
+    }
+
+    func testNonBuiltInRecentOutputStillGetsFullPad() {
+        XCTAssertEqual(
+            AppDelegate.firstChunkPadMs(isBuiltInOutput: false, secondsSinceLastOutput: 5.0),
+            280
+        )
+    }
 }

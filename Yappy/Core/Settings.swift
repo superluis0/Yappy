@@ -294,7 +294,7 @@ final class Settings: ObservableObject {
     }
 
     /// Which xAI model the Grok backend routes to.
-    @Published var askGrokModel: AskGrokModel = .composerFast {
+    @Published var askGrokModel: AskGrokModel = .grok45 {
         didSet { if !isLoading { save() } }
     }
 

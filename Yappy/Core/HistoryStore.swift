@@ -71,6 +71,7 @@ final class HistoryStore: ObservableObject {
 
     private let fileURL: URL
     private let ioQueue = DispatchQueue(label: "com.yappy.historystore", qos: .utility)
+    private var derivedRecomputeScheduled = false
     private static let encoder = JSONEncoder()
     private static let decoder = JSONDecoder()
 
@@ -101,7 +102,7 @@ final class HistoryStore: ObservableObject {
             entries.removeLast(entries.count - Constants.historyLimit)
         }
         entries = Self.applyingRetention(to: entries, days: retentionDays, now: Date())
-        recomputeDerived()
+        scheduleRecomputeDerived()
         persist()
     }
 
@@ -124,6 +125,33 @@ final class HistoryStore: ObservableObject {
         cachedTopApps = Self.computeTopApps(entries)
         cachedHeatmapRows = HeatmapModel.hourlyRows(entries: entries)
         cachedPersonalRecords = PersonalRecords.compute(from: entries)
+    }
+
+    /// Defers the (expensive) derived-stats recompute to the next main-actor
+    /// turn, coalescing rapid successive calls into a single recompute. Used by
+    /// `add()` specifically because `add()` sits on the release-to-paste latency
+    /// path: the caller pastes the text immediately after `add()` returns, so
+    /// keeping this off the synchronous path shaves the recompute's cost off
+    /// every dictation. Stats lag by one runloop tick, which is not observable
+    /// in the UI, and persistence/durability are unaffected — persist() already
+    /// snapshots `entries`, which is fully updated before this returns.
+    private func scheduleRecomputeDerived() {
+        guard !derivedRecomputeScheduled else { return }
+        derivedRecomputeScheduled = true
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            self.derivedRecomputeScheduled = false
+            self.recomputeDerived()
+        }
+    }
+
+    /// Test-only hook: synchronously runs the pending derived-stats recompute
+    /// so tests can assert on stats immediately after `add()` without waiting
+    /// for the deferred main-actor turn. No-op in production code paths beyond
+    /// what `add()` already schedules.
+    func recomputeDerivedNowForTesting() {
+        derivedRecomputeScheduled = false
+        recomputeDerived()
     }
 
     // MARK: - Stats

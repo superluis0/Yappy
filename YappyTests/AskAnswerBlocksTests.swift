@@ -365,4 +365,237 @@ final class AskAnswerBlocksTests: XCTestCase {
         })
     }
 
+    // MARK: - Streaming stable prefix
+
+    func testStablePrefixEmptyForNarrationOnly() {
+        XCTAssertEqual(
+            AskAnswerBlock.stableSpeakablePrefix(fromStreaming: "Searching for the weather"),
+            ""
+        )
+    }
+
+    func testStablePrefixStripsNarrationAndHoldsPartialSentence() {
+        XCTAssertEqual(
+            AskAnswerBlock.stableSpeakablePrefix(fromStreaming: "Searching for X.\nParis is nice. It sits on"),
+            "Paris is nice."
+        )
+    }
+
+    func testStablePrefixHoldsSentenceAtBufferEnd() {
+        XCTAssertEqual(
+            AskAnswerBlock.stableSpeakablePrefix(fromStreaming: "Paris is nice."),
+            ""
+        )
+        XCTAssertEqual(
+            AskAnswerBlock.stableSpeakablePrefix(fromStreaming: "Paris is nice. "),
+            "Paris is nice."
+        )
+    }
+
+    func testStablePrefixEmitsClosedParagraphAndStableLeadingSentences() {
+        let text = "First paragraph ends here.\n\nSecond starts. Still growing"
+        XCTAssertEqual(
+            AskAnswerBlock.stableSpeakablePrefix(fromStreaming: text),
+            "First paragraph ends here.\nSecond starts."
+        )
+    }
+
+    func testStablePrefixHoldsGrowingTableLineAfterClosedParagraph() {
+        let text = "Done talking.\n\n| a | b |"
+        XCTAssertEqual(
+            AskAnswerBlock.stableSpeakablePrefix(fromStreaming: text),
+            "Done talking."
+        )
+    }
+
+    func testStablePrefixEmitsClosedTableMatchingSpeakableText() {
+        let tableClosed = """
+        Intro line.
+
+        | City | Country |
+        | --- | --- |
+        | Paris | France |
+        """
+        XCTAssertEqual(
+            AskAnswerBlock.stableSpeakablePrefix(fromStreaming: tableClosed + "\n\nStill typing"),
+            AskAnswerBlock.speakableText(from: tableClosed)
+        )
+    }
+
+    func testStablePrefixSkipsGrowingAndClosedCodeBlocks() {
+        let growing = "Before.\n\n```swift\nlet x = 1"
+        XCTAssertEqual(AskAnswerBlock.stableSpeakablePrefix(fromStreaming: growing), "Before.")
+
+        let closed = "Before.\n\n```swift\nlet x = 1\n```\n\nAfter. "
+        XCTAssertEqual(
+            AskAnswerBlock.stableSpeakablePrefix(fromStreaming: closed),
+            "Before.\nAfter."
+        )
+    }
+
+    func testStablePrefixDoesNotSplitDecimalInsideOpenSentence() {
+        XCTAssertEqual(
+            AskAnswerBlock.stableSpeakablePrefix(fromStreaming: "The answer is 3.5 and more coming"),
+            ""
+        )
+    }
+
+    func testStablePrefixHoldsCitationTailWhileGrowing() {
+        let steps = [
+            "Blah blah. Source:",
+            "Blah blah. Source: [",
+            "Blah blah. Source: [X](https://x.com)",
+        ]
+        for step in steps {
+            XCTAssertEqual(
+                AskAnswerBlock.stableSpeakablePrefix(fromStreaming: step),
+                "Blah blah.",
+                "Unexpected prefix at growth step: \(step)"
+            )
+        }
+    }
+
+    func testStablePrefixHoldsGrowingListThenEmitsWhenClosed() {
+        let growing = "Lead in.\n\n- one\n- two"
+        XCTAssertEqual(AskAnswerBlock.stableSpeakablePrefix(fromStreaming: growing), "Lead in.")
+
+        let closed = "Lead in.\n\n- one\n- two\n\nClosing line. "
+        XCTAssertEqual(
+            AskAnswerBlock.stableSpeakablePrefix(fromStreaming: closed),
+            AskAnswerBlock.speakableText(from: closed)
+        )
+    }
+
+    // MARK: - Streaming stable prefix: property tests
+
+    private static let monotoneFixtureA = """
+        Searching for the weather in Paris.
+        Paris is mild in spring. Summers can be warm.
+        Pack a light jacket just in case.
+        """
+
+    private static let monotoneFixtureB = """
+        Here are two cities.
+
+        | City | Country |
+        | --- | --- |
+        | Paris | France |
+        | Rome | Italy |
+
+        Both are worth visiting.
+        """
+
+    private static let monotoneFixtureC = """
+        The launch is Monday.
+        - backup window Tuesday
+        - scrub possible
+
+        Source: [NASA](https://nasa.gov/x)
+        """
+
+    private func assertMonotoneStreamingPrefix(fixture: String, file: StaticString = #file, line: UInt = #line) {
+        var previous = ""
+        var lengths: [Int] = Array(stride(from: 7, through: fixture.count, by: 7))
+        if lengths.last != fixture.count {
+            lengths.append(fixture.count)
+        }
+        for len in lengths {
+            let prefix = String(fixture.prefix(len))
+            let result = AskAnswerBlock.stableSpeakablePrefix(fromStreaming: prefix)
+            XCTAssertTrue(
+                result.hasPrefix(previous),
+                "Monotone violation at length \(len): previous=\(previous) result=\(result)",
+                file: file,
+                line: line
+            )
+            previous = result
+        }
+    }
+
+    private func assertConvergentStreamingPrefix(fixture: String, file: StaticString = #file, line: UInt = #line) {
+        let finalSpeakable = AskAnswerBlock.speakableText(from: fixture)
+        var lengths: [Int] = Array(stride(from: 7, through: fixture.count, by: 7))
+        if lengths.last != fixture.count {
+            lengths.append(fixture.count)
+        }
+        for len in lengths {
+            let prefix = String(fixture.prefix(len))
+            let stable = AskAnswerBlock.stableSpeakablePrefix(fromStreaming: prefix)
+            XCTAssertTrue(
+                finalSpeakable.hasPrefix(stable),
+                "Convergent violation at length \(len): stable=\(stable) final=\(finalSpeakable)",
+                file: file,
+                line: line
+            )
+        }
+
+        let closed = fixture + "\n\nDone. "
+        XCTAssertEqual(
+            AskAnswerBlock.stableSpeakablePrefix(fromStreaming: closed),
+            AskAnswerBlock.speakableText(from: closed),
+            file: file,
+            line: line
+        )
+    }
+
+    func testStablePrefixMonotoneFixtureA() {
+        assertMonotoneStreamingPrefix(fixture: Self.monotoneFixtureA)
+    }
+
+    func testStablePrefixMonotoneFixtureB() {
+        assertMonotoneStreamingPrefix(fixture: Self.monotoneFixtureB)
+    }
+
+    func testStablePrefixMonotoneFixtureC() {
+        assertMonotoneStreamingPrefix(fixture: Self.monotoneFixtureC)
+    }
+
+    func testStablePrefixConvergentFixtureA() {
+        assertConvergentStreamingPrefix(fixture: Self.monotoneFixtureA)
+    }
+
+    func testStablePrefixConvergentFixtureB() {
+        assertConvergentStreamingPrefix(fixture: Self.monotoneFixtureB)
+    }
+
+    func testStablePrefixConvergentFixtureC() {
+        assertConvergentStreamingPrefix(fixture: Self.monotoneFixtureC)
+    }
+
+    func testStablePrefixStopsAtUnsafeMiddleBlockInsteadOfSkipping() {
+        // A paragraph that still looks like a table opener ("|…|") is withheld
+        // from streaming, but speakableText DOES speak it — so streaming must
+        // STOP there, not skip it and emit later blocks. Skipping would make
+        // the streamed output a non-prefix of the final speakable text and
+        // corrupt the completion handoff's consumed-prefix arithmetic.
+        let fixture = "First part is prose.\n\n|stray pipe line|\n\nLast part is prose."
+        let streamed = AskAnswerBlock.stableSpeakablePrefix(fromStreaming: fixture)
+        let full = AskAnswerBlock.speakableText(from: fixture)
+
+        XCTAssertTrue(full.hasPrefix(streamed),
+                      "streamed must remain a prefix of the full speakable text")
+        XCTAssertFalse(streamed.contains("Last part"),
+                       "blocks after the withheld one must not be emitted")
+        // The prefix property must also hold at every cumulative step.
+        assertMonotoneStreamingPrefix(fixture: fixture)
+        assertConvergentStreamingPrefixWithoutClosureEquality(fixture: fixture)
+    }
+
+    /// Prefix-at-every-step check for fixtures where an emission-unsafe block
+    /// legitimately prevents sentinel-closure equality.
+    private func assertConvergentStreamingPrefixWithoutClosureEquality(
+        fixture: String, file: StaticString = #file, line: UInt = #line
+    ) {
+        let finalSpeakable = AskAnswerBlock.speakableText(from: fixture)
+        var lengths: [Int] = Array(stride(from: 7, through: fixture.count, by: 7))
+        if lengths.last != fixture.count { lengths.append(fixture.count) }
+        for len in lengths {
+            let prefix = String(fixture.prefix(len))
+            let stable = AskAnswerBlock.stableSpeakablePrefix(fromStreaming: prefix)
+            XCTAssertTrue(finalSpeakable.hasPrefix(stable),
+                          "Prefix violation at length \(len): stable=\(stable)",
+                          file: file, line: line)
+        }
+    }
+
 }

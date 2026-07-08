@@ -28,6 +28,7 @@
 		B10000AC00000000000000A1 /* AskPromptPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000AC00000000000000A1 /* AskPromptPolicy.swift */; };
 		B10000A900000000000000A1 /* AskHistoryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000A900000000000000A1 /* AskHistoryStore.swift */; };
 		B10000A700000000000000A1 /* AskAnswerBlocks.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000A700000000000000A1 /* AskAnswerBlocks.swift */; };
+		B10000AL00000000000000A1 /* TTSTextNormalizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000AL00000000000000A1 /* TTSTextNormalizer.swift */; };
 		B100009800000000000000A1 /* AskRun.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200009800000000000000A1 /* AskRun.swift */; };
 		B100009900000000000000A1 /* CodexEvent.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200009900000000000000A1 /* CodexEvent.swift */; };
 		B100009A00000000000000A1 /* GrokEvent.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200009A00000000000000A1 /* GrokEvent.swift */; };
@@ -120,6 +121,7 @@
 		B10000AD00000000000000A1 /* AskPromptPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000AD00000000000000A1 /* AskPromptPolicyTests.swift */; };
 		B10000AB00000000000000A1 /* AskHistoryStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000AB00000000000000A1 /* AskHistoryStoreTests.swift */; };
 		B10000A800000000000000A1 /* AskAnswerBlocksTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000A800000000000000A1 /* AskAnswerBlocksTests.swift */; };
+		B10000AM00000000000000A1 /* TTSTextNormalizerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000AM00000000000000A1 /* TTSTextNormalizerTests.swift */; };
 		B100009C00000000000000A1 /* AskRunTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200009C00000000000000A1 /* AskRunTests.swift */; };
 		B100009D00000000000000A1 /* CodexEventTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200009D00000000000000A1 /* CodexEventTests.swift */; };
 		B100009E00000000000000A1 /* GrokEventTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200009E00000000000000A1 /* GrokEventTests.swift */; };
@@ -161,6 +163,7 @@
 		B20000AC00000000000000A1 /* AskPromptPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AskPromptPolicy.swift; sourceTree = "<group>"; };
 		B20000A900000000000000A1 /* AskHistoryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AskHistoryStore.swift; sourceTree = "<group>"; };
 		B20000A700000000000000A1 /* AskAnswerBlocks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AskAnswerBlocks.swift; sourceTree = "<group>"; };
+		B20000AL00000000000000A1 /* TTSTextNormalizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TTSTextNormalizer.swift; sourceTree = "<group>"; };
 		B200009800000000000000A1 /* AskRun.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AskRun.swift; sourceTree = "<group>"; };
 		B200009900000000000000A1 /* CodexEvent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexEvent.swift; sourceTree = "<group>"; };
 		B200009A00000000000000A1 /* GrokEvent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrokEvent.swift; sourceTree = "<group>"; };
@@ -252,6 +255,7 @@
 		B20000AD00000000000000A1 /* AskPromptPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AskPromptPolicyTests.swift; sourceTree = "<group>"; };
 		B20000AB00000000000000A1 /* AskHistoryStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AskHistoryStoreTests.swift; sourceTree = "<group>"; };
 		B20000A800000000000000A1 /* AskAnswerBlocksTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AskAnswerBlocksTests.swift; sourceTree = "<group>"; };
+		B20000AM00000000000000A1 /* TTSTextNormalizerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TTSTextNormalizerTests.swift; sourceTree = "<group>"; };
 		B200009C00000000000000A1 /* AskRunTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AskRunTests.swift; sourceTree = "<group>"; };
 		B200009D00000000000000A1 /* CodexEventTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexEventTests.swift; sourceTree = "<group>"; };
 		B200009E00000000000000A1 /* GrokEventTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrokEventTests.swift; sourceTree = "<group>"; };
@@ -340,6 +344,7 @@
 				B20000AC00000000000000A1 /* AskPromptPolicy.swift */,
 				B20000A900000000000000A1 /* AskHistoryStore.swift */,
 				B20000A700000000000000A1 /* AskAnswerBlocks.swift */,
+				B20000AL00000000000000A1 /* TTSTextNormalizer.swift */,
 				B200009800000000000000A1 /* AskRun.swift */,
 				B200009900000000000000A1 /* CodexEvent.swift */,
 				B200009A00000000000000A1 /* GrokEvent.swift */,
@@ -440,6 +445,7 @@
 				B20000AD00000000000000A1 /* AskPromptPolicyTests.swift */,
 				B20000AB00000000000000A1 /* AskHistoryStoreTests.swift */,
 				B20000A800000000000000A1 /* AskAnswerBlocksTests.swift */,
+				B20000AM00000000000000A1 /* TTSTextNormalizerTests.swift */,
 				B200009C00000000000000A1 /* AskRunTests.swift */,
 				B200009D00000000000000A1 /* CodexEventTests.swift */,
 				B200009E00000000000000A1 /* GrokEventTests.swift */,
@@ -595,6 +601,7 @@
 				B10000AC00000000000000A1 /* AskPromptPolicy.swift in Sources */,
 				B10000A900000000000000A1 /* AskHistoryStore.swift in Sources */,
 				B10000A700000000000000A1 /* AskAnswerBlocks.swift in Sources */,
+				B10000AL00000000000000A1 /* TTSTextNormalizer.swift in Sources */,
 				B100009800000000000000A1 /* AskRun.swift in Sources */,
 				B100009900000000000000A1 /* CodexEvent.swift in Sources */,
 				B100009A00000000000000A1 /* GrokEvent.swift in Sources */,
@@ -676,6 +683,7 @@
 				B10000AD00000000000000A1 /* AskPromptPolicyTests.swift in Sources */,
 				B10000AB00000000000000A1 /* AskHistoryStoreTests.swift in Sources */,
 				B10000A800000000000000A1 /* AskAnswerBlocksTests.swift in Sources */,
+				B10000AM00000000000000A1 /* TTSTextNormalizerTests.swift in Sources */,
 				B100009C00000000000000A1 /* AskRunTests.swift in Sources */,
 				B100009D00000000000000A1 /* CodexEventTests.swift in Sources */,
 				B100009E00000000000000A1 /* GrokEventTests.swift in Sources */,

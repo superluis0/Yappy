@@ -52,6 +52,7 @@ final class AskHistoryStore: ObservableObject {
     internal static let maxEntries = 100
     private let maxEntries: Int
     private let fileURL: URL?
+    private let ioQueue = DispatchQueue(label: "com.yappy.ask-history.io", qos: .utility)
 
     /// `directory` is injectable for tests; defaults to Application Support/Yappy.
     init(directory: URL? = nil, maxEntries: Int = AskHistoryStore.maxEntries) {
@@ -104,8 +105,10 @@ final class AskHistoryStore: ObservableObject {
 
     func clear() {
         entries.removeAll()
-        if let fileURL {
-            try? FileManager.default.removeItem(at: fileURL)
+        guard let fileURL else { return }
+        let url = fileURL
+        ioQueue.async {
+            try? FileManager.default.removeItem(at: url)
         }
     }
 
@@ -121,16 +124,19 @@ final class AskHistoryStore: ObservableObject {
     }
 
     private func save() {
-        guard let fileURL, let data = try? JSONEncoder().encode(entries) else { return }
-        try? data.write(to: fileURL, options: .atomic)
-        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
+        guard let fileURL else { return }
+        let snapshot = entries
+        let url = fileURL
+        ioQueue.async {
+            guard let data = try? JSONEncoder().encode(snapshot) else { return }
+            try? data.write(to: url, options: .atomic)
+            try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+        }
     }
 
-    /// Test hook: keeps persistence assertions explicit when tests re-instantiate
-    /// the store on the same directory.
+    /// Test hook: drains pending I/O so on-disk state matches in-memory `entries`
+    /// before tests re-instantiate the store on the same directory.
     func flushForTesting() {
-        guard let fileURL, let data = try? JSONEncoder().encode(entries) else { return }
-        try? data.write(to: fileURL, options: .atomic)
-        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
+        ioQueue.sync {}
     }
 }

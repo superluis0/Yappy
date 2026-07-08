@@ -40,8 +40,27 @@ final class HistoryStoreTests: XCTestCase {
         XCTAssertEqual(store.entries[0].text, "second entry")
     }
 
+    func testAddUpdatesEntriesSynchronously() {
+        let entry = DictationEntry(text: "paste-safe entry", durationSeconds: 2)
+        store.add(entry)
+
+        XCTAssertEqual(store.entries.count, 1)
+        XCTAssertEqual(store.entries[0].id, entry.id)
+        XCTAssertEqual(store.entries[0].text, "paste-safe entry")
+    }
+
+    func testAddDefersDerivedStatsRecomputeCoalescing() {
+        store.add(DictationEntry(text: "one two", durationSeconds: 2))
+        store.add(DictationEntry(text: "three four five", durationSeconds: 3))
+        store.recomputeDerivedNowForTesting()
+
+        XCTAssertEqual(store.entries.count, 2)
+        XCTAssertEqual(store.totalWords, 5)
+    }
+
     func testWordCountAndStats() {
         store.add(DictationEntry(text: "hello world how are you", durationSeconds: 5))
+        store.recomputeDerivedNowForTesting()
 
         XCTAssertEqual(store.entries[0].wordCount, 5)
         XCTAssertEqual(store.totalWords, 5)
@@ -206,6 +225,7 @@ final class HistoryStoreTests: XCTestCase {
         store.add(DictationEntry(text: "one two", durationSeconds: 1, appName: "Slack", bundleID: "com.slack"))
         store.add(DictationEntry(text: "three", durationSeconds: 1, appName: "Slack", bundleID: "com.slack"))
         store.add(DictationEntry(text: "four five six", durationSeconds: 1, appName: "Mail", bundleID: "com.mail"))
+        store.recomputeDerivedNowForTesting()
 
         let top = store.topApps()
         XCTAssertEqual(top.count, 2)

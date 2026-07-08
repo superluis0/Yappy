@@ -431,6 +431,10 @@ struct AskPillView: View {
     }
 
     static func markdown(_ text: String) -> AttributedString {
+        if let cached = markdownCache[text] { return cached }
+        // Streaming re-invalidates block views on every delta; without a
+        // bound, each paragraph/cell would re-parse from scratch per render.
+        if markdownCache.count >= 512 { markdownCache.removeAll() }
         var attributed = (try? AttributedString(
             markdown: text,
             options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
@@ -442,8 +446,12 @@ struct AskPillView: View {
                 attributed[run.range].link = nil
             }
         }
+        markdownCache[text] = attributed
         return attributed
     }
+
+    /// Bounded cache for inline markdown fragments inside block views.
+    @MainActor private static var markdownCache: [String: AttributedString] = [:]
 }
 
 // MARK: - Source chips
@@ -501,6 +509,25 @@ private struct BlockWidthReporter: View {
     }
 }
 
+/// Caches the parsed block list for the exact text last seen. Streaming
+/// answers re-invalidate this view's body on every delta AND on unrelated
+/// state changes elsewhere in the pill (audio levels, hover, speaking
+/// phase), so without this the full accumulated markdown would re-parse
+/// on every invalidation -- O(n^2) main-thread work over a stream. Exact
+/// string-equality key means staleness is impossible by construction.
+@MainActor
+private enum AnswerBlockMemo {
+    static var lastInput: String?
+    static var lastBlocks: [AskAnswerBlock.Identified] = []
+    static func blocks(for text: String) -> [AskAnswerBlock.Identified] {
+        if text == lastInput { return lastBlocks }
+        let parsed = AskAnswerBlock.identified(AskAnswerBlock.strippingLeadingNarration(text))
+        lastInput = text
+        lastBlocks = parsed
+        return parsed
+    }
+}
+
 /// Renders an answer as typed blocks: paragraphs (inline markdown), pipe
 /// tables (Grid), fenced code (mono box), lists, and images. Internal (not
 /// private) so the main window's Ask history reuses it with its own palette.
@@ -514,9 +541,9 @@ struct AskAnswerContent: View {
     private var tertiary: Color { textTertiary ?? textSecondary.opacity(0.6) }
 
     var body: some View {
-        // Narration strip runs at render time so it also cleans answers saved
-        // to history before the filter existed.
-        let blocks = AskAnswerBlock.identified(AskAnswerBlock.strippingLeadingNarration(text))
+        // Narration strip runs at parse time (via AnswerBlockMemo) so it also
+        // cleans answers saved to history before the filter existed.
+        let blocks = AnswerBlockMemo.blocks(for: text)
         VStack(alignment: .leading, spacing: 12) {
             ForEach(blocks) { item in
                 blockView(item.block)

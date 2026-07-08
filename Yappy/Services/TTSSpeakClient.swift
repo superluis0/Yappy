@@ -210,14 +210,14 @@ final class TTSSpeakClient: @unchecked Sendable {
     func synthesize(
         text: String,
         voice: String,
-        padStart: Bool = false
+        padStartMs: Int = 0
     ) async throws -> URL {
         cancelIdleShutdown()
         try await ensureReady()
 
         await serialGate.enter()
         do {
-            let url = try await synthesizeSerial(text: text, voice: voice, padStart: padStart)
+            let url = try await synthesizeSerial(text: text, voice: voice, padStartMs: padStartMs)
             await serialGate.leave()
             return url
         } catch {
@@ -374,14 +374,14 @@ final class TTSSpeakClient: @unchecked Sendable {
     private func synthesizeSerial(
         text: String,
         voice: String,
-        padStart: Bool
+        padStartMs: Int
     ) async throws -> URL {
         let outputURL = try nextOutputURL()
         let request: [String: Any] = [
             "text": text,
             "voice": voice,
             "out": outputURL.path,
-            "pad_start": padStart,
+            "pad_ms": padStartMs,
         ]
 
         let timeout = max(20, Double(text.count) * 0.06)
@@ -628,7 +628,7 @@ private actor TTSRequestSerialGate {
 
 protocol AnswerSpeaking: AnyObject {
     var onPhaseChange: (@Sendable (String) -> Void)? { get set }
-    func synthesize(text: String, voice: String, padStart: Bool) async throws -> URL
+    func synthesize(text: String, voice: String, padStartMs: Int) async throws -> URL
     func noteIdle()
     func stop()
 }

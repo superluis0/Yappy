@@ -29,16 +29,17 @@ enum AskBackend: String, CaseIterable, Identifiable, Sendable {
 
 /// Which xAI model answers when the Grok backend is selected. Always passed
 /// explicitly via `-m` — the CLI's own default has changed between releases
-/// (composer-2.5-fast → grok-build), so relying on it would silently reroute.
+/// (composer-2.5-fast → grok-build → grok-4.5), so relying on it would silently
+/// reroute. grok-build itself was removed from the CLI.
 enum AskGrokModel: String, CaseIterable, Identifiable, Sendable {
+    case grok45 = "grok-4.5"
     case composerFast = "grok-composer-2.5-fast"
-    case build = "grok-build"
 
     var id: String { rawValue }
     var displayName: String {
         switch self {
+        case .grok45: "Grok 4.5"
         case .composerFast: "Composer 2.5 Fast"
-        case .build: "Grok Build"
         }
     }
 }
@@ -179,6 +180,11 @@ final class AskController: ObservableObject {
     var autoSpeak = false
     var speakAnswer: (String) -> Void = { _ in }
     var stopSpeaking: () -> Void = { }
+    /// Emits an incremental chunk of newly-stable speakable text; `isStreamStart`
+    /// is true only for the very first emission of a given run's stream.
+    var speakStreamingText: (String, Bool) -> Void = { _, _ in }
+    /// Signals no more streaming chunks are coming for this run.
+    var finishStreamingSpeech: () -> Void = { }
     /// The voice rawValue currently being previewed in Settings (synthesizing or
     /// playing), else nil. Drives the preview button's play/stop state.
     @Published var previewingVoice: String?
@@ -187,7 +193,7 @@ final class AskController: ObservableObject {
     /// Injected by AppDelegate; stops any voice preview in progress.
     var stopVoicePreview: () -> Void = { }
     /// Which xAI model the Grok backend uses. Set by AppDelegate from settings.
-    var grokModel: AskGrokModel = .composerFast
+    var grokModel: AskGrokModel = .grok45
     /// Whether completed runs are persisted to Ask history. Mirrors
     /// `settings.askSaveHistoryEnabled`; set by AppDelegate.
     var saveHistory = true
@@ -218,11 +224,29 @@ final class AskController: ObservableObject {
     /// agentMessage item IDs whose phase marks them as working narration
     /// (preamble/plan text) rather than the final answer — kept out of the answer.
     private var narrationItemIDs: Set<String> = []
+    /// Character count of the stable streamed-speech prefix already handed to
+    /// `speakStreamingText` for the in-flight grok run. Reset whenever a new
+    /// run/turn begins or the run ends (finish/abort) so it never leaks across runs.
+    private var streamedSpeechConsumed: Int = 0
+    /// The exact stable prefix handed to `speakStreamingText` so far. Kept so
+    /// the completion handoff can verify content equality (not just length)
+    /// before speaking the remainder — the belt to the extractor's suspenders.
+    private var streamedSpeechText: String = ""
+    /// True once at least one streaming speech chunk has been emitted for the
+    /// in-flight grok run — gates finish() between the streaming handoff and the
+    /// legacy full-answer speak path.
+    private var streamingSpeechActive = false
     /// True when the current capture started from a completed card, so a whole
     /// utterance can target that visible answer instead of becoming a follow-up.
     private var capturedOverCompletedCard = false
     private var thinkingTitle = "Thinking"
     private var thoughtTitle = "Thought"
+    /// Hard backstop for grok models that loop on search instead of converging
+    /// on an answer (Composer notably): once this many research tools have
+    /// completed in a single turn, the next tool start ends the turn.
+    private static let grokResearchToolCap = 5
+    /// Completed research-tool count for the in-flight grok turn; reset each dispatch.
+    private var grokResearchToolsCompleted = 0
 
     nonisolated static func parseCardCommand(_ transcript: String) -> AskCardCommand? {
         AskCardCommand.parse(transcript)
@@ -258,6 +282,58 @@ final class AskController: ObservableObject {
         }
 
         return (trimmed, false)
+    }
+
+    /// Splits an overlong opening sentence so chunk 0 fits `cap`. Prefers the
+    /// last clause boundary (`, ` / `; ` / `: `) at or before `cap`, then the
+    /// last word boundary, then a hard cut at `cap`. `head + tail` == `sentence`.
+    nonisolated private static func splitOverlongFirstSentence(_ sentence: String, cap: Int) -> (head: String, tail: String) {
+        let endIndex = sentence.index(sentence.startIndex, offsetBy: min(cap, sentence.count), limitedBy: sentence.endIndex) ?? sentence.endIndex
+
+        var lastClauseSplit: String.Index?
+        var index = sentence.startIndex
+        while index < endIndex {
+            let character = sentence[index]
+            if character == "," || character == ";" || character == ":" {
+                let afterPunctuation = sentence.index(after: index)
+                if afterPunctuation < sentence.endIndex, sentence[afterPunctuation] == " " {
+                    let splitPoint = sentence.index(after: afterPunctuation)
+                    if splitPoint <= endIndex {
+                        lastClauseSplit = splitPoint
+                    }
+                }
+            }
+            index = sentence.index(after: index)
+        }
+        if let splitPoint = lastClauseSplit {
+            return (
+                String(sentence[sentence.startIndex..<splitPoint]),
+                String(sentence[splitPoint..<sentence.endIndex])
+            )
+        }
+
+        var lastSpaceSplit: String.Index?
+        index = sentence.startIndex
+        while index < endIndex {
+            if sentence[index] == " " {
+                let splitPoint = sentence.index(after: index)
+                if splitPoint <= endIndex {
+                    lastSpaceSplit = splitPoint
+                }
+            }
+            index = sentence.index(after: index)
+        }
+        if let splitPoint = lastSpaceSplit {
+            return (
+                String(sentence[sentence.startIndex..<splitPoint]),
+                String(sentence[splitPoint..<sentence.endIndex])
+            )
+        }
+
+        return (
+            String(sentence[sentence.startIndex..<endIndex]),
+            String(sentence[endIndex..<sentence.endIndex])
+        )
     }
 
     /// Splits speakable text into synthesis chunks. `firstLimit` (when smaller
@@ -307,7 +383,14 @@ final class AskController: ObservableObject {
             // uses the full limit.
             let cap = chunks.isEmpty ? firstCap : limit
             if current.isEmpty {
-                current = sentence
+                // Chunk 0 needs a hard latency cap so first TTS audio starts sooner.
+                if chunks.isEmpty, firstCap < limit, sentence.count > firstCap {
+                    let (head, tail) = splitOverlongFirstSentence(sentence, cap: firstCap)
+                    chunks.append(head)
+                    current = tail
+                } else {
+                    current = sentence
+                }
             } else if current.count + sentence.count <= cap {
                 current += sentence
             } else {
@@ -385,6 +468,7 @@ final class AskController: ObservableObject {
 
     /// Fn pressed — begin a run and warm the backend while the user speaks.
     func beginListening() {
+        resetStreamingSpeechState()
         if var r = run, r.status == .preparing {
             try? r.transition(to: .listening)
             run = r
@@ -497,6 +581,7 @@ final class AskController: ObservableObject {
         let question = r.rawTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !question.isEmpty else { return }
 
+        resetStreamingSpeechState()
         pillPinned = false
         narrationItemIDs.removeAll()
         let thinkHarder = r.thinkHarder
@@ -582,6 +667,7 @@ final class AskController: ObservableObject {
         try? run.transition(to: .cancelled)
         self.run = run
         narrationItemIDs.removeAll()
+        resetStreamingSpeechState()
         scheduleAutoDismiss(run)
     }
 
@@ -686,6 +772,8 @@ final class AskController: ObservableObject {
     }
 
     private func dispatch(question: String, runID: UUID, thinkHarder: Bool) {
+        // Every turn starts its research budget fresh.
+        grokResearchToolsCompleted = 0
         // Fall back to the other backend when the selected one isn't usable but
         // the other is — persist the switch so the next question keeps it.
         var backendForRun = backend
@@ -996,6 +1084,16 @@ final class AskController: ObservableObject {
                 lastRunMetrics.firstAnswerTokenAt = metricsClock()
             }
             r.answerText = (r.answerText ?? "") + delta
+            if autoSpeak, speakAvailable, delta.contains(where: { ".!?\n".contains($0) }) {
+                let stable = AskAnswerBlock.stableSpeakablePrefix(fromStreaming: r.answerText ?? "")
+                if stable.count > streamedSpeechConsumed {
+                    let newText = String(stable.dropFirst(streamedSpeechConsumed))
+                    speakStreamingText(newText, streamedSpeechConsumed == 0)
+                    streamedSpeechConsumed = stable.count
+                    streamedSpeechText = stable
+                    streamingSpeechActive = true
+                }
+            }
 
         case .toolStarted(let title):
             // Grok's plan mode already refuses mutating tools; this is the same
@@ -1011,6 +1109,27 @@ final class AskController: ObservableObject {
                 finish(r)
                 return
             }
+            // Backstop for models that loop on search instead of converging:
+            // once the cap is hit, end the turn on the spot rather than
+            // starting yet another search.
+            if grokResearchToolsCompleted >= Self.grokResearchToolCap {
+                VLog.grok("research cap (\(Self.grokResearchToolCap)) reached — ending turn")
+                grokClient.cancel()
+                if let text = r.answerText, !text.isEmpty {
+                    r.result = text
+                    completeRunningSteps(in: &r)
+                    try? r.transition(to: .completed)
+                    run = r
+                    finish(r)
+                } else {
+                    r.result = "Grok kept searching without reaching an answer — try asking again."
+                    failRunningSteps(in: &r)
+                    try? r.transition(to: .failed)
+                    run = r
+                    finish(r)
+                }
+                return
+            }
             markWorking(&r)
             let (kind, displayTitle) = Self.grokToolStep(title: title, completed: false)
             upsertStep(kind: kind, title: displayTitle, in: &r)
@@ -1018,6 +1137,7 @@ final class AskController: ObservableObject {
         case .toolCompleted(let title, let failed):
             let (kind, displayTitle) = Self.grokToolStep(title: title, completed: true)
             completeStep(kind: kind, title: displayTitle, failed: failed, in: &r)
+            grokResearchToolsCompleted += 1
 
         case .end(let stopReason, let sessionId):
             r.grokSessionID = sessionId ?? r.grokSessionID
@@ -1180,6 +1300,32 @@ final class AskController: ObservableObject {
             VLog.store("metrics backend=\(activeBackend.rawValue) model=\(finished.modelLabel ?? "?") ttfe_ms=\(ttfe.map(String.init) ?? "-") ttft_ms=\(ttft.map(String.init) ?? "-") total_ms=\(total)")
         }
         narrationItemIDs.removeAll()
+        // Kick off speech before history bookkeeping so TTS isn't delayed by
+        // the JSON encode + atomic file write below; speakCurrentAnswer()
+        // only reads this run's own answer text, not history.
+        if finished.status == .completed, autoSpeak, speakAvailable {
+            if streamingSpeechActive {
+                let full = AskAnswerBlock.speakableText(from: finished.result ?? finished.answerText ?? "")
+                // Content-equality valve: the extractor guarantees the streamed
+                // text is a prefix of `full`, but if any edge ever breaks that
+                // (e.g. an inline-markdown span straddling a stability cut),
+                // never risk double-speaking or garbling — end the stream and
+                // let the visible card carry the rest.
+                if full.hasPrefix(streamedSpeechText) {
+                    let remainder = String(full.dropFirst(streamedSpeechConsumed))
+                    if !remainder.isEmpty {
+                        speakStreamingText(remainder, false)
+                    }
+                    finishStreamingSpeech()
+                } else {
+                    VLog.store("stream speech divergence — consumed=\(streamedSpeechConsumed) full=\(full.count)")
+                    finishStreamingSpeech()
+                }
+            } else {
+                speakCurrentAnswer()
+            }
+        }
+        resetStreamingSpeechState()
         if saveHistory,
            finished.status == .completed, let answer = finished.result ?? finished.answerText {
             history.add(
@@ -1189,10 +1335,14 @@ final class AskController: ObservableObject {
                 modelLabel: finished.modelLabel
             )
         }
-        if finished.status == .completed, autoSpeak, speakAvailable {
-            speakCurrentAnswer()
-        }
         scheduleAutoDismiss(finished)
+    }
+
+    /// Clears per-run streaming-speech bookkeeping so nothing leaks across runs.
+    private func resetStreamingSpeechState() {
+        streamedSpeechConsumed = 0
+        streamedSpeechText = ""
+        streamingSpeechActive = false
     }
 
     /// Returns the pill to idle after long enough to actually READ the answer:

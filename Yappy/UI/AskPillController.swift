@@ -33,7 +33,8 @@ final class AskPillController {
         self.controller = controller
         // React to run changes: show/hide, reposition, and toggle mouse events.
         controller.$run
-            .receive(on: RunLoop.main)
+            // DispatchQueue.main (not RunLoop.main): keeps the pill responsive during scroll/menu event-tracking, while still deferring past the @Published willSet.
+            .receive(on: DispatchQueue.main)
             .sink { [weak self] run in self?.reflect(run) }
             .store(in: &cancellables)
     }

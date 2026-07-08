@@ -252,7 +252,7 @@ struct SettingsView: View {
                 if settings.askBackend == .grok, askGrokReadiness == .ready {
                     RowDivider()
                     SettingRow(icon: "brain.head.profile", title: "Grok model",
-                               subtitle: "Composer 2.5 Fast is snappier; Grok Build reasons longer.") {
+                               subtitle: "Grok 4.5 answers best; Composer 2.5 Fast is snappier.") {
                         Picker("", selection: $settings.askGrokModel) {
                             ForEach(AskGrokModel.allCases) { Text($0.displayName).tag($0) }
                         }
