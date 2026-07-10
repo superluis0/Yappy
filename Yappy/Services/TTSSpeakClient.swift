@@ -494,39 +494,17 @@ final class TTSSpeakClient: @unchecked Sendable {
 
     private func startReader(_ handle: FileHandle) {
         readTask?.cancel()
-        readTask = Task.detached(priority: .userInitiated) { [weak self] in
-            var buffer = Data()
-            while !Task.isCancelled {
-                let chunk = handle.availableData
-                if chunk.isEmpty { break }
-                buffer.append(chunk)
-                while let newline = buffer.firstIndex(of: 0x0A) {
-                    let line = buffer.subdata(in: buffer.startIndex..<newline)
-                    buffer.removeSubrange(buffer.startIndex...newline)
-                    guard !line.isEmpty else { continue }
-                    self?.handleLine(line)
-                }
-            }
+        readTask = makeLineReader(handle) { [weak self] line in
+            self?.handleLine(line)
         }
     }
 
     private func startStderrDrain(_ handle: FileHandle) {
         stderrTask?.cancel()
-        stderrTask = Task.detached(priority: .utility) { [weak self] in
-            var buffer = Data()
-            while !Task.isCancelled {
-                let chunk = handle.availableData
-                if chunk.isEmpty { break }
-                buffer.append(chunk)
-                while let newline = buffer.firstIndex(of: 0x0A) {
-                    let line = buffer.subdata(in: buffer.startIndex..<newline)
-                    buffer.removeSubrange(buffer.startIndex...newline)
-                    if VLog.contentLoggingEnabled,
-                       let text = String(data: line, encoding: .utf8), !text.isEmpty {
-                        VLog.tts("helper stderr: \(text.prefix(300))")
-                    }
-                }
-                _ = self
+        stderrTask = makeStderrDrain(handle) { line in
+            if VLog.contentLoggingEnabled,
+               let text = String(data: line, encoding: .utf8), !text.isEmpty {
+                VLog.tts("helper stderr: \(text.prefix(300))")
             }
         }
     }
@@ -603,7 +581,7 @@ final class TTSSpeakClient: @unchecked Sendable {
     }
 }
 
-private actor TTSRequestSerialGate {
+actor TTSRequestSerialGate {
     private var busy = false
     private var waiters: [CheckedContinuation<Void, Never>] = []
 
@@ -634,11 +612,3 @@ protocol AnswerSpeaking: AnyObject {
 }
 
 extension TTSSpeakClient: AnswerSpeaking {}
-
-private extension NSLock {
-    func withLock<T>(_ body: () -> T) -> T {
-        lock()
-        defer { unlock() }
-        return body()
-    }
-}

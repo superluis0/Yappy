@@ -59,10 +59,6 @@ enum VoiceControlCommandParser {
     /// Lowercased, fillers removed, edge punctuation stripped, whitespace
     /// collapsed — identical normalization to `VoiceEditCommandParser`.
     private static func normalize(_ raw: String) -> String {
-        FillerWordRemover.remove(raw).lowercased()
-            .trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
-            .components(separatedBy: .whitespacesAndNewlines)
-            .filter { !$0.isEmpty }
-            .joined(separator: " ")
+        SpokenPhraseNormalizer.normalize(raw)
     }
 }

@@ -232,17 +232,22 @@ final class DictionaryStore: ObservableObject {
         guard let data = try? Data(contentsOf: fileURL) else { return }
 
         // Current format: an array of DictionaryTerm objects.
-        if let modern = try? Self.decoder.decode([DictionaryTerm].self, from: data) {
-            terms = modern
+        do {
+            terms = try Self.decoder.decode([DictionaryTerm].self, from: data)
             return
+        } catch {
+            VLog.store("failed to decode DictionaryStore (\(data.count) bytes): \(error.localizedDescription)")
         }
         // Legacy format: a bare array of strings. Migrate in place and rewrite
         // once so the file is upgraded. A failed decode leaves `terms` empty
         // rather than wiping a good file — but we only reach here if the modern
         // decode already failed, so the data is genuinely the old shape.
-        if let legacy = try? Self.decoder.decode([String].self, from: data) {
+        do {
+            let legacy = try Self.decoder.decode([String].self, from: data)
             terms = legacy.map { DictionaryTerm(text: $0) }
             persist()
+        } catch {
+            VLog.store("failed to decode DictionaryStore legacy (\(data.count) bytes): \(error.localizedDescription)")
         }
     }
 
@@ -250,8 +255,12 @@ final class DictionaryStore: ObservableObject {
         let snapshot = terms
         let url = fileURL
         ioQueue.async {
-            guard let data = try? Self.encoder.encode(snapshot) else { return }
-            try? data.write(to: url, options: .atomic)
+            do {
+                let data = try Self.encoder.encode(snapshot)
+                try data.write(to: url, options: .atomic)
+            } catch {
+                VLog.store("failed to write DictionaryStore: \(error.localizedDescription)")
+            }
         }
     }
 
@@ -263,20 +272,26 @@ final class DictionaryStore: ObservableObject {
     }
 
     private func loadSuggestionsFromDisk() {
-        guard let data = try? Data(contentsOf: suggestionsURL),
-              let envelope = try? Self.decoder.decode(SuggestionsEnvelope.self, from: data) else {
-            return
+        guard let data = try? Data(contentsOf: suggestionsURL) else { return }
+        do {
+            let envelope = try Self.decoder.decode(SuggestionsEnvelope.self, from: data)
+            suggestions = envelope.suggestions
+            dismissedKeys = envelope.dismissedKeys
+        } catch {
+            VLog.store("failed to decode DictionaryStore suggestions (\(data.count) bytes): \(error.localizedDescription)")
         }
-        suggestions = envelope.suggestions
-        dismissedKeys = envelope.dismissedKeys
     }
 
     private func persistSuggestions() {
         let envelope = SuggestionsEnvelope(suggestions: suggestions, dismissedKeys: dismissedKeys)
         let url = suggestionsURL
         ioQueue.async {
-            guard let data = try? Self.encoder.encode(envelope) else { return }
-            try? data.write(to: url, options: .atomic)
+            do {
+                let data = try Self.encoder.encode(envelope)
+                try data.write(to: url, options: .atomic)
+            } catch {
+                VLog.store("failed to write DictionaryStore suggestions: \(error.localizedDescription)")
+            }
         }
     }
 }

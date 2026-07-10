@@ -294,6 +294,7 @@ enum FocusedFieldKind {
     case singleLine   // AXTextField — a one-line input (URL bar, form field)
     case multiLine    // AXTextArea — a multi-line editor or composer
     case search       // AXSearchField subrole — Spotlight, a search box
+    case secure       // AXSecureTextField — a password / secret field
     case unknown      // couldn't determine (no focus, opaque app, not trusted)
 }
 
@@ -305,6 +306,10 @@ enum FocusedFieldClassifier {
     /// unit-testable without the live accessibility API. Subrole wins over role
     /// (a search field reports role `AXTextField` plus subrole `AXSearchField`).
     static func kind(role: String?, subrole: String?) -> FocusedFieldKind {
+        // Secure wins over everything: a password field must never be treated as a normal
+        // single-line input (it has to skip AI cleanup and history). macOS is inconsistent
+        // about where "secure" shows up, so check both role and subrole for the marker.
+        if subrole == "AXSecureTextField" || role == "AXSecureTextField" { return .secure }
         if subrole == kAXSearchFieldSubrole as String { return .search }
         if role == kAXTextAreaRole as String { return .multiLine }
         if role == kAXTextFieldRole as String { return .singleLine }
@@ -324,18 +329,17 @@ enum FocusedFieldClassifier {
               let focused = focusedObj else { return .unknown }
         let element = focused as! AXUIElement
 
-        return kind(role: copyStringAttribute(element, kAXRoleAttribute),
-                    subrole: copyStringAttribute(element, kAXSubroleAttribute))
-    }
-
-    /// Copies a string-valued AX attribute, returning nil if it's absent or not a
-    /// string (subrole in particular is optional on many elements).
-    private static func copyStringAttribute(_ element: AXUIElement, _ attribute: String) -> String? {
-        var valueObj: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(element, attribute as CFString, &valueObj) == .success else {
-            return nil
+        // One AX round-trip for role + subrole instead of two. A missing attribute comes
+        // back as a non-String entry (a wrapped error / null), which `as? String` maps to
+        // nil — exactly the "absent subrole" case the classifier already tolerates.
+        let attributes = [kAXRoleAttribute, kAXSubroleAttribute] as CFArray
+        var valuesObj: CFArray?
+        guard AXUIElementCopyMultipleAttributeValues(
+                element, attributes, AXCopyMultipleAttributeOptions(rawValue: 0), &valuesObj) == .success,
+              let values = valuesObj as? [AnyObject], values.count == 2 else {
+            return .unknown
         }
-        return valueObj as? String
+        return kind(role: values[0] as? String, subrole: values[1] as? String)
     }
 
     /// Collapses text to a single clean line for a single-line/search field:

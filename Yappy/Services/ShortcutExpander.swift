@@ -55,7 +55,11 @@ struct ShortcutExpander {
 
         let escaped = NSRegularExpression.escapedPattern(for: trimmedPhrase)
         let pattern = "(?<![\\w])\(escaped)(?![\\w])"
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
+        let regex: NSRegularExpression
+        do {
+            regex = try NSRegularExpression(pattern: pattern, options: [.caseInsensitive])
+        } catch {
+            VLog.app("a shortcut failed to parse")
             return text
         }
         let range = NSRange(text.startIndex..<text.endIndex, in: text)

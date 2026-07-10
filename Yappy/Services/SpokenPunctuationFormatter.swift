@@ -103,7 +103,7 @@ enum SpokenPunctuationFormatter {
                 }
 
                 // Ordinary word.
-                out += capitalizeNext ? capitalizedFirst(word) : word
+                out += capitalizeNext ? word.capitalizedFirstCharacter() : word
                 capitalizeNext = false
                 gapAction = .keep
                 i += 1
@@ -152,8 +152,4 @@ enum SpokenPunctuationFormatter {
         }
     }
 
-    private static func capitalizedFirst(_ word: String) -> String {
-        guard let first = word.first else { return word }
-        return first.uppercased() + word.dropFirst()
-    }
 }

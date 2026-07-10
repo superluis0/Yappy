@@ -32,8 +32,3 @@ identifier_name:
 type_body_length:
   warning: 300
   error: 500
-
-# Allow standard comment format at file header
-file_header:
-  disabled_rules:
-    - trailing_whitespace

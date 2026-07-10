@@ -122,6 +122,17 @@ final class GrokAskClient: @unchecked Sendable {
 
     // MARK: - Turns
 
+    /// Whether attempt 0 should be retried with legacy CLI flags.
+    /// True only on a quick, silent failure (non-zero exit, no events, <5s, not cancelled).
+    static func shouldRetryWithLegacyArgs(
+        exitStatus: Int32,
+        sawAnyEvent: Bool,
+        elapsed: Double,
+        wasCancelled: Bool
+    ) -> Bool {
+        exitStatus != 0 && !sawAnyEvent && elapsed < 5.0 && !wasCancelled
+    }
+
     /// Starts a research turn. `--permission-mode plan` keeps it read-only:
     /// web search + citation, no file or system mutation.
     /// The caller supplies the user prompt and optional system override separately.
@@ -154,10 +165,12 @@ final class GrokAskClient: @unchecked Sendable {
             )
 
             if attempt == 0,
-               result.exitStatus != 0,
-               !result.sawAnyEvent,
-               result.elapsed < 5.0,
-               !result.wasCancelled {
+               Self.shouldRetryWithLegacyArgs(
+                   exitStatus: result.exitStatus,
+                   sawAnyEvent: result.sawAnyEvent,
+                   elapsed: result.elapsed,
+                   wasCancelled: result.wasCancelled
+               ) {
                 continue
             }
 
@@ -247,6 +260,7 @@ final class GrokAskClient: @unchecked Sendable {
         do {
             try process.run()
         } catch {
+            VLog.grok("process.run failed: \(error.localizedDescription)")
             return TurnResult(sawAnyEvent: false, exitStatus: -1, wasCancelled: false, sawEnd: false, elapsed: CACurrentMediaTime() - spawnedAt)
         }
         startStderrDrain(stderr.fileHandleForReading)
@@ -259,21 +273,12 @@ final class GrokAskClient: @unchecked Sendable {
     /// Grok logs to stderr. Drain it (an undrained 64 KB pipe blocks the child)
     /// and surface it for diagnostics.
     private func startStderrDrain(_ handle: FileHandle) {
-        Task.detached(priority: .utility) { [weak self] in
-            var buffer = Data()
-            while !Task.isCancelled {
-                let chunk = handle.availableData
-                if chunk.isEmpty { break }
-                buffer.append(chunk)
-                while let newline = buffer.firstIndex(of: 0x0A) {
-                    let line = buffer.subdata(in: buffer.startIndex..<newline)
-                    buffer.removeSubrange(buffer.startIndex...newline)
-                    if VLog.contentLoggingEnabled,
-                       let text = String(data: line, encoding: .utf8), !text.isEmpty {
-                        VLog.grok("stderr: \(text.prefix(300))")
-                    }
-                }
-                _ = self  // keep weak capture alive for cancellation semantics
+        // Fire-and-forget (no stored task): this client has no cancel path for the
+        // drain; the loop ends when the pipe closes (availableData empty).
+        _ = makeStderrDrain(handle) { line in
+            if VLog.contentLoggingEnabled,
+               let text = String(data: line, encoding: .utf8), !text.isEmpty {
+                VLog.grok("stderr: \(text.prefix(300))")
             }
         }
     }
@@ -370,13 +375,5 @@ final class GrokAskClient: @unchecked Sendable {
                 ))
             }
         }
-    }
-}
-
-private extension NSLock {
-    func withLock<T>(_ body: () throws -> T) rethrows -> T {
-        lock()
-        defer { unlock() }
-        return try body()
     }
 }

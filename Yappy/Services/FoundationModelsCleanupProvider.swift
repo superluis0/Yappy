@@ -295,7 +295,7 @@ actor FoundationModelsCleanupProvider: CleanupProvider {
         } catch {
             // Best-effort: log in debug builds; callers handle nil / original text.
 #if DEBUG
-            print("[FoundationModelsCleanupProvider] generation error: \(error)")
+            VLog.app("cleanup generation error: \(error.localizedDescription)")
 #endif
             return nil
         }

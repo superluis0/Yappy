@@ -120,7 +120,7 @@ enum SpokenListFormatter {
             let end = index + 1 < run.count ? run[index + 1].matchStart : ns.length
             guard marker.contentStart < end else { continue }
             let raw = ns.substring(with: NSRange(location: marker.contentStart, length: end - marker.contentStart))
-            let item = capitalizeFirst(trimItem(raw))
+            let item = trimItem(raw).capitalizedFirstCharacter()
             guard !item.isEmpty else { continue }
             lines.append("\(marker.value). \(item)")
         }
@@ -139,11 +139,6 @@ enum SpokenListFormatter {
             result = result.trimmingCharacters(in: .whitespaces)
         }
         return result
-    }
-
-    private static func capitalizeFirst(_ s: String) -> String {
-        guard let first = s.first else { return s }
-        return first.uppercased() + s.dropFirst()
     }
 
     private static func hasLetter(in ns: NSString, from: Int, to: Int) -> Bool {
@@ -229,7 +224,7 @@ enum SpokenBulletFormatter {
             let end = index + 1 < markers.count ? markers[index + 1].matchStart : ns.length
             guard marker.contentStart < end else { continue }
             let raw = ns.substring(with: NSRange(location: marker.contentStart, length: end - marker.contentStart))
-            let item = capitalizeFirst(trimItem(raw))
+            let item = trimItem(raw).capitalizedFirstCharacter()
             guard !item.isEmpty else { continue }
             lines.append("- \(item)")
         }
@@ -248,8 +243,4 @@ enum SpokenBulletFormatter {
         return result
     }
 
-    private static func capitalizeFirst(_ s: String) -> String {
-        guard let first = s.first else { return s }
-        return first.uppercased() + s.dropFirst()
-    }
 }

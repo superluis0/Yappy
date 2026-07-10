@@ -45,6 +45,23 @@ enum WhatsNew {
     /// announcing; upgraders from any earlier version see the entry for the
     /// version they land on.
     static let entries: [String: Entry] = [
+        "2.8.0": Entry(
+            version: "2.8.0",
+            headline: "It picks up right where you left off.",
+            highlights: [
+                Highlight(icon: "arrow.triangle.merge",
+                          title: "Resume mid-sentence",
+                          detail: "Let go of the hotkey mid-thought, press it again, and keep talking. Yappy joins the pieces into one clean sentence — no stray period, no random capital — using on-device judgment that never leaves your Mac."),
+                Highlight(icon: "clock",
+                          title: "Times land as times",
+                          detail: "“Seven thirty AM” arrives as 7:30 AM even when the speech model writes it oddly. Deterministic, never a guess."),
+                Highlight(icon: "lock.fill",
+                          title: "Secure fields stay secret",
+                          detail: "Password and other secure inputs now skip AI cleanup and history entirely — dictate into them with confidence."),
+                Highlight(icon: "speaker.wave.2.fill",
+                          title: "Answers aloud, minus the footnotes",
+                          detail: "Read-aloud now skips citation links and source lists, so you hear the answer, not the bibliography."),
+            ]),
         "2.6": Entry(
             version: "2.6",
             headline: "Answers can speak now.",

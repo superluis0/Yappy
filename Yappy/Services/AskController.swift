@@ -21,7 +21,7 @@ enum AskBackend: String, CaseIterable, Identifiable, Sendable {
     var id: String { rawValue }
     var displayName: String {
         switch self {
-        case .codex: "Codex (gpt-5.5)"
+        case .codex: "Codex (\(CodexModel.id))"
         case .grok: "Grok"
         }
     }
@@ -907,7 +907,7 @@ final class AskController: ObservableObject {
     /// Model badge label snapshotted at dispatch — not read from live settings later.
     private func modelLabel(for backend: AskBackend) -> String {
         switch backend {
-        case .codex: "gpt-5.5"
+        case .codex: CodexModel.id
         case .grok: grokModel.displayName
         }
     }
@@ -1170,13 +1170,11 @@ final class AskController: ObservableObject {
     /// fetches are the only tools an Ask turn is allowed to touch.
     nonisolated private static func isResearchTool(_ title: String) -> Bool {
         let lowered = title.lowercased()
-        return lowered.contains("web") || lowered.contains("search") || lowered.contains("fetch")
+        return ResearchToolKeywords.contains { lowered.contains($0) }
     }
 
     private static func grokToolStep(title: String, completed: Bool) -> (AskRunStepKind, String) {
-        let lower = title.lowercased()
-        let isSearch = lower.contains("web") || lower.contains("search") || lower.contains("fetch")
-        if isSearch {
+        if isResearchTool(title) {
             return (.search, completed ? "Searched the web" : "Searching the web")
         }
         return (.tool, title)
@@ -1217,12 +1215,6 @@ final class AskController: ObservableObject {
         r.appendStep(title, state: failed ? .failed : .completed, kind: kind)
     }
 
-    private func setRunningStepDetail(kind: AskRunStepKind, detail: String, in r: inout AskRun) {
-        if let index = r.steps.lastIndex(where: { $0.kind == kind && $0.state == .running }) {
-            r.steps[index].detail = detail
-        }
-    }
-
     private func completeRunningSteps(in r: inout AskRun) {
         for index in r.steps.indices where r.steps[index].state == .running {
             if r.steps[index].kind == .thinking {
@@ -1260,10 +1252,6 @@ final class AskController: ObservableObject {
             .replacingOccurrences(of: "\n", with: " ")
             .trimmingCharacters(in: .whitespacesAndNewlines)
         return collapsed.count > limit ? String(collapsed.prefix(limit)) + "…" : collapsed
-    }
-
-    private static func shortCommand(_ command: String, limit: Int = 48) -> String {
-        "\u{201C}\(oneLine(command, limit: limit))\u{201D}"
     }
 
     // MARK: - Completion

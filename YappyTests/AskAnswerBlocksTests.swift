@@ -323,6 +323,48 @@ final class AskAnswerBlocksTests: XCTestCase {
         XCTAssertEqual(AskAnswerBlock.speakableText(from: text), "The launch is Monday with a backup Tuesday.")
     }
 
+    func testSpeakableStripsGrokLinkClusterParenthetical() {
+        // Grok 4.5 cites as a parenthetical group of bare markdown links (no "Source:"/"citing").
+        let text = "Chiropractic was founded in 1895. ([Wikipedia](https://en.wikipedia.org/wiki/Chiropractic); [Palmer College](https://www.palmer.edu))"
+        XCTAssertEqual(AskAnswerBlock.speakableText(from: text), "Chiropractic was founded in 1895.")
+    }
+
+    func testSpeakableStripsGrokSingleLinkClusterParenthetical() {
+        let text = "Mars averages 140 million miles away. ([Space.com](https://space.com/mars))"
+        XCTAssertEqual(AskAnswerBlock.speakableText(from: text), "Mars averages 140 million miles away.")
+    }
+
+    func testSpeakableStripsGrokClusterWithParenInURL() {
+        // Wikipedia disambiguation URLs contain parens; the cluster must still fully strip
+        // (no stray ")" left behind for TTS to stumble over).
+        let text = "Mercury is the smallest planet. ([Wikipedia](https://en.wikipedia.org/wiki/Mercury_(planet)))"
+        XCTAssertEqual(AskAnswerBlock.speakableText(from: text), "Mercury is the smallest planet.")
+    }
+
+    func testSpeakableKeepsParentheticalThatIsNotPurelyLinks() {
+        // A parenthetical containing real prose must survive (only its link is normalized),
+        // so the citation-cluster rule must not over-fire.
+        let text = "See the chart (details in [figure 2](https://x.com/fig) below)."
+        XCTAssertEqual(AskAnswerBlock.speakableText(from: text), "See the chart (details in figure 2 below).")
+    }
+
+    func testSpeakableStripsGrokTrailingPhraseLinkPointer() {
+        // Grok often ends with a "<phrase>: [link]." pointer and no "Source:" keyword.
+        let text = "The final is July 19. Full fixtures and results: [FIFA](https://www.fifa.com/wc2026)."
+        XCTAssertEqual(AskAnswerBlock.speakableText(from: text), "The final is July 19.")
+    }
+
+    func testSpeakableStripsGrokTrailingPointerAsOwnParagraph() {
+        let text = "Argentina topped the group.\n\nFull results: [ESPN](https://espn.com/wc)."
+        XCTAssertEqual(AskAnswerBlock.speakableText(from: text), "Argentina topped the group.")
+    }
+
+    func testSpeakableKeepsColonClauseWithoutALink() {
+        // A colon clause that isn't a citation (no link after the colon) must be kept.
+        let text = "Note: bring an umbrella."
+        XCTAssertEqual(AskAnswerBlock.speakableText(from: text), "Note: bring an umbrella.")
+    }
+
     func testSpeakableKeepsWordSourceInOrdinaryProse() {
         // No colon, not a citation — must be untouched.
         let text = "The source of the Nile is Lake Victoria."

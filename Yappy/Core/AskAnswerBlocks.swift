@@ -550,6 +550,18 @@ enum AskAnswerBlock: Equatable {
         var output = text
         output = replace(output, pattern: #"(?im)(?:^|(?<=[.!?]))[ \t]*\*{0,2}sources?\*{0,2}[ \t]*:.*$"#, template: "")
         output = replace(output, pattern: #"(?i)[ \t]*\((?:sources?[ \t]*:|citing\b)[^)]*\)"#, template: "")
+        // Grok-style citation cluster: a parenthetical whose entire content is just
+        // markdown-link sources with no keyword, e.g. "([Wikipedia](u); [Palmer](u))".
+        // (Composer used "Source: …"/"(citing …)", handled above; Grok 4.5 omits the
+        // keyword, so match the shape instead.) Runs before the link→label conversion
+        // so the whole cluster is removed. Any non-link text inside the parens fails
+        // the match, so real parentheticals like "(see [fig 2](u) below)" are kept.
+        output = replace(output, pattern: #"[ \t]*\((?:[ \t]*\[[^\]]+\]\((?:[^()]|\([^()]*\))*\)[ \t]*[;,]?)+[ \t]*\)"#, template: "")
+        // Grok-style trailing pointer: a "<phrase>: [link](u)" clause ending the line,
+        // e.g. "Full fixtures and results: [FIFA](u)." — a citation with no "Source:"
+        // keyword. Requires the colon to be followed only by markdown link(s), so an
+        // ordinary "Note: bring an umbrella." (no link after the colon) is left alone.
+        output = replace(output, pattern: #"(?im)(?:^|(?<=[.!?]))[ \t]*[^\n.!?]*?:[ \t]*(?:\[[^\]]+\]\((?:[^()]|\([^()]*\))*\)[ \t;,]*)+\.?[ \t]*$"#, template: "")
         output = replace(output, pattern: #"\[\^?\d{1,3}\]"#, template: "")
         output = replace(output, pattern: #"[ \t]+([.,;:!?])"#, template: "$1")
         output = replace(output, pattern: #"[ \t]{2,}"#, template: " ")

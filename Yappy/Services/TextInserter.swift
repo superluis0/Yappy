@@ -8,6 +8,110 @@ import Cocoa
 import CoreGraphics
 import os
 
+/// Decides whether a fresh dictation continues the sentence already at the
+/// caret, and if so lowercases its sentence-start capital. Parakeet (and the
+/// cleanup model) capitalize the first word of every dictation as a new
+/// sentence — but when the user released the hotkey mid-sentence and resumed,
+/// that capital is wrong ("I have a call — Tomorrow at seven"). Pure logic,
+/// deliberately conservative: it only ever lowercases a plainly sentence-cased
+/// word, and only when the character before the caret plainly continues a
+/// sentence.
+enum ContinuationCasing {
+
+    /// True when text ending with `preceding` is mid-sentence at its end — i.e.
+    /// new text typed right after it continues the sentence rather than starting
+    /// one. Whitelist, not blacklist: only a letter, digit, or comma (after any
+    /// trailing spaces) counts as continuing. A newline, sentence terminator,
+    /// closing quote, empty window — anything else — does not.
+    static func continuesSentence(after preceding: String) -> Bool {
+        var trailing = Substring(preceding)
+        while let last = trailing.last, last.isWhitespace {
+            if last.isNewline { return false }   // new line = new block, keep the capital
+            trailing = trailing.dropLast()
+        }
+        guard let last = trailing.last else { return false }
+        return last.isLetter || last.isNumber || last == ","
+    }
+
+    /// Words that essentially never end an English sentence — articles,
+    /// conjunctions, prepositions, possessive determiners. When a dictation
+    /// ends with one of these followed by a period, that period was appended
+    /// by the cleanup model to a fragment cut off mid-sentence ("tomorrow at."),
+    /// not dictated as a sentence end. Deliberately excludes anything that can
+    /// legitimately close a sentence ("I will.", "You should.", "I think so.").
+    private static let midSentenceWords: Set<String> = [
+        // articles
+        "the", "a", "an",
+        // conjunctions
+        "and", "or", "but", "nor",
+        // prepositions
+        "of", "at", "to", "with", "for", "from", "by", "into", "onto",
+        "about", "than", "as", "per", "via", "upon", "during",
+        "between", "among", "toward", "towards", "versus",
+        // possessive determiners
+        "my", "your", "their", "our",
+    ]
+
+    /// True when a previous insertion's text could be the LEFT half of a
+    /// continuation join: it ends with a single period (not an ellipsis, and
+    /// not "?"/"!" — a question or exclamation is always a finished sentence).
+    static func isJoinEligibleTail(_ text: String) -> Bool {
+        guard text.hasSuffix(".") else { return false }
+        return !text.dropLast().hasSuffix(".")
+    }
+
+    /// Words that open a standalone reply or a change of direction rather than
+    /// a mid-thought continuation ("Nope, still not working", "Okay, next
+    /// topic"). A resume starting with one of these never joins via the
+    /// prosody arm — the speaker is answering or pivoting, not continuing.
+    private static let standaloneReplyWords: Set<String> = [
+        "no", "nope", "yes", "yeah", "yep", "okay", "ok", "sure",
+        "thanks", "hey", "hi", "hello", "wait", "actually", "anyway",
+        "scratch", "never",
+    ]
+
+    /// True when `text` reads as the start of a standalone reply/pivot rather
+    /// than a continuation of an interrupted thought.
+    static func startsAsStandaloneReply(_ text: String) -> Bool {
+        let firstWord = text.drop(while: { !$0.isLetter })
+            .prefix(while: { $0.isLetter })
+        guard !firstWord.isEmpty else { return false }
+        return standaloneReplyWords.contains(firstWord.lowercased())
+    }
+
+    /// True when `text` ends with a period that must have been appended to a
+    /// mid-sentence fragment: the word before it is one that can't end a
+    /// sentence. ("…tomorrow at." → true; "…tomorrow at 7." → false;
+    /// "I will." → false.)
+    static func endsWithMidSentencePeriod(_ text: String) -> Bool {
+        guard text.hasSuffix(".") else { return false }
+        let beforePeriod = text.dropLast()
+        guard !beforePeriod.hasSuffix(".") else { return false }   // ellipsis / ".."
+        let wordStart = beforePeriod.lastIndex(where: { !$0.isLetter })
+            .map { beforePeriod.index(after: $0) } ?? beforePeriod.startIndex
+        let word = beforePeriod[wordStart...]
+        guard !word.isEmpty else { return false }
+        return midSentenceWords.contains(word.lowercased())
+    }
+
+    /// Lowercases `text`'s first letter when the first word is plainly
+    /// sentence-cased. Leaves everything else alone: "I" and its contractions,
+    /// acronyms ("HTTP"), mixed-case names ("McRae"), words in `protected`
+    /// (user-dictionary terms whose canonical spelling is capitalized), and
+    /// text that doesn't start with an uppercase letter at all.
+    static func decapitalized(_ text: String, protecting protected: Set<String> = []) -> String {
+        guard let first = text.first, first.isUppercase else { return text }
+        let word = text.prefix(while: { $0.isLetter || $0 == "'" || $0 == "\u{2019}" })
+        if word == "I" || word.hasPrefix("I'") || word.hasPrefix("I\u{2019}") { return text }
+        if protected.contains(String(word)) { return text }
+        // Sentence-cased only: a single leading capital, all lowercase after.
+        guard word.dropFirst().allSatisfy({ $0.isLowercase || $0 == "'" || $0 == "\u{2019}" }) else {
+            return text
+        }
+        return first.lowercased() + text.dropFirst()
+    }
+}
+
 /// Inserts text at the cursor of the frontmost app by pasting (Cmd+V), then
 /// restores the user's clipboard. Pasting works in Electron apps, web views,
 /// and terminals where direct accessibility insertion does not.
@@ -83,6 +187,15 @@ final class TextInserter {
     /// we added), used by voice editing to select it back and delete/replace it.
     private(set) var lastInsertedText: String?
     private var lastInsertionDate: Date?
+    /// Whether the last insertion's PRE-cleanup transcript ended without terminal
+    /// punctuation — the ASR's prosody signal that the speaker trailed off
+    /// mid-thought (the cleanup model appends the period regardless). Feeds the
+    /// continuation decision for the next dictation. Kept in `recordInsertion`
+    /// so it can never describe a different insertion than `lastInsertedText`.
+    private(set) var lastInsertionRawEndedMidThought = false
+    /// When the last insertion landed — exposed so the dictation pipeline can
+    /// measure the press-to-resume gap for the continuation decision.
+    var lastInsertionAt: Date? { lastInsertionDate }
     /// The fallback is only trusted briefly; after this the cursor has likely
     /// moved to a different field.
     private let fallbackValidityWindow: TimeInterval = 45
@@ -116,22 +229,91 @@ final class TextInserter {
 
     // MARK: - Public
 
+    /// Canonical spellings from the user's dictionary that start with a capital
+    /// ("Cigna", "Xcode") — never lowercased by the continuation adjustment.
+    /// Kept in sync by the AppDelegate's dictionary sink.
+    var protectedCapitalizedWords: Set<String> = []
+
+    /// The tail of our last insertion when it's still eligible for a
+    /// continuation join: it ended with a single period and the insertion is
+    /// recent enough to trust. The dictation pipeline reads this to decide
+    /// whether to consult the continuation judge; nil means "don't bother".
+    /// (The insert-time repair re-verifies the caret against this text — this
+    /// accessor alone never authorizes an edit.)
+    var pendingContinuationTail: String? {
+        guard let last = lastInsertedText,
+              ContinuationCasing.isJoinEligibleTail(last),
+              let when = lastInsertionDate,
+              Date().timeIntervalSince(when) < fallbackValidityWindow else { return nil }
+        return String(last.suffix(120))
+    }
+
     /// - Parameter allowLeadingSpace: when false, never prepends a separating
-    ///   space (e.g. canned shortcut text the user wants inserted verbatim).
-    func insert(text: String, allowLeadingSpace: Bool = true) throws {
+    ///   space (e.g. canned shortcut text the user wants inserted verbatim —
+    ///   which also skips the continuation-casing adjustment).
+    /// - Parameter joinContinuation: when true, the dictation pipeline has
+    ///   decided (deterministically or via the on-device continuation judge)
+    ///   that this text continues the previous insertion's sentence — repair
+    ///   the trailing period without requiring a mid-sentence function word.
+    ///   The caret is still AX-verified before any repair.
+    /// - Parameter rawEndedMidThought: whether this dictation's PRE-cleanup
+    ///   transcript lacked terminal punctuation (ASR prosody said the speaker
+    ///   trailed off) — remembered for the NEXT dictation's continuation
+    ///   decision. Irrelevant to (and unused by) this insertion itself.
+    func insert(text: String, allowLeadingSpace: Bool = true,
+                joinContinuation: Bool = false, rawEndedMidThought: Bool = false) throws {
         _ = Self.axTimeoutConfigured
         guard !text.isEmpty else { return }
         guard AXIsProcessTrusted() else {
             throw InsertionError.accessibilityPermissionDenied
         }
 
+        // One AX read of the text just before the caret feeds both decisions
+        // below (spacing and casing) — no second round-trip.
+        var window = precedingWindow()
+
+        // Continuation repair: when OUR previous insertion ended with a period
+        // appended to a mid-sentence fragment ("tomorrow at.") and the user
+        // resumed dictating at that same caret, delete that period before
+        // inserting — the resumed text then joins the sentence it always
+        // belonged to. Two ways in: deterministically (the word before the
+        // period can't end a sentence), or via `joinContinuation` (the pipeline
+        // consulted the on-device judge with both fragments in view). Either
+        // way the text at the caret must verifiably be our own insertion's tail.
+        if allowLeadingSpace,
+           !ContinuationCasing.startsAsStandaloneReply(text),
+           canRepairMidSentencePeriod(window: window, requireMidSentenceWord: !joinContinuation) {
+            postKey(0x33)   // backspace over our own spurious period
+            if let last = lastInsertedText {
+                let trimmed = String(last.dropLast())
+                lastInsertedText = trimmed
+                lastInsertedTrailingCharacter = trimmed.last
+            }
+            switch window {
+            case .text(let string):
+                let repaired = String(string.dropLast())
+                window = repaired.isEmpty ? .unknown : .text(repaired)
+            case .unknown, .startOfField:
+                if let last = lastInsertedText {
+                    window = .text(String(last.suffix(Self.precedingWindowLength)))
+                }
+            }
+            Self.logger.notice("Continuation repair: removed our mid-sentence period before resumed dictation")
+        }
+
+        // A dictation resumed mid-sentence (hotkey released and re-pressed)
+        // arrives sentence-capitalized; lowercase it when the caret plainly
+        // continues a sentence. Verbatim insertions are never adjusted.
+        let adjusted = allowLeadingSpace ? continuationAdjusted(text, window: window) : text
+
         // Each transcript is trimmed, so a second dictation would otherwise land
         // flush against the previous word ("box.that"). Add a separating space
         // when the cursor sits right after a word.
-        let payload = (allowLeadingSpace && needsLeadingSpace(before: text)) ? " " + text : text
+        let payload = (allowLeadingSpace && needsLeadingSpace(before: adjusted, window: window))
+            ? " " + adjusted : adjusted
         let frontmost = NSWorkspace.shared.frontmostApplication?.localizedName ?? "unknown"
         Self.logger.notice("Insert: \(payload.count, privacy: .public) chars -> frontmost '\(frontmost, privacy: .public)'; secureInput=\(IsSecureEventInputEnabled(), privacy: .public)")
-        recordInsertion(of: payload)
+        recordInsertion(of: payload, rawEndedMidThought: rawEndedMidThought)
         try pasteText(payload)
     }
 
@@ -141,10 +323,11 @@ final class TextInserter {
         postKey(0x24) // Return / Enter
     }
 
-    private func recordInsertion(of payload: String) {
+    private func recordInsertion(of payload: String, rawEndedMidThought: Bool = false) {
         lastInsertedTrailingCharacter = payload.last
         lastInsertedText = payload
         lastInsertionDate = Date()
+        lastInsertionRawEndedMidThought = rawEndedMidThought
         // A fresh insertion re-establishes the context the fallbacks reason
         // about; anything the user does after this re-invalidates it.
         contextInvalidatedByUserInput = false
@@ -154,6 +337,7 @@ final class TextInserter {
         lastInsertedTrailingCharacter = nil
         lastInsertedText = nil
         lastInsertionDate = nil
+        lastInsertionRawEndedMidThought = false
     }
 
     /// Puts `payload` on the pasteboard, pastes it, and restores the user's
@@ -313,7 +497,7 @@ final class TextInserter {
         return actual.location == target.location && actual.length == target.length
     }
 
-    // MARK: - Leading-space Decision
+    // MARK: - Preceding-context Decisions (spacing + continuation casing)
 
     private enum PrecedingContext {
         case startOfField          // caret at the very start — no space
@@ -321,19 +505,96 @@ final class TextInserter {
         case unknown               // app doesn't expose its text to AX
     }
 
+    /// A short stretch of text immediately before the caret — one AX read shared
+    /// by the leading-space decision (its last character) and the continuation-
+    /// casing decision (its last non-space character).
+    private enum PrecedingWindow {
+        case startOfField
+        case text(String)          // 1...windowLength chars ending at the caret
+        case unknown
+    }
+
+    private static let precedingWindowLength = 8
+
+    private func precedingWindow() -> PrecedingWindow {
+        guard let focus = focusedCaret() else { return .unknown }
+        guard focus.caret.location > 0 else { return .startOfField }
+        let length = min(focus.caret.location, Self.precedingWindowLength)
+        let range = CFRange(location: focus.caret.location - length, length: length)
+        guard let string = string(in: range, of: focus.element), !string.isEmpty else {
+            return .unknown
+        }
+        return .text(string)
+    }
+
+    /// Whether the caret verifiably sits right after our own last insertion AND
+    /// that insertion ended with a repairable period. `requireMidSentenceWord`
+    /// demands the deterministic signal (the word before the period can't end a
+    /// sentence); the judge-approved path drops that requirement but every
+    /// trust gate still applies. AX-capable apps verify by matching the text
+    /// before the caret against the insertion's tail; opaque apps fall back to
+    /// the last-insertion memory under the same trust gates as every other
+    /// opaque fallback here.
+    private func canRepairMidSentencePeriod(window: PrecedingWindow,
+                                            requireMidSentenceWord: Bool) -> Bool {
+        guard let last = lastInsertedText,
+              ContinuationCasing.isJoinEligibleTail(last),
+              !requireMidSentenceWord || ContinuationCasing.endsWithMidSentencePeriod(last),
+              let when = lastInsertionDate,
+              Date().timeIntervalSince(when) < fallbackValidityWindow else { return false }
+        switch window {
+        case .startOfField:
+            return false
+        case .text(let string):
+            // The text before the caret must BE our insertion's tail — an exact
+            // match over the overlap, so we never delete a character we didn't
+            // put there.
+            let overlap = min(string.count, last.count)
+            guard overlap > 0 else { return false }
+            return string.suffix(overlap) == last.suffix(overlap)
+        case .unknown:
+            return !contextInvalidatedByUserInput
+        }
+    }
+
+    /// Lowercases a resumed dictation's sentence-start capital when the caret
+    /// plainly continues a sentence. Same trust model as the leading-space
+    /// fallback: prefer the real text before the caret; in opaque apps fall back
+    /// to our last insertion, but only while that memory is still valid.
+    private func continuationAdjusted(_ text: String, window: PrecedingWindow) -> String {
+        let preceding: String
+        switch window {
+        case .startOfField:
+            return text
+        case .text(let string):
+            preceding = string
+        case .unknown:
+            guard !contextInvalidatedByUserInput,
+                  let last = lastInsertedText,
+                  let when = lastInsertionDate,
+                  Date().timeIntervalSince(when) < fallbackValidityWindow else {
+                return text
+            }
+            preceding = String(last.suffix(Self.precedingWindowLength))
+        }
+        guard ContinuationCasing.continuesSentence(after: preceding) else { return text }
+        return ContinuationCasing.decapitalized(text, protecting: protectedCapitalizedWords)
+    }
+
     /// Whether to prepend a space so a new dictation doesn't abut the previous
     /// word. Prefers the actual character before the caret (accessibility API);
     /// falls back to the last character we inserted for apps that don't expose
     /// their text (Electron, many web views).
-    private func needsLeadingSpace(before text: String) -> Bool {
+    private func needsLeadingSpace(before text: String, window: PrecedingWindow) -> Bool {
         guard let first = text.first, !first.isWhitespace else { return false }
         // Never put a space before attaching punctuation.
         if ".,!?;:)]}".contains(first) { return false }
 
-        switch precedingContext() {
+        switch window {
         case .startOfField:
             return false
-        case .character(let previous):
+        case .text(let string):
+            guard let previous = string.last else { return false }
             return shouldSpace(after: previous)
         case .unknown:
             // Opaque app (Google Docs exposes no focused element at all): only

@@ -130,7 +130,7 @@ final class CodexAskClient: @unchecked Sendable {
         try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
 
         let config = """
-        model = "gpt-5.5"
+        model = "\(CodexModel.id)"
         model_reasoning_effort = "low"
         approval_policy = "never"
         sandbox_mode = "read-only"
@@ -311,7 +311,7 @@ final class CodexAskClient: @unchecked Sendable {
             [
                 "threadId": thread,
                 "input": [["type": "text", "text": transcript]],
-                "model": "gpt-5.5",
+                "model": CodexModel.id,
                 "effort": effort
             ]
         }
@@ -360,7 +360,7 @@ final class CodexAskClient: @unchecked Sendable {
         let threadResponse = try await request(
             method: "thread/start",
             params: [
-                "model": "gpt-5.5",
+                "model": CodexModel.id,
                 "cwd": workspace.path,
                 "approvalPolicy": "never",
                 "sandbox": "read-only",
@@ -461,19 +461,8 @@ final class CodexAskClient: @unchecked Sendable {
 
     private func startReader(_ handle: FileHandle) {
         readTask?.cancel()
-        readTask = Task.detached(priority: .userInitiated) { [weak self] in
-            var buffer = Data()
-            while !Task.isCancelled {
-                let chunk = handle.availableData
-                if chunk.isEmpty { break }
-                buffer.append(chunk)
-                while let newline = buffer.firstIndex(of: 0x0A) {
-                    let line = buffer.subdata(in: buffer.startIndex..<newline)
-                    buffer.removeSubrange(buffer.startIndex...newline)
-                    guard !line.isEmpty else { continue }
-                    self?.handleLine(line)
-                }
-            }
+        readTask = makeLineReader(handle) { [weak self] line in
+            self?.handleLine(line)
         }
     }
 
@@ -481,21 +470,10 @@ final class CodexAskClient: @unchecked Sendable {
     /// the child) and surface it for diagnostics.
     private func startStderrDrain(_ handle: FileHandle) {
         stderrTask?.cancel()
-        stderrTask = Task.detached(priority: .utility) { [weak self] in
-            var buffer = Data()
-            while !Task.isCancelled {
-                let chunk = handle.availableData
-                if chunk.isEmpty { break }
-                buffer.append(chunk)
-                while let newline = buffer.firstIndex(of: 0x0A) {
-                    let line = buffer.subdata(in: buffer.startIndex..<newline)
-                    buffer.removeSubrange(buffer.startIndex...newline)
-                    if VLog.contentLoggingEnabled,
-                       let text = String(data: line, encoding: .utf8), !text.isEmpty {
-                        VLog.codex("stderr: \(text.prefix(300))")
-                    }
-                }
-                _ = self  // keep weak capture alive for cancellation semantics
+        stderrTask = makeStderrDrain(handle) { line in
+            if VLog.contentLoggingEnabled,
+               let text = String(data: line, encoding: .utf8), !text.isEmpty {
+                VLog.codex("stderr: \(text.prefix(300))")
             }
         }
     }
@@ -605,13 +583,5 @@ final class CodexAskClient: @unchecked Sendable {
         if let string = value as? String, !string.isEmpty { return string }
         if let number = value as? NSNumber { return number.stringValue }
         return nil
-    }
-}
-
-private extension NSLock {
-    func withLock<T>(_ body: () throws -> T) rethrows -> T {
-        lock()
-        defer { unlock() }
-        return try body()
     }
 }

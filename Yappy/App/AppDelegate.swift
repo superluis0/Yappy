@@ -30,6 +30,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private let audioRecorder = AudioRecorder()
     private let textInserter = TextInserter()
+    private let continuationJudge = ContinuationJudge()
     private let soundPlayer = SoundPlayer()
     private let ttsClient = TTSSpeakClient()
     private lazy var cleanupCoordinator = CleanupCoordinator(
@@ -172,6 +173,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Launch
 
+    /// True when the process was launched merely as the XCTest host (via
+    /// `xcodebuild test`) rather than as the real app. xcodebuild sets
+    /// `XCTestConfigurationFilePath` in the host process's environment. In this
+    /// mode the unit tests exercise pure logic and don't need the app's
+    /// launch-time warm-ups; skipping them keeps test runs fast and — critically
+    /// — avoids loading CoreML models (speech + cleanup) onto the Neural Engine,
+    /// whose background compile otherwise races the test bundle's `exit()` and
+    /// segfaults in Apple's ANECompiler during teardown.
+    private var isRunningUnitTests: Bool {
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Show the Dock icon for the whole time Yappy is running (alongside the
         // menu bar item), not just while the main window is open.
@@ -226,6 +239,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Load the speech model in the background; show first-run UI if downloading.
         Task { @MainActor [weak self] in
             guard let self else { return }
+            // Under the XCTest host, skip every launch-time model warm-up: the
+            // unit tests don't need them, and loading a CoreML model onto the
+            // Neural Engine here races the test process's exit() and crashes in
+            // ANECompiler during teardown. (See isRunningUnitTests.)
+            guard !self.isRunningUnitTests else { return }
             let needsDownload = await self.warmUpShowingSetupIfNeeded()
             if needsDownload {
                 self.closeSetupWindowWhenReady()
@@ -303,12 +321,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             name: NSWorkspace.didActivateApplicationNotification, object: nil)
 
         // Build the recording pill now, while idle, so the first dictation shows
-        // it instantly instead of paying SwiftUI hosting-view construction.
-        DispatchQueue.main.async { [weak self] in self?.pillController.prewarm() }
-
-        // Warm the audio input HAL now too: the first AVAudioEngine input start is
+        // it instantly instead of paying SwiftUI hosting-view construction. Warm
+        // the audio input HAL now too: the first AVAudioEngine input start is
         // otherwise slow (the lag before the waveform appears on the first press).
-        DispatchQueue.main.async { [weak self] in self?.audioRecorder.prewarm() }
+        // Both are skipped under the XCTest host — the tests don't exercise them,
+        // and warming the mic hardware there is pointless and intrusive.
+        if !isRunningUnitTests {
+            DispatchQueue.main.async { [weak self] in self?.pillController.prewarm() }
+            DispatchQueue.main.async { [weak self] in self?.audioRecorder.prewarm() }
+        }
 
         startHotkeyMonitoring()
     }
@@ -540,6 +561,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let samples = audioRecorder.stopRecording()
         let duration = recordingStartTime.map { Date().timeIntervalSince($0) } ?? 0
+        // Press-to-resume gap: how long after the previous insertion landed did
+        // the user press to start THIS dictation? A tight gap (the finger came
+        // straight back down) is a strong continuation signal for the join
+        // decision below. nil when there's no prior insertion to resume.
+        let resumeGapSeconds: TimeInterval? = recordingStartTime.flatMap { start in
+            self.textInserter.lastInsertionAt.map { start.timeIntervalSince($0) }
+        }
         recordingStartTime = nil
         let bundleID = sessionBundleID
         let targetAppName = NSWorkspace.shared.frontmostApplication?.localizedName
@@ -740,13 +768,48 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // Whether the cleanup call below will actually reshape the words
                 // (vs. pass them through). Only then does the pill show the
                 // distinct "Polishing" sub-phase — mirrors the keep-warm condition.
-                let willPolish = (cleanupEnabled ?? self.settings.cleanupEnabled) && tone != .verbatim
-                if willPolish { self.ifCurrent(generation) { self.appState.beginPolishing() } }
-                let text = await self.cleanupCoordinator.cleanup(
-                    expanded, tone: tone, backtrack: self.settings.backtrackEnabled,
-                    cleanupEnabled: cleanupEnabled
-                )
-                self.appState.endPolishing()
+                // A secure field (password / secret) must never reach the on-device
+                // cleanup model or tone reshaping — paste the pre-cleanup text verbatim.
+                // History is already skipped for secure input below; this extends the same
+                // protection to model processing. IsSecureEventInputEnabled() is global
+                // (true if ANY app holds secure input, e.g. Terminal's Secure Keyboard
+                // Entry); erring toward verbatim in a secure context is the safe direction.
+                let secureInput = IsSecureEventInputEnabled()
+                let willPolish = (cleanupEnabled ?? self.settings.cleanupEnabled) && tone != .verbatim && !secureInput
+
+                // Continuation judge: when the previous insertion ended with a
+                // period and this dictation resumed at (presumably) the same
+                // caret, ask the on-device model — with BOTH fragments in view —
+                // whether the new text continues that sentence. Spawned BEFORE
+                // the cleanup await so the two model calls overlap (both run
+                // post-audio-teardown, honoring the no-ML-during-audio
+                // invariant); adds no wall-clock in the common case. Skipped for
+                // secure input and when the deterministic function-word repair
+                // will already fire at insert time.
+                let continuationTail = secureInput ? nil : self.textInserter.pendingContinuationTail
+                var judgeTask: Task<Bool?, Never>?
+                if let tail = continuationTail,
+                   !ContinuationCasing.endsWithMidSentencePeriod(tail),
+                   let firstChar = expanded.first, firstChar.isLetter || firstChar.isNumber {
+                    let newText = expanded
+                    judgeTask = Task { [weak self] in
+                        await self?.continuationJudge.shouldJoin(previousTail: tail, newText: newText) ?? nil
+                    }
+                }
+
+                let cleanupStartedAt = CACurrentMediaTime()
+                let text: String
+                if secureInput {
+                    text = expanded
+                } else {
+                    if willPolish { self.ifCurrent(generation) { self.appState.beginPolishing() } }
+                    text = await self.cleanupCoordinator.cleanup(
+                        expanded, tone: tone, backtrack: self.settings.backtrackEnabled,
+                        cleanupEnabled: cleanupEnabled
+                    )
+                    self.appState.endPolishing()
+                }
+                let cleanupMs = Int((CACurrentMediaTime() - cleanupStartedAt) * 1000)
 
                 // Escape pressed while polishing: drop the cleaned result before it
                 // lands. (Also covers the plain transcribe window when cleanup is off.)
@@ -775,12 +838,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // cheap AX read of the still-focused field at insert time — and
                 // gated behind the existing context-aware toggle. Multi-line and
                 // unknown fields keep the text unchanged.
+                let classifyStartedAt = CACurrentMediaTime()
                 let fieldKind = self.settings.contextAwareToneEnabled
                     ? FocusedFieldClassifier.classifyFocusedField()
                     : .unknown
-                let finalText = (fieldKind == .singleLine || fieldKind == .search)
+                let classifyMs = Int((CACurrentMediaTime() - classifyStartedAt) * 1000)
+                let finalText = (fieldKind == .singleLine || fieldKind == .search || fieldKind == .secure)
                     ? FocusedFieldClassifier.collapseToSingleLine(relisted)
                     : relisted
+
+                // Privacy-safe classification metric — app identity + enum outcomes ONLY
+                // (never the transcript, a URL, or a field label), so the .other/.unknown
+                // miss rate is measurable. Analyze: grep dictation-context ~/Library/Logs/Yappy/ask.log
+                VLog.store("dictation-context bundle=\(bundleID ?? "?") category=\(AppContextClassifier.category(forBundleID: bundleID)) field=\(fieldKind) contextAware=\(self.settings.contextAwareToneEnabled ? "on" : "off")")
 
                 // The pre-cleanup words, kept only when cleanup actually changed
                 // them — the raw transcript we can reveal in history and revert to
@@ -808,6 +878,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // past it we're committed. Idempotent; the defer is the backstop.
                 self.escapeInterceptor.stop()
 
+                // Resolve the continuation decision, strongest signal first:
+                // 1. Lowercase start — the ASR/cleanup itself declined to
+                //    sentence-case the resume, which only happens mid-sentence.
+                // 2. Prosody — the PREVIOUS dictation's raw transcript had no
+                //    terminal punctuation (the speaker audibly trailed off; the
+                //    period at the caret was appended by the cleanup model).
+                //    Guarded against short standalone replies on either side:
+                //    the previous text must be ≥3 words ("Yep" doesn't trail
+                //    off) and the resume must not open as a reply/pivot
+                //    ("Nope, …" answers; it doesn't continue).
+                // 3. The on-device judge — semantic tie-breaker, trusted only
+                //    on a tight press-to-resume gap (the finger came straight
+                //    back down) and bounded by a hard timeout.
+                // Anything else → today's deterministic behavior (the
+                // function-word repair still applies at insert time).
+                var joinContinuation = false
+                var joinReason = "none"
+                if let tail = continuationTail, let firstChar = finalText.first {
+                    if firstChar.isLowercase {
+                        joinContinuation = true
+                        joinReason = "lowercase"
+                    } else if self.textInserter.lastInsertionRawEndedMidThought,
+                              tail.split(whereSeparator: { $0.isWhitespace }).count >= 3,
+                              !ContinuationCasing.startsAsStandaloneReply(finalText) {
+                        joinContinuation = true
+                        joinReason = "prosody"
+                    } else if let task = judgeTask,
+                              let gap = resumeGapSeconds, gap < 1.8 {
+                        let judgeWaitStartedAt = CACurrentMediaTime()
+                        let verdict = await self.awaitContinuationVerdict(task)
+                        joinContinuation = verdict ?? false
+                        joinReason = verdict.map { $0 ? "judge-join" : "judge-new" } ?? "judge-abstain"
+                        // Privacy-safe: verdict + timing only, never the text.
+                        VLog.store("continuation-judge verdict=\(joinReason) wait_ms=\(Int((CACurrentMediaTime() - judgeWaitStartedAt) * 1000))")
+                    }
+                    VLog.store("continuation-decide reason=\(joinReason) gap_ms=\(resumeGapSeconds.map { Int($0 * 1000) } ?? -1)")
+                }
+
                 if !finalText.isEmpty {
                     // Record to history BEFORE inserting so a failed insert
                     // (accessibility revoked mid-session, event-synthesis failure)
@@ -827,7 +935,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     // Arm the "use what I said" safety net for the insertion that's
                     // about to land (whether or not history logging was skipped).
                     self.lastRawTranscript = rawTranscript
-                    try self.textInserter.insert(text: finalText)
+                    // Prosody memory for the NEXT dictation's join decision:
+                    // did THIS dictation's pre-cleanup transcript end without
+                    // terminal punctuation (the speaker trailed off)? Computed
+                    // on `expanded` so a spoken "period" — deliberate finality —
+                    // counts as terminal even before the cleanup model runs.
+                    let trimmedExpanded = expanded.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let rawEndedMidThought = trimmedExpanded.last.map { !".!?…".contains($0) } ?? false
+                    let insertStartedAt = CACurrentMediaTime()
+                    try self.textInserter.insert(text: finalText,
+                                                 joinContinuation: joinContinuation,
+                                                 rawEndedMidThought: rawEndedMidThought)
+                    let insertMs = Int((CACurrentMediaTime() - insertStartedAt) * 1000)
+                    // Phase-A latency telemetry: stage timings + input size, ints/enums ONLY
+                    // (never the transcript). Analyze: grep insert-timing ~/Library/Logs/Yappy/ask.log
+                    VLog.store("insert-timing cleanup_ms=\(cleanupMs) classify_ms=\(classifyMs) insert_ms=\(insertMs) words=\(expanded.split(whereSeparator: { $0.isWhitespace }).count) field=\(fieldKind) secure=\(secureInput ? 1 : 0)")
                     self.ifCurrent(generation) {
                         self.appState.lastDictationAt = Date()
                         self.playSuccessFeedback()
@@ -869,6 +991,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ifCurrent(generation) {
             appState.reset()
             pillController.hide()
+        }
+    }
+
+    /// Awaits the continuation judge's verdict, bounded so a slow model call can
+    /// never delay the insert: returns nil (deterministic fallback) on timeout.
+    /// The judge task was spawned before the cleanup await, so by the time this
+    /// runs it has usually already finished — the timeout is a backstop.
+    private func awaitContinuationVerdict(_ task: Task<Bool?, Never>,
+                                          timeoutNanoseconds: UInt64 = 1_500_000_000) async -> Bool? {
+        await withTaskGroup(of: Bool?.self) { group in
+            group.addTask { await task.value }
+            group.addTask {
+                try? await Task.sleep(nanoseconds: timeoutNanoseconds)
+                return nil
+            }
+            let first = await group.next() ?? nil
+            group.cancelAll()
+            return first
         }
     }
 
@@ -2111,6 +2251,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .sink { [weak self] terms in
                 self?.dictionaryReplacer = DictionaryReplacer(terms: terms)
                 self?.markDictionaryTermAddedIfNeeded(terms)
+                // Capitalized dictionary terms ("Cigna", "Xcode") are proper
+                // nouns the continuation-casing adjustment must never lowercase.
+                // Tokenized the same way ContinuationCasing.decapitalized extracts
+                // its first word (letters + apostrophes), so the lookups align.
+                self?.textInserter.protectedCapitalizedWords = Set(
+                    terms.compactMap { term in
+                        let firstWord = term.text.prefix(while: {
+                            $0.isLetter || $0 == "'" || $0 == "\u{2019}"
+                        })
+                        guard let first = firstWord.first, first.isUppercase else { return nil }
+                        return String(firstWord)
+                    }
+                )
             }
             .store(in: &cancellables)
 

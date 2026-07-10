@@ -50,6 +50,15 @@ final class AppContextClassifierTests: XCTestCase {
         XCTAssertEqual(FocusedFieldClassifier.kind(role: nil, subrole: nil), .unknown)
     }
 
+    func testSecureFieldMapsToSecure() {
+        // Reported as a subrole on a text field...
+        XCTAssertEqual(FocusedFieldClassifier.kind(role: "AXTextField", subrole: "AXSecureTextField"), .secure)
+        // ...or as the role itself, depending on the app — both must map to .secure.
+        XCTAssertEqual(FocusedFieldClassifier.kind(role: "AXSecureTextField", subrole: nil), .secure)
+        // Secure dominates over an otherwise-recognized search subrole.
+        XCTAssertEqual(FocusedFieldClassifier.kind(role: "AXSecureTextField", subrole: "AXSearchField"), .secure)
+    }
+
     // MARK: - Single-line collapse (used for single-line / search fields)
 
     func testCollapseFlattensNewlinesToSingleSpaces() {

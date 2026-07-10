@@ -27,7 +27,11 @@ struct DictionaryReplacer {
                 let trimmed = rule.alias.trimmingCharacters(in: .whitespaces)
                 guard !trimmed.isEmpty else { return nil }
                 let pattern = "(?<![\\w])\(NSRegularExpression.escapedPattern(for: trimmed))(?![\\w])"
-                guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
+                let regex: NSRegularExpression
+                do {
+                    regex = try NSRegularExpression(pattern: pattern, options: [.caseInsensitive])
+                } catch {
+                    VLog.app("a dictionary replacement pattern failed to compile")
                     return nil
                 }
                 return (regex, NSRegularExpression.escapedTemplate(for: rule.replacement))

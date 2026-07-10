@@ -101,6 +101,17 @@ final class AskHistoryStoreTests: XCTestCase {
         XCTAssertEqual(store.entries.last?.question, "q6")
     }
 
+    func testGarbageBytesLoadYieldsEmptyNoCrash() throws {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let fileURL = directory.appendingPathComponent("ask-history.json")
+        try Data("{{{not-json".utf8).write(to: fileURL, options: .atomic)
+
+        let store = AskHistoryStore(directory: directory)
+        XCTAssertTrue(store.entries.isEmpty)
+        store.add(question: "after?", answer: "ok", backend: "codex")
+        XCTAssertEqual(store.entries.count, 1)
+    }
+
     func testCapPreservesFavoritesEvictsOldestNonFavorite() {
         let store = AskHistoryStore(directory: directory, maxEntries: 3)
         store.add(question: "q1", answer: "a1", backend: "codex")

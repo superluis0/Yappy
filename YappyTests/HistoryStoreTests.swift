@@ -167,6 +167,18 @@ final class HistoryStoreTests: XCTestCase {
         XCTAssertEqual(HistoryStore.formatTimeSaved(minutes: 192), "3h 12m")
     }
 
+    // MARK: - Corruption
+
+    func testGarbageBytesLoadYieldsEmptyNoCrash() throws {
+        // Corrupt on-disk JSON must not crash; load leaves the store empty.
+        try Data("not-valid-json{{{".utf8).write(to: fileURL, options: .atomic)
+        let corrupted = HistoryStore(fileURL: fileURL)
+        XCTAssertTrue(corrupted.entries.isEmpty)
+        // Store remains usable after a corrupt load.
+        corrupted.add(DictationEntry(text: "after corrupt", durationSeconds: 1))
+        XCTAssertEqual(corrupted.entries.count, 1)
+    }
+
     // MARK: - Backward compatibility
 
     func testDecodesLegacyEntriesWithoutBundleID() throws {

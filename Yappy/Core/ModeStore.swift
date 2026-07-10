@@ -60,20 +60,28 @@ final class ModeStore: ObservableObject {
     }
 
     private func loadFromDisk() {
-        guard let data = try? Data(contentsOf: fileURL),
-              let loaded = try? Self.decoder.decode([Mode].self, from: data) else {
+        guard let data = try? Data(contentsOf: fileURL) else {
             modes = [.auto]
             return
         }
-        modes = loaded
+        do {
+            modes = try Self.decoder.decode([Mode].self, from: data)
+        } catch {
+            VLog.store("failed to decode ModeStore (\(data.count) bytes): \(error.localizedDescription)")
+            modes = [.auto]
+        }
     }
 
     private func persist() {
         let snapshot = modes
         let url = fileURL
         ioQueue.async {
-            guard let data = try? Self.encoder.encode(snapshot) else { return }
-            try? data.write(to: url, options: .atomic)
+            do {
+                let data = try Self.encoder.encode(snapshot)
+                try data.write(to: url, options: .atomic)
+            } catch {
+                VLog.store("failed to write ModeStore: \(error.localizedDescription)")
+            }
         }
     }
 }

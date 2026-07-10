@@ -123,6 +123,9 @@ private final class SparkleBridge: NSObject, SPUUpdaterDelegate, SPUStandardUser
     func updater(_ updater: SPUUpdater,
                  didFinishUpdateCycleFor updateCheck: SPUUpdateCheck,
                  error: (any Error)?) {
+        if let error {
+            VLog.app("update cycle error: \(error.localizedDescription)")
+        }
         MainActor.assumeIsolated { owner?.cycleFinished() }
     }
 

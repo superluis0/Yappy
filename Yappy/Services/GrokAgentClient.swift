@@ -509,39 +509,17 @@ final class GrokAgentClient: @unchecked Sendable {
 
     private func startReader(_ handle: FileHandle) {
         readTask?.cancel()
-        readTask = Task.detached(priority: .userInitiated) { [weak self] in
-            var buffer = Data()
-            while !Task.isCancelled {
-                let chunk = handle.availableData
-                if chunk.isEmpty { break }
-                buffer.append(chunk)
-                while let newline = buffer.firstIndex(of: 0x0A) {
-                    let line = buffer.subdata(in: buffer.startIndex..<newline)
-                    buffer.removeSubrange(buffer.startIndex...newline)
-                    guard !line.isEmpty else { continue }
-                    self?.handleLine(line)
-                }
-            }
+        readTask = makeLineReader(handle) { [weak self] line in
+            self?.handleLine(line)
         }
     }
 
     private func startStderrDrain(_ handle: FileHandle) {
         stderrTask?.cancel()
-        stderrTask = Task.detached(priority: .utility) { [weak self] in
-            var buffer = Data()
-            while !Task.isCancelled {
-                let chunk = handle.availableData
-                if chunk.isEmpty { break }
-                buffer.append(chunk)
-                while let newline = buffer.firstIndex(of: 0x0A) {
-                    let line = buffer.subdata(in: buffer.startIndex..<newline)
-                    buffer.removeSubrange(buffer.startIndex...newline)
-                    if VLog.contentLoggingEnabled,
-                       let text = String(data: line, encoding: .utf8), !text.isEmpty {
-                        VLog.grok("agent stderr: \(text.prefix(300))")
-                    }
-                }
-                _ = self
+        stderrTask = makeStderrDrain(handle) { line in
+            if VLog.contentLoggingEnabled,
+               let text = String(data: line, encoding: .utf8), !text.isEmpty {
+                VLog.grok("agent stderr: \(text.prefix(300))")
             }
         }
     }
@@ -634,15 +612,6 @@ final class GrokAgentClient: @unchecked Sendable {
         respondError(id: id, code: -32601, message: "Method not supported")
     }
 
-    private func respond(id: Any, result: [String: Any]) {
-        let object: [String: Any] = ["jsonrpc": "2.0", "id": id, "result": result]
-        do {
-            try sendRaw(object)
-        } catch {
-            VLog.grok("failed to answer server request: \(error.localizedDescription)")
-        }
-    }
-
     private func respondError(id: Any, code: Int, message: String) {
         let object: [String: Any] = [
             "jsonrpc": "2.0",
@@ -665,13 +634,5 @@ final class GrokAgentClient: @unchecked Sendable {
     private static func stopReason(in response: [String: Any]) -> String? {
         guard let result = response["result"] as? [String: Any] else { return nil }
         return result["stopReason"] as? String
-    }
-}
-
-private extension NSLock {
-    func withLock<T>(_ body: () throws -> T) rethrows -> T {
-        lock()
-        defer { unlock() }
-        return try body()
     }
 }

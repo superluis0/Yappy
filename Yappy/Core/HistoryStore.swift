@@ -262,23 +262,29 @@ final class HistoryStore: ObservableObject {
     // MARK: - Persistence
 
     private func loadFromDisk() {
-        guard let data = try? Data(contentsOf: fileURL),
-              let loaded = try? Self.decoder.decode([DictationEntry].self, from: data) else {
-            return
+        guard let data = try? Data(contentsOf: fileURL) else { return }
+        do {
+            let loaded = try Self.decoder.decode([DictationEntry].self, from: data)
+            entries = Self.applyingRetention(to: loaded, days: retentionDays, now: Date())
+        } catch {
+            VLog.store("failed to decode HistoryStore (\(data.count) bytes): \(error.localizedDescription)")
         }
-        entries = Self.applyingRetention(to: loaded, days: retentionDays, now: Date())
     }
 
     private func persist() {
         let snapshot = entries
         let url = fileURL
         ioQueue.async {
-            guard let data = try? Self.encoder.encode(snapshot) else { return }
-            try? data.write(to: url, options: .atomic)
-            // The atomic write swaps in a fresh file with default (0644,
-            // world-readable) perms, so re-tighten to owner-only after every
-            // write. Transcripts are sensitive; best-effort, never fatal.
-            try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+            do {
+                let data = try Self.encoder.encode(snapshot)
+                try data.write(to: url, options: .atomic)
+                // The atomic write swaps in a fresh file with default (0644,
+                // world-readable) perms, so re-tighten to owner-only after every
+                // write. Transcripts are sensitive; best-effort, never fatal.
+                try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+            } catch {
+                VLog.store("failed to write HistoryStore: \(error.localizedDescription)")
+            }
         }
     }
 

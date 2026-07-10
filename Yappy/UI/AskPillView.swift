@@ -333,11 +333,19 @@ struct AskPillView: View {
     private func speakButton() -> some View {
         if controller.speakAvailable {
             Button {
+                // The card-wide tap-to-pin gesture (styledCard) also fires on this tap,
+                // so toggling the voice would pin the card and force the user to un-pin.
+                // Undo an *unwanted* pin on the next tick (after that gesture runs) — but
+                // only when the card wasn't already pinned, so an explicit pin survives.
+                let wasPinned = controller.pillPinned
                 switch controller.speakingPhase {
                 case .idle:
                     controller.speakCurrentAnswer()
                 case .synthesizing, .speaking:
                     controller.stopSpeakingNow()
+                }
+                if !wasPinned {
+                    DispatchQueue.main.async { controller.pillPinned = false }
                 }
             } label: {
                 HStack(spacing: 4) {

@@ -70,12 +70,7 @@ enum VoiceEditCommandParser {
     /// Lowercased, fillers removed, surrounding punctuation/whitespace stripped,
     /// internal whitespace collapsed to single spaces.
     private static func normalize(_ raw: String) -> String {
-        let deFilled = FillerWordRemover.remove(raw).lowercased()
-        let edgeTrimmed = deFilled.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
-        return edgeTrimmed
-            .components(separatedBy: .whitespacesAndNewlines)
-            .filter { !$0.isEmpty }
-            .joined(separator: " ")
+        SpokenPhraseNormalizer.normalize(raw)
     }
 
     // MARK: - Case transforms

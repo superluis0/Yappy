@@ -87,4 +87,38 @@ final class SpokenPunctuationFormatterTests: XCTestCase {
     func testBareQuoteWordIsNotConverted() {
         XCTAssertEqual(f("the famous quote is here"), "the famous quote is here")
     }
+
+    /// Every symbol-producing spoken form must pass the substring triggers gate;
+    /// otherwise the formatter returns the input unchanged.
+    func testEverySymbolMapEntryIsCoveredBySubstringTriggers() {
+        let cases: [(input: String, expected: String)] = [
+            ("hello comma world", "hello, world"),
+            ("done period next", "done. Next"),
+            ("items colon a", "items: a"),
+            ("a semicolon b", "a; b"),
+            ("x hyphen y", "x-y"),
+            ("x dash y", "x-y"),
+            ("it apostrophe s", "it's"),
+            ("wait ellipsis really", "wait… really"),
+            ("is this real question mark", "is this real?"),
+            ("wow exclamation mark", "wow!"),
+            ("wow exclamation point", "wow!"),
+            ("okay full stop", "okay."),
+            ("see open paren note close paren", "see (note)"),
+            ("see open parenthesis note close parenthesis", "see (note)"),
+            ("see open bracket note close bracket", "see [note]"),
+            ("he said open quote hi close quote", "he said \u{201C}hi\u{201D}"),
+            ("he said open quote hi end quote", "he said \u{201C}hi\u{201D}"),
+            ("a forward slash b", "a/b"),
+            ("yes em dash no", "yes—no"),
+        ]
+        for item in cases {
+            let result = f(item.input)
+            XCTAssertEqual(
+                result,
+                item.expected,
+                "trigger gate or map miss for \(item.input.debugDescription)"
+            )
+        }
+    }
 }

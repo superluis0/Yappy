@@ -47,7 +47,7 @@ enum FillerWordRemover {
             case .word(let word):
                 let lower = word.lowercased()
                 guard fillers.contains(lower), !isFollowedByHuh(tokens, at: i) else {
-                    output.append(.word(capitalizeNextWord ? capitalized(word) : word))
+                    output.append(.word(capitalizeNextWord ? word.capitalizedFirstCharacter() : word))
                     capitalizeNextWord = false
                     hasEmittedWord = true
                     i += 1
@@ -135,8 +135,4 @@ enum FillerWordRemover {
         return next.lowercased() == "huh"
     }
 
-    private static func capitalized(_ word: String) -> String {
-        guard let first = word.first else { return word }
-        return first.uppercased() + word.dropFirst()
-    }
 }

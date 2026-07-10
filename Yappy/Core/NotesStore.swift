@@ -105,19 +105,25 @@ final class NotesStore: ObservableObject {
     // MARK: - Persistence
 
     private func loadFromDisk() {
-        guard let data = try? Data(contentsOf: fileURL),
-              let loaded = try? Self.decoder.decode([Note].self, from: data) else {
-            return
+        guard let data = try? Data(contentsOf: fileURL) else { return }
+        do {
+            let loaded = try Self.decoder.decode([Note].self, from: data)
+            notes = loaded.sorted { $0.updatedAt > $1.updatedAt }
+        } catch {
+            VLog.store("failed to decode NotesStore (\(data.count) bytes): \(error.localizedDescription)")
         }
-        notes = loaded.sorted { $0.updatedAt > $1.updatedAt }
     }
 
     private func persist() {
         let snapshot = notes
         let url = fileURL
         ioQueue.async {
-            guard let data = try? Self.encoder.encode(snapshot) else { return }
-            try? data.write(to: url, options: .atomic)
+            do {
+                let data = try Self.encoder.encode(snapshot)
+                try data.write(to: url, options: .atomic)
+            } catch {
+                VLog.store("failed to write NotesStore: \(error.localizedDescription)")
+            }
         }
     }
 }

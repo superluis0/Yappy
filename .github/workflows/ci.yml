@@ -6,9 +6,15 @@ on:
   pull_request:
     branches: [ main ]
 
+# Cancel superseded runs on the same ref so rapid pushes don't pile up.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-and-test:
     runs-on: macos-latest
+    timeout-minutes: 30
 
     steps:
     - name: Checkout
@@ -26,8 +32,20 @@ jobs:
       run: xcodebuild -project Yappy.xcodeproj -scheme Yappy -configuration Debug build
 
     - name: Test
-      run: xcodebuild -project Yappy.xcodeproj -scheme Yappy test
+      run: xcodebuild -project Yappy.xcodeproj -scheme Yappy -destination 'platform=macOS' test
 
-    - name: Lint
+    # Lint and format checks run in REPORT-ONLY mode: continue-on-error keeps them
+    # from ever blocking the build; they surface findings as annotations only.
+    # (The macos runner image ships neither tool, so they are installed here —
+    # previously the Lint step exited 127 and silently did nothing.)
+    - name: Install linters
+      continue-on-error: true
+      run: brew install swiftlint swiftformat
+
+    - name: SwiftLint (report-only)
       continue-on-error: true
       run: swiftlint lint --reporter github-actions-logging
+
+    - name: SwiftFormat lint (report-only)
+      continue-on-error: true
+      run: swiftformat --lint .

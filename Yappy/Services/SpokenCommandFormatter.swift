@@ -64,7 +64,7 @@ enum SpokenCommandFormatter {
             guard let (breakText, tokenCount) = matchedPhrase(tokens, at: i),
                   isLeftAnchored(output: output, hasEmittedWord: hasEmittedWord),
                   isRightAnchored(tokens, afterCommandAt: i + tokenCount - 1) else {
-                output.append(.word(capitalizeNextWord ? capitalized(word) : word))
+                output.append(.word(capitalizeNextWord ? word.capitalizedFirstCharacter() : word))
                 capitalizeNextWord = false
                 hasEmittedWord = true
                 i += 1
@@ -172,8 +172,4 @@ enum SpokenCommandFormatter {
         return String(result)
     }
 
-    private static func capitalized(_ word: String) -> String {
-        guard let first = word.first else { return word }
-        return first.uppercased() + word.dropFirst()
-    }
 }

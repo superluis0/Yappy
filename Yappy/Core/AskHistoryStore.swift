@@ -118,9 +118,12 @@ final class AskHistoryStore: ObservableObject {
 
     private func load() {
         guard let fileURL,
-              let data = try? Data(contentsOf: fileURL),
-              let stored = try? JSONDecoder().decode([AskHistoryEntry].self, from: data) else { return }
-        entries = stored
+              let data = try? Data(contentsOf: fileURL) else { return }
+        do {
+            entries = try JSONDecoder().decode([AskHistoryEntry].self, from: data)
+        } catch {
+            VLog.store("failed to decode AskHistoryStore (\(data.count) bytes): \(error.localizedDescription)")
+        }
     }
 
     private func save() {
@@ -128,9 +131,13 @@ final class AskHistoryStore: ObservableObject {
         let snapshot = entries
         let url = fileURL
         ioQueue.async {
-            guard let data = try? JSONEncoder().encode(snapshot) else { return }
-            try? data.write(to: url, options: .atomic)
-            try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+            do {
+                let data = try JSONEncoder().encode(snapshot)
+                try data.write(to: url, options: .atomic)
+                try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+            } catch {
+                VLog.store("failed to write AskHistoryStore: \(error.localizedDescription)")
+            }
         }
     }
 

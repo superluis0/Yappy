@@ -223,6 +223,42 @@ final class SpokenNumberFormatterTests: XCTestCase {
         XCTAssertEqual(f("three five pm"), "3 5 pm")
     }
 
+    // MARK: - Digit-time repair (ASR misrendering)
+
+    func testDigitTimePeriodSpaceRepaired() {
+        // Exact shape Parakeet emitted in the wild (Messages, 2026-07-09).
+        XCTAssertEqual(f("Well, I have a call with Cigna tomorrow at 7. 30 A.M."),
+                       "Well, I have a call with Cigna tomorrow at 7:30 A.M.")
+    }
+
+    func testDigitTimePeriodNoSpaceRepaired() {
+        XCTAssertEqual(f("I said 7.30 AM and it said the time wrong."),
+                       "I said 7:30 AM and it said the time wrong.")
+    }
+
+    func testDigitTimeLowercaseMeridiem() {
+        XCTAssertEqual(f("meet at 11.45 pm sharp"), "meet at 11:45 pm sharp")
+    }
+
+    func testDigitTimeNoMeridiemUntouched() {
+        // A bare decimal is NOT a time — never rewrite without the anchor.
+        XCTAssertEqual(f("the board is 7.30 inches wide"),
+                       "the board is 7.30 inches wide")
+    }
+
+    func testDigitTimeInvalidHourUntouched() {
+        XCTAssertEqual(f("scored 13.30 am I right"), "scored 13.30 am I right")
+    }
+
+    func testDigitTimeInvalidMinutesUntouched() {
+        XCTAssertEqual(f("version 7.99 pm build"), "version 7.99 pm build")
+    }
+
+    func testDigitTimeIdempotent() {
+        let once = f("at 7. 30 A.M.")
+        XCTAssertEqual(f(once), once)
+    }
+
     // MARK: - Boundaries & passthrough
 
     func testPlainTextUnchanged() {

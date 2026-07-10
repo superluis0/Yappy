@@ -64,19 +64,24 @@ final class ShortcutStore: ObservableObject {
     // MARK: - Persistence
 
     private func loadFromDisk() {
-        guard let data = try? Data(contentsOf: fileURL),
-              let loaded = try? Self.decoder.decode([VoiceShortcut].self, from: data) else {
-            return
+        guard let data = try? Data(contentsOf: fileURL) else { return }
+        do {
+            shortcuts = try Self.decoder.decode([VoiceShortcut].self, from: data)
+        } catch {
+            VLog.store("failed to decode ShortcutStore (\(data.count) bytes): \(error.localizedDescription)")
         }
-        shortcuts = loaded
     }
 
     private func persist() {
         let snapshot = shortcuts
         let url = fileURL
         ioQueue.async {
-            guard let data = try? Self.encoder.encode(snapshot) else { return }
-            try? data.write(to: url, options: .atomic)
+            do {
+                let data = try Self.encoder.encode(snapshot)
+                try data.write(to: url, options: .atomic)
+            } catch {
+                VLog.store("failed to write ShortcutStore: \(error.localizedDescription)")
+            }
         }
     }
 }

@@ -28,6 +28,13 @@ enum SpokenNumberFormatter {
     // MARK: - Public
 
     static func format(_ text: String) -> String {
+        // Repair the ASR's digit-time misrendering before anything else: Parakeet
+        // sometimes emits a spoken clock time with a period instead of a colon
+        // ("7. 30 A.M." / "7.30 AM"), and the downstream model cleanup only
+        // sometimes fixes it. This must run before the number-word guard below —
+        // the misrendered text contains digits, not number words.
+        let text = repairDigitTimes(text)
+
         let tokens = TranscriptTokenizer.tokenize(text)
         guard tokens.contains(where: {
             if case .word(let w) = $0 { return isRunStartWord(w.lowercased()) }
@@ -70,6 +77,24 @@ enum SpokenNumberFormatter {
             }
         }
         return output
+    }
+
+    // MARK: - Digit-time repair
+
+    /// "7. 30" or "7.30" followed by a meridiem → "7:30". Anchored on the
+    /// meridiem (mirroring the spoken-time rule below, which is also
+    /// meridiem-anchored) so genuine decimals ("7.30 inches") never match;
+    /// hour restricted to a valid 12-hour clock reading. The meridiem itself
+    /// is left exactly as written.
+    private static let digitTimeRegex = try! NSRegularExpression(
+        pattern: #"\b(1[0-2]|0?[1-9])\.\s?([0-5][0-9])(?=\s?[AaPp]\.?[Mm]\b)"#
+    )
+
+    private static func repairDigitTimes(_ text: String) -> String {
+        let range = NSRange(text.startIndex..., in: text)
+        guard digitTimeRegex.firstMatch(in: text, range: range) != nil else { return text }
+        return digitTimeRegex.stringByReplacingMatches(
+            in: text, range: range, withTemplate: "$1:$2")
     }
 
     // MARK: - Run Collection

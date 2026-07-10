@@ -80,4 +80,26 @@ final class SpokenCommandFormatterTests: XCTestCase {
     func testProseInsertLineUntouched() {
         XCTAssertEqual(f("please insert line 5 here"), "please insert line 5 here")
     }
+
+    /// Every phrase in the phrase map must be covered by the cheap substring
+    /// triggers gate — otherwise `apply` early-returns without transforming.
+    func testEveryPhraseMapEntryIsCoveredBySubstringTriggers() {
+        let cases: [(input: String, mustContain: String)] = [
+            ("Hello, new line, thanks", "\n"),
+            ("Hello, next line, thanks", "\n"),
+            ("first item, line break, second item", "\n"),
+            ("name, insert line, address", "\n"),
+            ("done. New paragraph. Next topic", "\n\n"),
+            ("done. Next paragraph. Next topic", "\n\n"),
+            ("intro. Skip a line. Body", "\n\n"),
+        ]
+        for item in cases {
+            let result = f(item.input)
+            XCTAssertTrue(
+                result.contains(item.mustContain),
+                "phrase gate missed transform for \(item.input.debugDescription); got \(result.debugDescription)"
+            )
+            XCTAssertNotEqual(result, item.input, "expected a transform for \(item.input.debugDescription)")
+        }
+    }
 }
