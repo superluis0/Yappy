@@ -1265,6 +1265,56 @@ final class AskControllerTests: XCTestCase {
         XCTAssertTrue(fullSpoken.isEmpty)
     }
 
+    // MARK: - Fused narration and glued deltas
+
+    func testCompletedCardStripsFusedNarrationAndRepairsGlue() async {
+        let grok = FakeGrokClient()
+        let (controller, _, _) = makeController(grok: grok)
+        controller.backend = .grok
+        controller.saveHistory = false
+
+        controller.beginListening()
+        controller.submit("When are the next games?")
+        await yieldUntil { grok.askCalls.count == 1 }
+
+        // Narration glued straight onto the answer, missing the space after
+        // the terminator — the field case.
+        await pushGrok(grok, event: .text(
+            delta: "I'll look up the current schedule for the next matches.Context is mid-July — checking the tournament. "
+        ))
+        await pushGrok(grok, event: .text(delta: "Next up: the semi-finals. The first is today."))
+        await pushGrok(grok, event: .end(stopReason: "EndTurn", sessionId: nil))
+        await yieldUntil { controller.run?.status == .completed }
+
+        XCTAssertEqual(controller.run?.answerText, "Next up: the semi-finals. The first is today.")
+        XCTAssertEqual(controller.run?.result, "Next up: the semi-finals. The first is today.")
+    }
+
+    // MARK: - Card-tap pin vs action buttons
+
+    func testPinFromSameClickIsNotDeliberateRegardlessOfGestureOrder() {
+        let (controller, _, _) = makeController()
+        var now = 100.0
+        controller.metricsClock = { now }
+
+        // Gesture half of a Stop click lands BEFORE the button action: the pin
+        // it just created must not read as a deliberate earlier pin.
+        controller.pinFromCardTap()
+        XCTAssertTrue(controller.pillPinned)
+        XCTAssertFalse(controller.pillPinnedBeforeCurrentClick,
+                       "a pin born from the current click must be classified as unwanted")
+
+        // The same pin, aged past the click window, is a deliberate pin.
+        now += 1.0
+        XCTAssertTrue(controller.pillPinnedBeforeCurrentClick)
+
+        // Pins from non-click paths (voice command, show-from-history) are
+        // always deliberate.
+        controller.pillPinned = false
+        controller.pillPinned = true
+        XCTAssertTrue(controller.pillPinnedBeforeCurrentClick)
+    }
+
     func testGrokStreamingSpeechReevaluatesBoundaryOnLookaheadDelta() async {
         let grok = FakeGrokClient()
         let (controller, _, _) = makeController(grok: grok)

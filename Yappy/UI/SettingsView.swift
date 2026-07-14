@@ -122,6 +122,14 @@ struct SettingsView: View {
                 .labelsHidden().fixedSize()
             }
             RowDivider()
+            SettingRow(icon: "sparkles", title: "Listening glow",
+                       subtitle: "The ring around the pill while it listens, and around Answers through the reply. Rainbow slowly circles; White and Orange hold steady.") {
+                Picker("", selection: $settings.listeningGlowStyle) {
+                    ForEach(ListeningGlowStyle.allCases) { Text($0.displayName).tag($0) }
+                }
+                .labelsHidden().fixedSize()
+            }
+            RowDivider()
             SettingToggle(icon: "speaker.wave.2.fill", title: "Recording sounds",
                           subtitle: "A soft chime when capture starts and stops.",
                           isOn: $settings.audioFeedbackEnabled)
@@ -289,6 +297,18 @@ struct SettingsView: View {
                                 // Switching voices cancels a sample in progress.
                                 askController.stopVoicePreview()
                             }
+                        }
+                    }
+                    RowDivider()
+                    SettingRow(icon: "gauge.with.needle", title: "Voice speed",
+                               subtitle: "How fast answers are read. The play button previews the current speed.") {
+                        Picker("", selection: $settings.answersVoiceSpeed) {
+                            ForEach(AnswersVoiceSpeed.allCases) { Text($0.displayName).tag($0) }
+                        }
+                        .labelsHidden().fixedSize()
+                        .onChange(of: settings.answersVoiceSpeed) { _, _ in
+                            // A sample rendered at the old speed shouldn't keep playing.
+                            askController.stopVoicePreview()
                         }
                     }
                 }

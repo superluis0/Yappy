@@ -9,8 +9,76 @@ import SwiftUI
 /// recording (glowing waveform) and processing (breathing dots). Built from
 /// layered fills rather than materials: in a transparent borderless panel,
 /// SwiftUI materials can't blur the wallpaper and render flat.
+/// The glowing rim shown around a pill while it listens — shared by the
+/// dictation pill (capsule) and the Ask pill (rounded rectangle). The rainbow
+/// style is animated with `hueRotation` rather than rotating the gradient: on
+/// a red→…→red spectrum, cycling every point's hue is visually identical to
+/// the colors traveling around the ring, but the flow speed stays uniform
+/// along the perimeter (a rotated conic gradient sprints across a pill's long
+/// edges and lingers at the round ends) and it costs one Core Animation
+/// color-matrix pass — no per-frame SwiftUI redraws. White and orange are
+/// static: hue-cycling white is a no-op, and hue-cycling orange would turn it
+/// back into a rainbow. The blur is fixed (GPU-cheap) and bleeds outward, so
+/// the host panel must be larger than the shape (both pill panels keep a
+/// 28–40pt shadow margin). Under Reduce Motion the rainbow holds static: a
+/// 360° hue rotation is the identity.
+struct ListeningGlowRing<S: InsettableShape>: View {
+    let shape: S
+    let style: ListeningGlowStyle
+
+    @State private var phase = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// Tempered full-wheel spectrum, wrapped so the ends meet seamlessly
+    /// around the shape. Desaturated a notch so it sits inside the molten-
+    /// glass look instead of reading as neon.
+    private var rainbowGradient: AngularGradient {
+        let hues: [Double] = [0, 1.0 / 6, 2.0 / 6, 3.0 / 6, 4.0 / 6, 5.0 / 6, 1]
+        return AngularGradient(
+            gradient: Gradient(colors: hues.map {
+                Color(hue: $0, saturation: 0.7, brightness: 0.95)
+            }),
+            center: .center
+        )
+    }
+
+    /// Stroke for the selected glow style. White and orange are solid rims;
+    /// only rainbow carries the animated spectrum.
+    private var glowStroke: AnyShapeStyle {
+        switch style {
+        case .rainbow: AnyShapeStyle(rainbowGradient)
+        case .white: AnyShapeStyle(Color.white.opacity(0.85))
+        case .orange: AnyShapeStyle(Color(red: 1.0, green: 0.58, blue: 0.2))
+        }
+    }
+
+    var body: some View {
+        let animateHue = style == .rainbow && !reduceMotion
+        ZStack {
+            // Soft halo outside the rim.
+            shape
+                .stroke(glowStroke, lineWidth: 3)
+                .blur(radius: 9)
+                .opacity(0.55)
+            // Sharp rim on the shape's edge.
+            shape
+                .strokeBorder(glowStroke, lineWidth: 2)
+        }
+        .hueRotation(.degrees(animateHue && phase ? 360 : 0))
+        .animation(
+            animateHue
+                ? .linear(duration: 8).repeatForever(autoreverses: false)
+                : nil,
+            value: phase
+        )
+        .onAppear { phase = true }
+        .onDisappear { phase = false }
+    }
+}
+
 struct RecordingPillView: View {
     @ObservedObject var appState: AppState
+    @ObservedObject var settings: Settings
 
     @State private var visible = false
     @State private var breathe = false
@@ -35,6 +103,13 @@ struct RecordingPillView: View {
     var body: some View {
         ZStack {
             glassCapsule
+
+            // Glowing rim while listening (rainbow colors slowly circle;
+            // white/orange hold steady). Style comes from Settings.
+            if appState.isRecording {
+                listeningGlow
+                    .transition(.opacity)
+            }
 
             // Ambient bloom behind the content: fixed blur, only opacity
             // animates (GPU-cheap), breathing with the voice level.
@@ -107,6 +182,12 @@ struct RecordingPillView: View {
                 )
             )
             .shadow(color: .black.opacity(0.35), radius: 12, y: 4)
+    }
+
+    // MARK: - Listening Glow
+
+    private var listeningGlow: some View {
+        ListeningGlowRing(shape: Capsule(), style: settings.listeningGlowStyle)
     }
 
     // MARK: - Processing Indicator

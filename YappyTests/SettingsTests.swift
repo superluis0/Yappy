@@ -61,6 +61,20 @@ final class SettingsTests: XCTestCase {
         XCTAssertEqual(reloaded.transcriptionModel, .nemotron, "A chosen STT model survives relaunch on the same suite")
     }
 
+    func testAnswersVoiceSpeedDefaultsToNormalAndPersists() {
+        XCTAssertEqual(settings.answersVoiceSpeed, .normal)
+        settings.answersVoiceSpeed = .brisk
+        let reloaded = Settings(defaults: defaults)
+        XCTAssertEqual(reloaded.answersVoiceSpeed, .brisk, "A chosen voice speed survives relaunch on the same suite")
+    }
+
+    func testListeningGlowStyleDefaultsToRainbowAndPersists() {
+        XCTAssertEqual(settings.listeningGlowStyle, .rainbow)
+        settings.listeningGlowStyle = .orange
+        let reloaded = Settings(defaults: defaults)
+        XCTAssertEqual(reloaded.listeningGlowStyle, .orange, "A chosen glow style survives relaunch on the same suite")
+    }
+
     func testToneResolution() {
         // No override → category default.
         XCTAssertEqual(settings.tone(for: .code), .verbatim)

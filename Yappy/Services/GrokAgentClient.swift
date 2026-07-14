@@ -601,15 +601,80 @@ final class GrokAgentClient: @unchecked Sendable {
         lock.withLock {
             lastActivityAt = CACurrentMediaTime()
         }
-        _ = params
-        if method.localizedCaseInsensitiveContains("permission")
-            || method.localizedCaseInsensitiveContains("request_permission") {
-            VLog.grok("declining permission request \(method)")
-            respondError(id: id, code: -32601, message: "Yappy Ask declined \(method).")
+        if method.localizedCaseInsensitiveContains("permission") {
+            let decision = Self.permissionDecision(params: params)
+            VLog.grok("permission request tool_kind=\(decision.toolKind.isEmpty ? "?" : decision.toolKind) decision=\(decision.allowed ? "allow" : "deny")")
+            if VLog.contentLoggingEnabled, let toolCall = params["toolCall"] as? [String: Any],
+               let title = toolCall["title"] as? String {
+                VLog.grok("permission tool title: \(title.prefix(120))")
+            }
+            respondResult(id: id, result: ["outcome": decision.outcome])
             return
         }
         VLog.grok("unsupported server request \(method) — answering with error")
         respondError(id: id, code: -32601, message: "Method not supported")
+    }
+
+    /// ACP permission triage for Ask. Research tools (web search / page fetch)
+    /// are auto-approved — they ARE the feature ("answers with their own web
+    /// search"); everything else (execute, edit, file reads outside the
+    /// isolated home, …) is rejected. Both branches answer with the PROTOCOL
+    /// outcome — selecting one of the offered options, or "cancelled" when
+    /// none parse — never a JSON-RPC error: an error reply makes the CLI treat
+    /// permissioning itself as broken and abort the whole turn, which
+    /// truncated a streamed answer mid-sentence in the field.
+    static func permissionDecision(
+        params: [String: Any]
+    ) -> (outcome: [String: Any], allowed: Bool, toolKind: String) {
+        let toolCall = params["toolCall"] as? [String: Any]
+        let kind = ((toolCall?["kind"] as? String) ?? "").lowercased()
+        let title = ((toolCall?["title"] as? String) ?? "").lowercased()
+
+        // ACP tool kinds: read/edit/delete/move/search/execute/think/fetch/other.
+        let researchKinds: Set<String> = ["search", "fetch"]
+        let researchTitleMarkers = ["search", "fetch", "browse", "web", "http"]
+        let allowed = researchKinds.contains(kind)
+            || (kind.isEmpty && researchTitleMarkers.contains { title.contains($0) })
+
+        let options = (params["options"] as? [[String: Any]]) ?? []
+        func id(of option: [String: Any]) -> String? {
+            (option["optionId"] as? String) ?? (option["id"] as? String)
+        }
+        func firstOption(matching markers: [String]) -> String? {
+            // Prefer a *_once option over *_always so an approval never
+            // outlives this single tool call.
+            let scored = options.compactMap { option -> (String, Bool)? in
+                let kindName = (((option["kind"] as? String) ?? "") + " "
+                    + ((option["name"] as? String) ?? "")).lowercased()
+                guard markers.contains(where: { kindName.contains($0) }),
+                      let optionID = id(of: option) else { return nil }
+                return (optionID, kindName.contains("always"))
+            }
+            return (scored.first { !$0.1 } ?? scored.first)?.0
+        }
+
+        let chosen = allowed
+            ? firstOption(matching: ["allow", "approve", "yes"])
+            : firstOption(matching: ["reject", "deny", "no"])
+        if let chosen {
+            return (["outcome": "selected", "optionId": chosen], allowed, kind)
+        }
+        // No recognizable options: cancel the request (still a valid protocol
+        // outcome the turn survives), and never invent an approval.
+        return (["outcome": "cancelled"], false, kind)
+    }
+
+    private func respondResult(id: Any, result: [String: Any]) {
+        let object: [String: Any] = [
+            "jsonrpc": "2.0",
+            "id": id,
+            "result": result,
+        ]
+        do {
+            try sendRaw(object)
+        } catch {
+            VLog.grok("failed to answer server request: \(error.localizedDescription)")
+        }
     }
 
     private func respondError(id: Any, code: Int, message: String) {

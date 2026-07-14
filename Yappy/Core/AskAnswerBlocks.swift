@@ -49,6 +49,23 @@ enum AskAnswerBlock: Equatable {
         "searching for", "searching the", "looking for", "looking up",
         "looking into", "let me check", "let me look", "let me search",
         "let me find", "checking ", "finding ", "one moment", "one sec",
+        "i'll ", "i will ",
+        "i'm checking", "i'm looking", "i'm searching", "context is",
+    ]
+
+    /// The subset safe to match at SENTENCE granularity inside the first line.
+    /// Bare "checking "/"finding "/"looking for" are excluded here: as sentence
+    /// openers they collide with real prose ("Checking the weather is easy.")
+    /// far more often than as whole standalone lines. "I'll …" matches
+    /// WHOLESALE: enumerating retrieval verbs (look/check/pull/grab/fetch…)
+    /// lost that game in the field, and a first-person-future opening sentence
+    /// of a voice ANSWER is meta by nature — the ≤90-char cap and the
+    /// content-must-follow guard bound the blast radius.
+    private static let sentenceNarrationOpeners = [
+        "searching for", "searching the", "looking up", "looking into",
+        "let me ", "one moment", "one sec",
+        "i'll ", "i will ",
+        "i'm checking", "i'm looking", "i'm searching", "context is",
     ]
 
     /// True when the first non-empty line reads as process narration.
@@ -77,19 +94,88 @@ enum AskAnswerBlock: Equatable {
     /// FIRST line, only known narration openers, only when more content
     /// exists — a whole answer is never reduced to nothing.
     static func strippingLeadingNarration(_ text: String) -> String {
-        var lines = text.components(separatedBy: "\n")
-        guard let firstIndex = lines.firstIndex(where: { !$0.trimmingCharacters(in: .whitespaces).isEmpty }),
-              firstLineIsNarration(lines, at: firstIndex) else {
-            return text
+        var output = text
+        var lines = output.components(separatedBy: "\n")
+        if let firstIndex = lines.firstIndex(where: { !$0.trimmingCharacters(in: .whitespaces).isEmpty }),
+           firstLineIsNarration(lines, at: firstIndex) {
+            let rest = lines[(firstIndex + 1)...].joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+            if !rest.isEmpty {
+                lines.removeSubrange(...firstIndex)
+                while let next = lines.first, next.trimmingCharacters(in: .whitespaces).isEmpty {
+                    lines.removeFirst()
+                }
+                output = lines.joined(separator: "\n")
+            }
         }
-        let rest = lines[(firstIndex + 1)...].joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !rest.isEmpty else { return text }
+        return strippingLeadingNarrationSentences(output)
+    }
 
-        lines.removeSubrange(...firstIndex)
-        while let next = lines.first, next.trimmingCharacters(in: .whitespaces).isEmpty {
-            lines.removeFirst()
+    /// Sentence-granular pass for narration FUSED into the first content line
+    /// ("I'll look up the schedule. Context is mid-July. Next up: …") — models
+    /// sometimes glue their working preamble straight onto the answer, where
+    /// the whole-line pass can't reach it. Strips at most three leading
+    /// sentences; each must start with a known sentence-safe opener and stay
+    /// short, and the answer is never reduced to nothing.
+    private static func strippingLeadingNarrationSentences(_ text: String) -> String {
+        var output = text
+        for _ in 0..<3 {
+            let trimmed = output.drop(while: { $0 == " " || $0 == "\n" })
+            let lowered = trimmed.lowercased()
+            guard sentenceNarrationOpeners.contains(where: { lowered.hasPrefix($0) }) else { break }
+            // The narration sentence must END within 90 characters at a real
+            // boundary: terminator + space, preceded by a lowercase letter or
+            // digit (so "U.S." initialisms and "3.5" decimals never cut).
+            var boundary: Substring.Index?
+            var index = trimmed.index(after: trimmed.startIndex)
+            while index < trimmed.endIndex,
+                  trimmed.distance(from: trimmed.startIndex, to: index) <= 90 {
+                let character = trimmed[index]
+                if ".!?".contains(character) {
+                    let next = trimmed.index(after: index)
+                    let previous = trimmed[trimmed.index(before: index)]
+                    if next < trimmed.endIndex, trimmed[next] == " ",
+                       previous.isLowercase || previous.isNumber {
+                        boundary = next
+                        break
+                    }
+                }
+                index = trimmed.index(after: index)
+            }
+            guard let boundary else { break }
+            let remainder = String(trimmed[boundary...])
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !remainder.isEmpty else { break }
+            output = remainder
         }
-        return lines.joined(separator: "\n")
+        return output
+    }
+
+    /// Repairs sentences a model streamed GLUED together — no space after the
+    /// terminator ("…the next matches.Context is…"). That one defect defeats
+    /// sentence splitting, narration stripping, and the citation-trailer
+    /// anchors all at once, so the repair happens at the source, as deltas
+    /// append. A space is inserted after `.!?` only when preceded by a
+    /// lowercase letter or digit AND followed by an uppercase letter, so
+    /// initialisms ("U.S.A"), domains ("FIFA.com"), decimals ("3.5"), and
+    /// identifiers ("Node.js") never match. `previous` is the text already
+    /// accumulated: the same 3-character window is checked across the join, so
+    /// repairing delta-by-delta produces byte-identical output to repairing
+    /// the concatenated whole (which keeps codex's authoritative full-text
+    /// replace consistent with its streamed deltas).
+    static func repairGluedSentences(previous: String, delta: String) -> String {
+        guard !delta.isEmpty else { return delta }
+        var repaired = delta
+        if let regex = try? NSRegularExpression(pattern: #"([a-z0-9][.!?])(?=[A-Z])"#) {
+            let range = NSRange(repaired.startIndex..<repaired.endIndex, in: repaired)
+            repaired = regex.stringByReplacingMatches(in: repaired, range: range, withTemplate: "$1 ")
+        }
+        if let last = previous.last, ".!?".contains(last),
+           let beforeTerminator = previous.dropLast().last,
+           beforeTerminator.isLowercase || beforeTerminator.isNumber,
+           let first = repaired.first, first.isUppercase {
+            repaired = " " + repaired
+        }
+        return repaired
     }
 
     static func parse(_ text: String) -> [AskAnswerBlock] {
@@ -223,11 +309,20 @@ enum AskAnswerBlock: Equatable {
     /// prose and list items only, no code/tables/images, with each segment
     /// shaped like a sentence for cleaner chunking.
     static func speakableText(from markdown: String) -> String {
-        let segments = droppingTrailingCitationBlocks(parse(strippingLeadingNarration(markdown)))
+        let blocks = droppingTrailingCitationBlocks(parse(strippingLeadingNarration(markdown)))
+        let segments = blocks
             .flatMap(speakableTextSegments)
             .map(ensureTerminalPunctuation)
             .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-        return finalizeSpeakableOutput(from: segments)
+        let output = finalizeSpeakableOutput(from: segments)
+        // An all-code answer has no speakable prose — say where the answer
+        // lives instead of dead air. (Streaming-prefix safe: the stream emits
+        // nothing for code blocks, and "" is a prefix of anything.)
+        if output.isEmpty,
+           blocks.contains(where: { if case .code = $0 { return true } else { return false } }) {
+            return "The answer is a code block on screen."
+        }
+        return output
     }
 
     /// Prefix of the eventual `speakableText` that is already safe to speak while
@@ -482,17 +577,35 @@ enum AskAnswerBlock: Equatable {
         from text: String,
         inRawAccumulated rawAccumulated: String
     ) -> String? {
-        let stableRaw = extractStableCompleteSentences(from: text, inRawAccumulated: rawAccumulated)
-            .reduce(into: "") { $0 += $1 }
-        guard !stableRaw.isEmpty else { return nil }
-        let transformed = stripInlineMarkdown(
-            stableRaw,
-            linkStyle: .labelOnly,
-            droppingBareURLs: true,
-            droppingCitations: true
-        )
-        .trimmingCharacters(in: .whitespacesAndNewlines)
-        return transformed.isEmpty ? nil : transformed
+        var sentences = extractStableCompleteSentences(from: text, inRawAccumulated: rawAccumulated)
+        while !sentences.isEmpty {
+            let stableRaw = sentences.reduce(into: "") { $0 += $1 }
+            let transformed = stripInlineMarkdown(
+                stableRaw,
+                linkStyle: .labelOnly,
+                droppingBareURLs: true,
+                droppingCitations: true
+            )
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !transformed.isEmpty else { return nil }
+            // Strip-stability oracle: emphasis/code delimiters surviving the
+            // strip mean an inline span is still OPEN across the cut — e.g. a
+            // bold span covering two sentences ("**First. Second.**") whose
+            // closer hasn't streamed yet. Emitting now would speak the literal
+            // asterisks AND make the same region strip differently once the
+            // closer arrives, breaking the streamed prefix's MONOTONE
+            // guarantee. Withhold the trailing sentence(s) until the strip
+            // comes out clean; a final text that legitimately keeps a
+            // delimiter simply waits for the completion handoff.
+            // (Underscores are deliberately not in the oracle: snake_case
+            // identifiers are common prose here and would withhold forever.)
+            if transformed.contains("*") || transformed.contains("`") {
+                sentences.removeLast()
+                continue
+            }
+            return transformed
+        }
+        return nil
     }
 
     /// Leading sentences whose terminators are not at the very end of the stream.
@@ -618,18 +731,40 @@ enum AskAnswerBlock: Equatable {
         case .list(let items, _):
             return items.map { stripInlineMarkdown($0, linkStyle: .labelOnly, droppingBareURLs: true, droppingCitations: true) }
         case .table(let header, let rows):
-            // A table can't be spoken as a grid, so each row is linearized into a
-            // sentence instead of dropped.
-            return rows.compactMap { speakableTableRow($0, header: header) }
+            // A table can't be spoken as a grid, so each row is linearized into
+            // a sentence instead of dropped. Long tables aren't recited in
+            // full: past the cap the listener has stopped tracking rows, so
+            // speech hands off to the on-screen card.
+            let spoken = rows.compactMap { speakableTableRow($0, header: header) }
+            if spoken.count > maxSpokenTableRows + 1 {
+                let remaining = spoken.count - maxSpokenTableRows
+                return Array(spoken.prefix(maxSpokenTableRows))
+                    + ["Plus \(remaining) more rows in the table."]
+            }
+            return spoken
         case .code, .image:
             return []
         }
     }
 
+    /// Rows spoken in full before a long table hands off to the card.
+    private static let maxSpokenTableRows = 6
+
+    /// Natural spoken list join: "a", "a and b", "a, b, and c" — commas alone
+    /// read as a robotic monotone.
+    private static func naturalJoin(_ parts: [String]) -> String {
+        switch parts.count {
+        case 0: return ""
+        case 1: return parts[0]
+        case 2: return "\(parts[0]) and \(parts[1])"
+        default: return parts.dropLast().joined(separator: ", ") + ", and " + parts[parts.count - 1]
+        }
+    }
+
     /// Turns one table row into a spoken sentence: the first cell is the subject,
     /// and each following value is labeled by its column header ("Apple M4: CPU
-    /// cores up to 10, Memory bandwidth 120 GB/s"). A header-less table reads its
-    /// non-empty cells left to right. Returns nil for a fully empty row.
+    /// cores up to 10 and Memory bandwidth 120 GB/s"). A header-less table reads
+    /// its non-empty cells left to right. Returns nil for a fully empty row.
     private static func speakableTableRow(_ row: [String], header: [String]?) -> String? {
         func clean(_ text: String) -> String {
             stripInlineMarkdown(text, linkStyle: .labelOnly, droppingBareURLs: true, droppingCitations: true)
@@ -641,7 +776,7 @@ enum AskAnswerBlock: Equatable {
         let labels = header?.map(clean)
         // Without a usable multi-column header, just read the cells in order.
         guard let labels, labels.count > 1 else {
-            return cells.filter { !$0.isEmpty }.joined(separator: ", ")
+            return naturalJoin(cells.filter { !$0.isEmpty })
         }
 
         let subject = cells.first ?? ""
@@ -650,8 +785,8 @@ enum AskAnswerBlock: Equatable {
             let label = index < labels.count ? labels[index] : ""
             parts.append(label.isEmpty ? cells[index] : "\(label) \(cells[index])")
         }
-        if subject.isEmpty { return parts.isEmpty ? nil : parts.joined(separator: ", ") }
-        return parts.isEmpty ? subject : "\(subject): \(parts.joined(separator: ", "))"
+        if subject.isEmpty { return parts.isEmpty ? nil : naturalJoin(parts) }
+        return parts.isEmpty ? subject : "\(subject): \(naturalJoin(parts))"
     }
 
     private enum LinkStyle {

@@ -76,9 +76,13 @@ def trim_silence(arr, sample_rate, threshold=0.01, margin_ms=20):
     return arr[start:end]
 
 
-def synth_audio(model, text, voice, allow_split=True):
+def synth_audio(model, text, voice, allow_split=True, base_speed=1.0):
     last = None
-    for speed in _SPEED_JITTERS:
+    for jitter in _SPEED_JITTERS:
+        # The user-facing speed multiplies the jitter ladder rather than
+        # replacing it: the vocoder-glitch dodge only needs the RELATIVE
+        # duration shift, so it keeps working at any base speed.
+        speed = round(base_speed * jitter, 4)
         try:
             return _generate_once(model, text, voice, speed)
         except (ValueError, AssertionError) as e:
@@ -96,7 +100,8 @@ def synth_audio(model, text, voice, allow_split=True):
         if len(parts) > 1:
             chunks, sample_rate = [], 24000
             for part in parts:
-                audio, sample_rate = synth_audio(model, part, voice, allow_split=False)
+                audio, sample_rate = synth_audio(
+                    model, part, voice, allow_split=False, base_speed=base_speed)
                 chunks.append(audio)
             return mx.concatenate(chunks), sample_rate
     raise last
@@ -129,7 +134,9 @@ def main():
         try:
             req = json.loads(line)
             t1 = time.time()
-            audio, sample_rate = synth_audio(model, req["text"], req.get("voice") or "af_heart")
+            base_speed = float(req.get("speed") or 1.0)
+            audio, sample_rate = synth_audio(
+                model, req["text"], req.get("voice") or "af_heart", base_speed=base_speed)
             arr = np.array(audio, copy=False).astype(np.float32)
             # Drop Kokoro's ~0.3s of leading/trailing padding so the first word
             # starts sooner and chunks are gapless.

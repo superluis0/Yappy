@@ -16,6 +16,7 @@ import SwiftUI
 
 struct AskPillView: View {
     @ObservedObject var controller: AskController
+    @ObservedObject var settings: Settings
     var onSizeChange: (CGSize) -> Void = { _ in }
 
     private let compactWidth: CGFloat = 240
@@ -83,13 +84,27 @@ struct AskPillView: View {
                         startPoint: .top, endPoint: .bottom),
                     lineWidth: 1))
             .clipShape(shape(for: run))
+            // Glow rim, same treatment as the dictation pill — from the first
+            // listening moment all the way through the expanded answer card,
+            // so the effect carries over as the capsule grows (the ring is
+            // mounted once and its shape morphs with the card's spring).
+            // Failure/cancel cards drop it: a rainbow around an error reads
+            // wrong. Placed AFTER the clip: the halo blurs outward past the
+            // shape's edge, and clipShape would slice it off. The 40pt shadow
+            // margin gives it room to bleed.
+            .overlay {
+                if run.status != .failed, run.status != .cancelled {
+                    ListeningGlowRing(shape: shape(for: run), style: settings.listeningGlowStyle)
+                        .transition(.opacity)
+                }
+            }
             .shadow(color: .black.opacity(0.45), radius: 22, y: 9)
             .background(sizeReader)
             .onHover { controller.pillHovered = $0 }
             // Clicking into the card (selecting text to copy, or just a
             // click) pins it — it then stays until ✕ / Esc / next Ask.
             .simultaneousGesture(TapGesture().onEnded {
-                if !isCompact(run), run.status.isTerminal { controller.pillPinned = true }
+                if !isCompact(run), run.status.isTerminal { controller.pinFromCardTap() }
             })
             .onExitCommand { controller.abort() }
             .transition(.opacity.combined(with: .move(edge: .bottom)))
@@ -333,11 +348,13 @@ struct AskPillView: View {
     private func speakButton() -> some View {
         if controller.speakAvailable {
             Button {
-                // The card-wide tap-to-pin gesture (styledCard) also fires on this tap,
-                // so toggling the voice would pin the card and force the user to un-pin.
-                // Undo an *unwanted* pin on the next tick (after that gesture runs) — but
-                // only when the card wasn't already pinned, so an explicit pin survives.
-                let wasPinned = controller.pillPinned
+                // The card-wide tap-to-pin gesture (styledCard) also fires on this
+                // tap, in NONDETERMINISTIC order relative to this action — reading
+                // `pillPinned` directly here misclassified a gesture-first pin as
+                // deliberate and left Stop pinning the card. The timestamped check
+                // recognizes a pin born from this same click in either order; the
+                // async unpin then runs after whichever half fires second.
+                let wasPinned = controller.pillPinnedBeforeCurrentClick
                 switch controller.speakingPhase {
                 case .idle:
                     controller.speakCurrentAnswer()

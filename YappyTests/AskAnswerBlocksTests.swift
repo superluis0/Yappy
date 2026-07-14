@@ -250,8 +250,40 @@ final class AskAnswerBlocksTests: XCTestCase {
 
         XCTAssertEqual(
             AskAnswerBlock.speakableText(from: text),
-            "Apple M4: CPU cores Up to 10, Memory 120 GB/s.\nApple M4 Pro: CPU cores Up to 14, Memory 273 GB/s."
+            "Apple M4: CPU cores Up to 10 and Memory 120 GB/s.\nApple M4 Pro: CPU cores Up to 14 and Memory 273 GB/s."
         )
+    }
+
+    func testSpeakableTableRowUsesOxfordJoinForThreeOrMoreValues() {
+        let text = """
+        | Day | High | Low | Sky |
+        | --- | --- | --- | --- |
+        | Monday | 98 | 74 | Sunny |
+        """
+
+        XCTAssertEqual(
+            AskAnswerBlock.speakableText(from: text),
+            "Monday: High 98, Low 74, and Sky Sunny."
+        )
+    }
+
+    func testSpeakableTextCapsLongTablesWithARowCountTrailer() {
+        let rows = (1...10).map { "| Item \($0) | \($0) |" }.joined(separator: "\n")
+        let text = "| Name | Count |\n| --- | --- |\n" + rows
+
+        let spoken = AskAnswerBlock.speakableText(from: text)
+        XCTAssertTrue(spoken.contains("Item 6: Count 6."))
+        XCTAssertFalse(spoken.contains("Item 7"), "rows past the cap are not recited")
+        XCTAssertTrue(spoken.hasSuffix("Plus 4 more rows in the table."))
+    }
+
+    func testSpeakableTextReadsSevenRowTableInFullWithoutSillyTrailer() {
+        let rows = (1...7).map { "| Item \($0) | \($0) |" }.joined(separator: "\n")
+        let text = "| Name | Count |\n| --- | --- |\n" + rows
+
+        let spoken = AskAnswerBlock.speakableText(from: text)
+        XCTAssertTrue(spoken.contains("Item 7: Count 7."))
+        XCTAssertFalse(spoken.contains("more rows"))
     }
 
     func testSpeakableTextReadsHeaderlessTableCellsInOrder() {
@@ -260,8 +292,9 @@ final class AskAnswerBlocksTests: XCTestCase {
         | one | two |
         """
 
-        // No `| --- |` separator, so the parser sees no header row: read cells in order.
-        XCTAssertEqual(AskAnswerBlock.speakableText(from: text), "a, b.\none, two.")
+        // No `| --- |` separator, so the parser sees no header row: read cells
+        // in order with the natural two-item join.
+        XCTAssertEqual(AskAnswerBlock.speakableText(from: text), "a and b.\none and two.")
     }
 
     func testSpeakableTextSpeaksLinkLabelAndDropsURL() {
@@ -271,14 +304,18 @@ final class AskAnswerBlocksTests: XCTestCase {
         XCTAssertFalse(spoken.contains("https://r.com"))
     }
 
-    func testSpeakableTextReturnsEmptyForAllCodeAnswer() {
+    func testSpeakableTextAnnouncesAllCodeAnswer() {
         let text = """
         ```swift
         let x = 1
         ```
         """
 
-        XCTAssertEqual(AskAnswerBlock.speakableText(from: text), "")
+        // Dead air was worse than a pointer to the screen.
+        XCTAssertEqual(
+            AskAnswerBlock.speakableText(from: text),
+            "The answer is a code block on screen."
+        )
     }
 
     func testSpeakableTextAddsPeriodWhenParagraphHasNoTerminalPunctuation() {
@@ -892,6 +929,106 @@ final class AskAnswerBlocksTests: XCTestCase {
             ""
         )
     }
+    // MARK: - Glued sentences and fused narration
+
+    func testRepairGluedSentences() {
+        // Boundary across a delta join.
+        XCTAssertEqual(
+            AskAnswerBlock.repairGluedSentences(previous: "the next matches.", delta: "Context is mid-July"),
+            " Context is mid-July"
+        )
+        // Internal glue inside one delta.
+        XCTAssertEqual(
+            AskAnswerBlock.repairGluedSentences(previous: "", delta: "in the tournament.Next up: the semi-finals."),
+            "in the tournament. Next up: the semi-finals."
+        )
+        // Digit before the terminator still repairs.
+        XCTAssertEqual(
+            AskAnswerBlock.repairGluedSentences(previous: "", delta: "on July 15, 2026.The final follows."),
+            "on July 15, 2026. The final follows."
+        )
+        // Guards: initialisms, domains, decimals, identifiers untouched.
+        XCTAssertEqual(
+            AskAnswerBlock.repairGluedSentences(previous: "", delta: "the U.S.Army and FIFA.com and 3.5 grams of Node.js"),
+            "the U.S.Army and FIFA.com and 3.5 grams of Node.js"
+        )
+        // Uppercase before the terminator (initialism tail) blocks the join repair.
+        XCTAssertEqual(
+            AskAnswerBlock.repairGluedSentences(previous: "check FIFA.", delta: "Com now"),
+            "Com now"
+        )
+        // Plain start, no previous text: untouched.
+        XCTAssertEqual(
+            AskAnswerBlock.repairGluedSentences(previous: "", delta: "Hello there."),
+            "Hello there."
+        )
+    }
+
+    func testStrippingFusedLeadingNarrationSentences() {
+        // The field case: preamble sentences fused into the same paragraph as
+        // the answer (post glue-repair).
+        let fused = "I'll look up the current FIFA World Cup 2026 schedule for the next matches. "
+            + "Context is mid-July 2026 — checking which matches are next. "
+            + "Next up: the semi-finals. The first is today."
+        XCTAssertEqual(
+            AskAnswerBlock.strippingLeadingNarration(fused),
+            "Next up: the semi-finals. The first is today."
+        )
+
+        // Any "I'll …" opener strips, not just an enumerated verb list —
+        // this exact case survived the verb whack-a-mole in the field.
+        let pullCase = "I'll pull the latest AI headlines for today. Today's AI snapshot (July 14, 2026): news follows."
+        XCTAssertEqual(
+            AskAnswerBlock.strippingLeadingNarration(pullCase),
+            "Today's AI snapshot (July 14, 2026): news follows."
+        )
+
+        // Never reduces an answer to nothing.
+        let onlyNarration = "I'll look up the schedule."
+        XCTAssertEqual(AskAnswerBlock.strippingLeadingNarration(onlyNarration), onlyNarration)
+
+        // Ambiguous sentence openers stay: this is prose, not narration.
+        let prose = "Checking the weather is easy. Just look outside."
+        XCTAssertEqual(AskAnswerBlock.strippingLeadingNarration(prose), prose)
+
+        // Initialisms inside a narration sentence don't cut it short.
+        XCTAssertEqual(
+            AskAnswerBlock.strippingLeadingNarration("I'll check U.S. sources for this. The answer is 42."),
+            "The answer is 42."
+        )
+    }
+
+    // MARK: - Streaming: unclosed inline spans withhold
+
+    func testBoldSpanningSentencesWithholdsUntilCloserArrives() {
+        // Mid-span: sentence one is complete but the bold that started before
+        // it is still open — emitting would speak literal asterisks and later
+        // strip differently (MONOTONE break). Must emit nothing from the span.
+        let midSpan = "**First we ship the fix. Then we watch"
+        XCTAssertEqual(AskAnswerBlock.stableSpeakablePrefix(fromStreaming: midSpan), "")
+
+        // "closely.**" is not a raw sentence boundary (no space after the
+        // period), so emission resumes at the NEXT boundary after the span
+        // closes — everything through it emits together, stripped clean.
+        let closed = "**First we ship the fix. Then we watch closely.** After that arrives more. X"
+        let stable = AskAnswerBlock.stableSpeakablePrefix(fromStreaming: closed)
+        XCTAssertEqual(
+            stable,
+            "First we ship the fix. Then we watch closely. After that arrives more."
+        )
+        XCTAssertFalse(stable.contains("*"))
+    }
+
+    func testCleanLeadingSentenceStillEmitsWhileLaterSpanIsOpen() {
+        // Only the span-crossing tail is withheld — a clean first sentence
+        // ahead of the open span keeps streaming.
+        let text = "The rollout starts today. **First we ship. Then we"
+        XCTAssertEqual(
+            AskAnswerBlock.stableSpeakablePrefix(fromStreaming: text),
+            "The rollout starts today."
+        )
+    }
+
     // MARK: - Streaming stable prefix: property tests
 
     private static let monotoneFixtureA = """
@@ -1033,6 +1170,12 @@ final class AskAnswerBlocksTests: XCTestCase {
             "plain_prose",
             """
             The weather forecast across the region this week remains mild overall, with only occasional showers expected near the coast. Pack a light jacket just in case you go out after dusk.
+            """
+        ),
+        (
+            "bold_spanning_sentences",
+            """
+            The plan is straightforward from here on out. **First we ship the fix today. Then we watch the telemetry closely.** After that the rollout continues as scheduled next week.
             """
         ),
         (

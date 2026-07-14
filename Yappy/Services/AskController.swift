@@ -50,6 +50,37 @@ enum AskGrokModel: String, CaseIterable, Identifiable, Sendable {
 /// synthesizes cleanly at nominal speed; the helper's speed-jitter retry is the
 /// safety net for the rare vocoder length glitch. Raw values are Kokoro voice
 /// pack IDs (a=American, b=British; f=female, m=male).
+/// Playback speed for reading Answers aloud. Discrete stops rather than a
+/// free slider so every shippable value is a speed Kokoro renders cleanly;
+/// the helper's vocoder-bug jitter retry multiplies ON TOP of this base, so
+/// its dodge behavior is preserved at any stop.
+enum AnswersVoiceSpeed: String, CaseIterable, Identifiable, Sendable {
+    case relaxed
+    case normal
+    case brisk
+    case quick
+
+    var id: String { rawValue }
+
+    var multiplier: Double {
+        switch self {
+        case .relaxed: 0.85
+        case .normal: 1.0
+        case .brisk: 1.15
+        case .quick: 1.3
+        }
+    }
+
+    var displayName: String {
+        switch self {
+        case .relaxed: "Relaxed (0.85×)"
+        case .normal: "Normal"
+        case .brisk: "Brisk (1.15×)"
+        case .quick: "Quick (1.3×)"
+        }
+    }
+}
+
 enum AnswersVoice: String, CaseIterable, Identifiable, Sendable {
     case afHeart = "af_heart"
     case afBella = "af_bella"
@@ -156,6 +187,27 @@ final class AskController: ObservableObject {
     /// True once the user clicks into the answer (or re-summons one) — the pill
     /// then stays until explicitly dismissed (✕ / Escape / next Ask).
     @Published var pillPinned = false
+    /// When the card-wide tap gesture last pinned, on `metricsClock`. Card
+    /// action buttons receive the SAME click through `simultaneousGesture`,
+    /// in nondeterministic order relative to the gesture — this timestamp
+    /// lets them tell a pin born from their own click (undo it) from a
+    /// deliberate earlier pin (keep it).
+    private var cardTapPinnedAt: Double = -.infinity
+
+    /// Pin from the card-wide tap gesture (and nothing else) — timestamped
+    /// so `pillPinnedBeforeCurrentClick` can classify it.
+    func pinFromCardTap() {
+        pillPinned = true
+        cardTapPinnedAt = metricsClock()
+    }
+
+    /// True only when the pill was pinned BEFORE the click currently being
+    /// handled — i.e. pinned, and not by a card tap within the last instant.
+    /// Deliberate pins (an earlier card tap, "pin that", show-from-history)
+    /// return true; the gesture half of the current click returns false.
+    var pillPinnedBeforeCurrentClick: Bool {
+        pillPinned && metricsClock() - cardTapPinnedAt > 0.25
+    }
 
     /// Completed Q&A pairs, persisted so answers can be re-read after the pill
     /// dismisses (main window → Ask, menu bar → Show Last Answer).
@@ -975,8 +1027,9 @@ final class AskController: ObservableObject {
                     lastRunMetrics.firstAnswerTokenAt = metricsClock()
                     if speakAvailable { warmAudioOutput() }
                 }
-                r.answerText = (r.answerText ?? "") + delta
-                feedStreamingSpeech(delta: delta, run: &r)
+                let repaired = AskAnswerBlock.repairGluedSentences(previous: r.answerText ?? "", delta: delta)
+                r.answerText = (r.answerText ?? "") + repaired
+                feedStreamingSpeech(delta: repaired, run: &r)
             }
 
         case .agentMessageCompleted(let itemID, let phase, let text):
@@ -986,8 +1039,10 @@ final class AskController: ObservableObject {
                 completeNarration(with: text, in: &r)
             } else if !text.isEmpty {
                 // Authoritative full text replaces streamed deltas so the answer
-                // can never duplicate itself.
-                r.answerText = text
+                // can never duplicate itself. Repaired with the same glue rule
+                // as the deltas, so the replace stays a byte-consistent
+                // extension of what already streamed.
+                r.answerText = AskAnswerBlock.repairGluedSentences(previous: "", delta: text)
             }
 
         case .reasoningStarted:
@@ -1096,8 +1151,9 @@ final class AskController: ObservableObject {
                 lastRunMetrics.firstAnswerTokenAt = metricsClock()
                 if speakAvailable { warmAudioOutput() }
             }
-            r.answerText = (r.answerText ?? "") + delta
-            feedStreamingSpeech(delta: delta, run: &r)
+            let repaired = AskAnswerBlock.repairGluedSentences(previous: r.answerText ?? "", delta: delta)
+            r.answerText = (r.answerText ?? "") + repaired
+            feedStreamingSpeech(delta: repaired, run: &r)
 
         case .toolStarted(let title):
             // Grok's plan mode already refuses mutating tools; this is the same
@@ -1306,8 +1362,26 @@ final class AskController: ObservableObject {
     }
 
     private func finish(_ finished: AskRun) {
+        var finished = finished
         cancelActivityWatchdog()
         lastRunMetrics.completedAt = metricsClock()
+        // Working narration ("I'll look up…") is fine to show WHILE the answer
+        // streams, but the final populated card must not open with it. The
+        // strip is idempotent and speakableText applies it internally too, so
+        // the streamed-speech prefix arithmetic below is unaffected.
+        if finished.status == .completed {
+            if let raw = finished.answerText {
+                finished.answerText = AskAnswerBlock.strippingLeadingNarration(raw)
+            }
+            if let raw = finished.result {
+                finished.result = AskAnswerBlock.strippingLeadingNarration(raw)
+            }
+            if var r = run, r.id == finished.id {
+                r.answerText = finished.answerText
+                r.result = finished.result
+                run = r
+            }
+        }
         if finished.status == .completed,
            let dispatched = lastRunMetrics.dispatchedAt,
            let completed = lastRunMetrics.completedAt {

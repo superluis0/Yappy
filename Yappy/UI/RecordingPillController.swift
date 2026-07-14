@@ -12,9 +12,11 @@ import SwiftUI
 final class RecordingPillController {
     private var panel: NSPanel?
     private let appState: AppState
+    private let settings: Settings
 
-    init(appState: AppState) {
+    init(appState: AppState, settings: Settings) {
         self.appState = appState
+        self.settings = settings
     }
 
     // MARK: - Visibility
@@ -84,7 +86,7 @@ final class RecordingPillController {
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.isReleasedWhenClosed = false
 
-        let hosting = NSHostingView(rootView: RecordingPillView(appState: appState))
+        let hosting = NSHostingView(rootView: RecordingPillView(appState: appState, settings: settings))
         hosting.frame = NSRect(origin: .zero, size: size)
         hosting.autoresizingMask = [.width, .height]
         panel.contentView = hosting

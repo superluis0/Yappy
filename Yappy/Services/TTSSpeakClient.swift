@@ -210,6 +210,7 @@ final class TTSSpeakClient: @unchecked Sendable {
     func synthesize(
         text: String,
         voice: String,
+        speed: Double = 1.0,
         padStartMs: Int = 0
     ) async throws -> URL {
         cancelIdleShutdown()
@@ -217,7 +218,8 @@ final class TTSSpeakClient: @unchecked Sendable {
 
         await serialGate.enter()
         do {
-            let url = try await synthesizeSerial(text: text, voice: voice, padStartMs: padStartMs)
+            let url = try await synthesizeSerial(
+                text: text, voice: voice, speed: speed, padStartMs: padStartMs)
             await serialGate.leave()
             return url
         } catch {
@@ -374,12 +376,14 @@ final class TTSSpeakClient: @unchecked Sendable {
     private func synthesizeSerial(
         text: String,
         voice: String,
+        speed: Double,
         padStartMs: Int
     ) async throws -> URL {
         let outputURL = try nextOutputURL()
         let request: [String: Any] = [
             "text": text,
             "voice": voice,
+            "speed": speed,
             "out": outputURL.path,
             "pad_ms": padStartMs,
         ]
@@ -389,8 +393,10 @@ final class TTSSpeakClient: @unchecked Sendable {
         guard let ok = reply["ok"] as? Bool else { throw ClientError.invalidReply }
 
         if !ok {
-            VLog.tts("synthesis failed")
+            // The helper's error strings are exception type + shape info from
+            // our own script, never transcript content — safe to log.
             let message = reply["error"] as? String ?? "TTS synthesis failed."
+            VLog.tts("synthesis failed: \(message.prefix(120))")
             throw ClientError.synthesis(message)
         }
 
@@ -606,7 +612,7 @@ actor TTSRequestSerialGate {
 
 protocol AnswerSpeaking: AnyObject {
     var onPhaseChange: (@Sendable (String) -> Void)? { get set }
-    func synthesize(text: String, voice: String, padStartMs: Int) async throws -> URL
+    func synthesize(text: String, voice: String, speed: Double, padStartMs: Int) async throws -> URL
     func noteIdle()
     func stop()
 }

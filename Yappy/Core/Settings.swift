@@ -36,6 +36,24 @@ enum TranscriptionModel: String, CaseIterable, Codable {
     }
 }
 
+/// The glowing rim around the recording pill while it listens.
+enum ListeningGlowStyle: String, CaseIterable, Codable, Identifiable {
+    case rainbow
+    case white
+    case orange
+
+    var id: String { rawValue }
+
+    /// Display name for UI presentation.
+    var displayName: String {
+        switch self {
+        case .rainbow: return "Rainbow"
+        case .white: return "White"
+        case .orange: return "Orange"
+        }
+    }
+}
+
 /// Application settings with UserDefaults persistence.
 /// Fully local — no API keys. AI cleanup runs on-device via Apple Intelligence
 /// (Foundation Models, macOS 26+); nothing leaves the Mac.
@@ -48,6 +66,7 @@ final class Settings: ObservableObject {
         static let launchAtLogin = "com.yappy.launchAtLogin"
         static let cleanupEnabled = "com.yappy.cleanupEnabled"
         static let audioFeedbackEnabled = "com.yappy.audioFeedbackEnabled"
+        static let listeningGlowStyle = "com.yappy.listeningGlowStyle"
         static let audioFeedbackVolume = "com.yappy.audioFeedbackVolume"
         static let dismissedSuggestions = "com.yappy.dismissedSuggestions"
         static let contextAwareToneEnabled = "com.yappy.contextAwareToneEnabled"
@@ -82,6 +101,7 @@ final class Settings: ObservableObject {
         static let answersSpeakEnabled = "com.yappy.answersSpeakEnabled"
         static let answersAutoSpeak = "com.yappy.answersAutoSpeak"
         static let answersVoice = "com.yappy.answersVoice"
+        static let answersVoiceSpeed = "com.yappy.answersVoiceSpeed"
 
         /// Keys from the cloud-based versions of Yappy; removed on first launch.
         static let staleKeys = [
@@ -119,6 +139,11 @@ final class Settings: ObservableObject {
 
     /// Whether audio feedback sounds are enabled.
     @Published var audioFeedbackEnabled: Bool = true {
+        didSet { if !isLoading { save() } }
+    }
+
+    /// The glowing rim style around the recording pill while listening.
+    @Published var listeningGlowStyle: ListeningGlowStyle = .rainbow {
         didSet { if !isLoading { save() } }
     }
 
@@ -319,6 +344,11 @@ final class Settings: ObservableObject {
         didSet { if !isLoading { save() } }
     }
 
+    /// Playback speed for reading Answers aloud.
+    @Published var answersVoiceSpeed: AnswersVoiceSpeed = .normal {
+        didSet { if !isLoading { save() } }
+    }
+
     private var isLoading = false
 
     // MARK: - Initialization
@@ -339,6 +369,7 @@ final class Settings: ObservableObject {
         defaults.set(launchAtLogin, forKey: Keys.launchAtLogin)
         defaults.set(cleanupEnabled, forKey: Keys.cleanupEnabled)
         defaults.set(audioFeedbackEnabled, forKey: Keys.audioFeedbackEnabled)
+        defaults.set(listeningGlowStyle.rawValue, forKey: Keys.listeningGlowStyle)
         defaults.set(audioFeedbackVolume, forKey: Keys.audioFeedbackVolume)
         defaults.set(Array(dismissedSuggestions), forKey: Keys.dismissedSuggestions)
         defaults.set(contextAwareToneEnabled, forKey: Keys.contextAwareToneEnabled)
@@ -370,6 +401,7 @@ final class Settings: ObservableObject {
         defaults.set(answersSpeakEnabled, forKey: Keys.answersSpeakEnabled)
         defaults.set(answersAutoSpeak, forKey: Keys.answersAutoSpeak)
         defaults.set(answersVoice, forKey: Keys.answersVoice)
+        defaults.set(answersVoiceSpeed.rawValue, forKey: Keys.answersVoiceSpeed)
 
         let overrides = Dictionary(uniqueKeysWithValues: toneOverrides.map { ($0.key.rawValue, $0.value.rawValue) })
         defaults.set(overrides, forKey: Keys.toneOverrides)
@@ -395,6 +427,11 @@ final class Settings: ObservableObject {
             cleanupEnabled = defaults.bool(forKey: Keys.cleanupEnabled)
         } else {
             cleanupEnabled = true
+        }
+
+        if let glowRaw = defaults.string(forKey: Keys.listeningGlowStyle),
+           let loadedGlow = ListeningGlowStyle(rawValue: glowRaw) {
+            listeningGlowStyle = loadedGlow
         }
 
         if defaults.object(forKey: Keys.audioFeedbackEnabled) != nil {
@@ -531,6 +568,10 @@ final class Settings: ObservableObject {
         } else {
             answersVoice = AnswersVoice.afHeart.rawValue
             defaults.set(answersVoice, forKey: Keys.answersVoice)
+        }
+        if let rawSpeed = defaults.string(forKey: Keys.answersVoiceSpeed),
+           let loadedSpeed = AnswersVoiceSpeed(rawValue: rawSpeed) {
+            answersVoiceSpeed = loadedSpeed
         }
 
         if let raw = defaults.dictionary(forKey: Keys.toneOverrides) as? [String: String] {

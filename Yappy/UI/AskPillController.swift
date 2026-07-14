@@ -18,6 +18,7 @@ import SwiftUI
 final class AskPillController {
     private var panel: NSPanel?
     private let controller: AskController
+    private let settings: Settings
     private var cancellables: Set<AnyCancellable> = []
     private var activeScreen: NSScreen?
     private var lastContentSize: CGSize = .zero
@@ -29,8 +30,9 @@ final class AskPillController {
     /// Dock.
     private let bottomLift: CGFloat = 28
 
-    init(controller: AskController) {
+    init(controller: AskController, settings: Settings) {
         self.controller = controller
+        self.settings = settings
         // React to run changes: show/hide, reposition, and toggle mouse events.
         controller.$run
             // DispatchQueue.main (not RunLoop.main): keeps the pill responsive during scroll/menu event-tracking, while still deferring past the @Published willSet.
@@ -84,6 +86,7 @@ final class AskPillController {
 
         let hosting = NSHostingView(rootView: AskPillView(
             controller: controller,
+            settings: settings,
             onSizeChange: { [weak self] size in self?.onContentSize(size) }
         ))
         hosting.autoresizingMask = [.width, .height]

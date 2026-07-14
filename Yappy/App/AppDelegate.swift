@@ -37,7 +37,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settings: settings, provider: FoundationModelsCleanupProvider())
     private lazy var hotkeyManager = HotkeyManager(mode: settings.hotkeyOption)
     private lazy var escapeInterceptor = EscapeInterceptor()
-    private lazy var pillController = RecordingPillController(appState: appState)
+    private lazy var pillController = RecordingPillController(appState: appState, settings: settings)
     private lazy var scratchpadController = ScratchpadController(store: notesStore)
     private let scratchpadHotkey = ScratchpadHotkey()
 
@@ -49,7 +49,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         grokClient: GrokClientRouter(warm: GrokAgentClient(), oneShot: GrokAskClient())
     )
     private let askHotkey = AskHotkey()
-    private lazy var askPillController = AskPillController(controller: askController)
+    private lazy var askPillController = AskPillController(controller: askController, settings: settings)
     /// True while an Ask capture is recording audio (distinct from dictation's
     /// appState.isRecording — Ask drives its own pill via askController).
     private var askRecording = false
@@ -1314,28 +1314,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         break
                     }
 
-                    guard let sound = pending else {
-                        completedNaturally = false
-                        break
-                    }
-
+                    // A nil `pending` is a SKIPPED chunk (empty/failed input),
+                    // not a pipeline failure: keep going with the next one.
                     if index + 1 < chunks.count {
                         // async let keeps synthesis+decode on a child task so WAV decode
                         // overlaps current playback instead of at the gapless seam.
                         async let nextPrepared = self.synthesizeAndPrepareAnswerChunk(chunks[index + 1])
-                        self.askController.setSpeakingPhase(.speaking)
-                        if index == chunks.startIndex {
-                            let totalMs = Int((CACurrentMediaTime() - speechRequestedAt) * 1_000)
-                            VLog.tts("first-audio path=manual synth_ms=\(firstSynthesisMs) pad_ms=\(firstPadMs) total_ms=\(totalMs)")
-                        }
-                        let finished = await self.playPreparedAndWait(sound, generation: generation)
-                        guard finished, self.speakGeneration == generation, !Task.isCancelled else {
-                            completedNaturally = false
-                            break
+                        if let sound = pending {
+                            self.askController.setSpeakingPhase(.speaking)
+                            if index == chunks.startIndex {
+                                let totalMs = Int((CACurrentMediaTime() - speechRequestedAt) * 1_000)
+                                VLog.tts("first-audio path=manual synth_ms=\(firstSynthesisMs) pad_ms=\(firstPadMs) total_ms=\(totalMs)")
+                            }
+                            let finished = await self.playPreparedAndWait(sound, generation: generation)
+                            guard finished, self.speakGeneration == generation, !Task.isCancelled else {
+                                completedNaturally = false
+                                break
+                            }
                         }
                         chunkIndex = index + 1
                         pending = try await nextPrepared
-                    } else {
+                    } else if let sound = pending {
                         self.askController.setSpeakingPhase(.speaking)
                         if index == chunks.startIndex {
                             let totalMs = Int((CACurrentMediaTime() - speechRequestedAt) * 1_000)
@@ -1365,14 +1364,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func synthesizeAnswerChunk(_ chunk: String, padStartMs: Int = 0) async throws -> URL {
-        let voice = AnswersVoice(rawValue: settings.answersVoice)?.rawValue ?? Self.answerSpeakFallbackVoice
-        return try await ttsClient.synthesize(text: TTSTextNormalizer.normalize(chunk), voice: voice, padStartMs: padStartMs)
-    }
-
+    /// Synthesizes and decodes one speech chunk. `nil` means SKIP this chunk
+    /// and keep the pipeline going: the chunk normalized to nothing speakable
+    /// (e.g. pure markdown residue — the helper errors on empty input), the
+    /// helper rejected this specific input, or the WAV failed to decode. One
+    /// lost chunk must never silence the rest of the answer (field bug: a
+    /// single failed chunk used to kill everything after it). Throws only for
+    /// pipeline-fatal failures — the helper process gone or torn down by a
+    /// timeout — where continuing chunk-by-chunk cannot succeed.
     private func synthesizeAndPrepareAnswerChunk(_ chunk: String, padStartMs: Int = 0) async throws -> NSSound? {
-        let url = try await synthesizeAnswerChunk(chunk, padStartMs: padStartMs)
-        return soundPlayer.prepareFile(url: url)
+        let voice = AnswersVoice(rawValue: settings.answersVoice)?.rawValue ?? Self.answerSpeakFallbackVoice
+        let normalized = TTSTextNormalizer.normalize(chunk)
+        guard !normalized.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            VLog.tts("chunk skipped — empty after normalization")
+            return nil
+        }
+        do {
+            let url = try await ttsClient.synthesize(
+                text: normalized,
+                voice: voice,
+                speed: settings.answersVoiceSpeed.multiplier,
+                padStartMs: padStartMs
+            )
+            return soundPlayer.prepareFile(url: url)
+        } catch TTSSpeakClient.ClientError.synthesis {
+            VLog.tts("chunk skipped — synthesis failed for this input")
+            return nil
+        }
     }
 
     private func playPreparedAndWait(_ sound: NSSound, generation: Int) async -> Bool {
@@ -1414,7 +1432,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
             do {
-                let url = try await self.ttsClient.synthesize(text: sample, voice: resolved.rawValue, padStartMs: 280)
+                // The preview demos the speed the answers will actually use.
+                let url = try await self.ttsClient.synthesize(
+                    text: sample,
+                    voice: resolved.rawValue,
+                    speed: self.settings.answersVoiceSpeed.multiplier,
+                    padStartMs: 280
+                )
                 guard self.previewGeneration == generation, !Task.isCancelled else { return }
                 _ = await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
                     self.soundPlayer.playFile(url: url, volume: self.settings.audioFeedbackVolume) { finished in
@@ -1486,19 +1510,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
                             for index in chunks.indices {
                                 guard self.speakGeneration == generation, !Task.isCancelled else { return }
-                                guard let sound = pending else { return }
 
+                                // A nil `pending` is a SKIPPED chunk (empty or
+                                // failed input), not a pipeline failure: keep
+                                // going with the next one.
                                 if index + 1 < chunks.count {
                                     async let nextPrepared = self.synthesizeAndPrepareAnswerChunk(chunks[index + 1])
-                                    self.askController.setSpeakingPhase(.speaking)
-                                    if batchStartsSpeech, index == chunks.startIndex {
-                                        let totalMs = Int((CACurrentMediaTime() - speechRequestedAt) * 1_000)
-                                        VLog.tts("first-audio path=stream synth_ms=\(firstSynthesisMs) pad_ms=\(firstPadMs) total_ms=\(totalMs)")
+                                    if let sound = pending {
+                                        self.askController.setSpeakingPhase(.speaking)
+                                        if batchStartsSpeech, index == chunks.startIndex {
+                                            let totalMs = Int((CACurrentMediaTime() - speechRequestedAt) * 1_000)
+                                            VLog.tts("first-audio path=stream synth_ms=\(firstSynthesisMs) pad_ms=\(firstPadMs) total_ms=\(totalMs)")
+                                        }
+                                        let finished = await self.playPreparedAndWait(sound, generation: generation)
+                                        guard finished, self.speakGeneration == generation, !Task.isCancelled else { return }
                                     }
-                                    let finished = await self.playPreparedAndWait(sound, generation: generation)
-                                    guard finished, self.speakGeneration == generation, !Task.isCancelled else { return }
                                     pending = try await nextPrepared
-                                } else {
+                                } else if let sound = pending {
                                     self.askController.setSpeakingPhase(.speaking)
                                     if batchStartsSpeech, index == chunks.startIndex {
                                         let totalMs = Int((CACurrentMediaTime() - speechRequestedAt) * 1_000)
