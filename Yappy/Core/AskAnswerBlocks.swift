@@ -48,19 +48,20 @@ enum AskAnswerBlock: Equatable {
     private static let narrationOpeners = [
         "searching for", "searching the", "looking for", "looking up",
         "looking into", "let me check", "let me look", "let me search",
-        "let me find", "checking ", "finding ", "one moment", "one sec",
+        "let me find", "checking ", "confirming ", "verifying ", "finding ",
+        "one moment", "one sec",
         "i'll ", "i will ",
         "i'm checking", "i'm looking", "i'm searching", "context is",
     ]
 
     /// The subset safe to match at SENTENCE granularity inside the first line.
-    /// Bare "checking "/"finding "/"looking for" are excluded here: as sentence
-    /// openers they collide with real prose ("Checking the weather is easy.")
-    /// far more often than as whole standalone lines. "I'll …" matches
-    /// WHOLESALE: enumerating retrieval verbs (look/check/pull/grab/fetch…)
-    /// lost that game in the field, and a first-person-future opening sentence
-    /// of a voice ANSWER is meta by nature — the ≤90-char cap and the
-    /// content-must-follow guard bound the blast radius.
+    /// Bare "finding "/"looking for" are excluded here: as sentence openers
+    /// they collide with real prose far more often than as whole standalone
+    /// lines. "I'll …" matches WHOLESALE: enumerating retrieval verbs
+    /// (look/check/pull/grab/fetch…) lost that game in the field, and a
+    /// first-person-future opening sentence of a voice ANSWER is meta by
+    /// nature — the ≤90-char cap and the content-must-follow guard bound the
+    /// blast radius.
     private static let sentenceNarrationOpeners = [
         "searching for", "searching the", "looking up", "looking into",
         "let me ", "one moment", "one sec",
@@ -68,10 +69,42 @@ enum AskAnswerBlock: Equatable {
         "i'm checking", "i'm looking", "i'm searching", "context is",
     ]
 
+    /// Bare research gerunds grok leads with in the field ("Checking current
+    /// city-population rankings for Japan. Confirming city-proper vs metro
+    /// rankings."). As sentence openers these CAN collide with real prose
+    /// ("Checking the weather is easy."), so they only count as narration when
+    /// the candidate sentence has no conjugated-verb marker — genuine
+    /// gerund-subject prose virtually always carries one, while narration
+    /// fragments are verbless noun phrases. Bounded, not grammar: a real
+    /// answer like "Checking accounts earn less interest." would still be
+    /// clipped — accepted because voice answers opening that way are far
+    /// rarer than grok's research preamble.
+    private static let guardedSentenceNarrationOpeners = [
+        "checking ", "confirming ", "verifying ", "double-checking ",
+    ]
+
+    /// Conjugated-verb markers that mark a gerund-opener sentence as real
+    /// prose rather than narration (see guardedSentenceNarrationOpeners).
+    private static let finiteVerbMarkers = [
+        " is ", " are ", " was ", " were ", " has ", " have ", " had ",
+        " can ", " will ", " would ", " should ", " means ", " takes ",
+        " requires ", " helps ", " makes ", " lets ", " gives ", " keeps ",
+    ]
+
     /// True when the first non-empty line reads as process narration.
     private static func firstLineIsNarration(_ lines: [String], at index: Int) -> Bool {
         let first = lines[index].trimmingCharacters(in: .whitespaces).lowercased()
-        return first.count <= 90 && narrationOpeners.contains(where: { first.hasPrefix($0) })
+        guard first.count <= 90, narrationOpeners.contains(where: { first.hasPrefix($0) }) else {
+            return false
+        }
+        // Bare-gerund openers ("Checking …") collide with real prose; require
+        // the verbless shape narration always has (see the guarded sentence
+        // openers below for the full rationale).
+        if guardedSentenceNarrationOpeners.contains(where: { first.hasPrefix($0) }),
+           finiteVerbMarkers.contains(where: { first.contains($0) }) {
+            return false
+        }
+        return true
     }
 
     /// True when the text is NOTHING BUT a narration line so far — used while
@@ -121,7 +154,9 @@ enum AskAnswerBlock: Equatable {
         for _ in 0..<3 {
             let trimmed = output.drop(while: { $0 == " " || $0 == "\n" })
             let lowered = trimmed.lowercased()
-            guard sentenceNarrationOpeners.contains(where: { lowered.hasPrefix($0) }) else { break }
+            let matchesPlain = sentenceNarrationOpeners.contains(where: { lowered.hasPrefix($0) })
+            let matchesGuarded = guardedSentenceNarrationOpeners.contains(where: { lowered.hasPrefix($0) })
+            guard matchesPlain || matchesGuarded else { break }
             // The narration sentence must END within 90 characters at a real
             // boundary: terminator + space, preceded by a lowercase letter or
             // digit (so "U.S." initialisms and "3.5" decimals never cut).
@@ -142,6 +177,12 @@ enum AskAnswerBlock: Equatable {
                 index = trimmed.index(after: index)
             }
             guard let boundary else { break }
+            if !matchesPlain {
+                // Guarded gerund opener: keep the sentence when it reads as
+                // real prose (carries a conjugated-verb marker).
+                let sentence = trimmed[..<boundary].lowercased()
+                if finiteVerbMarkers.contains(where: { sentence.contains($0) }) { break }
+            }
             let remainder = String(trimmed[boundary...])
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             guard !remainder.isEmpty else { break }
@@ -157,23 +198,32 @@ enum AskAnswerBlock: Equatable {
     /// append. A space is inserted after `.!?` only when preceded by a
     /// lowercase letter or digit AND followed by an uppercase letter, so
     /// initialisms ("U.S.A"), domains ("FIFA.com"), decimals ("3.5"), and
-    /// identifiers ("Node.js") never match. `previous` is the text already
-    /// accumulated: the same 3-character window is checked across the join, so
-    /// repairing delta-by-delta produces byte-identical output to repairing
-    /// the concatenated whole (which keeps codex's authoritative full-text
-    /// replace consistent with its streamed deltas).
+    /// identifiers ("Node.js") never match. A run of inline-markdown delimiters
+    /// may sit between the terminator and the capital ("rankings.**Tokyo") —
+    /// grok glues its narration segment straight onto a bold answer opener, so
+    /// the lookahead sees through `*`/`_`/`~` runs. `previous` is the text
+    /// already accumulated: the same window is checked across the join, so
+    /// repairing delta-by-delta matches repairing the concatenated whole
+    /// (which keeps codex's authoritative full-text replace consistent with
+    /// its streamed deltas). The one unrepaired split is a delta boundary
+    /// INSIDE the delimiter run ("rankings.**" | "Tokyo") — inserting there
+    /// could not match the whole-text result, so it is left alone.
     static func repairGluedSentences(previous: String, delta: String) -> String {
         guard !delta.isEmpty else { return delta }
         var repaired = delta
-        if let regex = try? NSRegularExpression(pattern: #"([a-z0-9][.!?])(?=[A-Z])"#) {
+        if let regex = try? NSRegularExpression(pattern: #"([a-z0-9][.!?])(?=(?:[*_~]{1,3})?[A-Z])"#) {
             let range = NSRange(repaired.startIndex..<repaired.endIndex, in: repaired)
             repaired = regex.stringByReplacingMatches(in: repaired, range: range, withTemplate: "$1 ")
         }
         if let last = previous.last, ".!?".contains(last),
            let beforeTerminator = previous.dropLast().last,
-           beforeTerminator.isLowercase || beforeTerminator.isNumber,
-           let first = repaired.first, first.isUppercase {
-            repaired = " " + repaired
+           beforeTerminator.isLowercase || beforeTerminator.isNumber {
+            let delimiterRun = repaired.prefix(while: { "*_~".contains($0) })
+            if delimiterRun.count <= 3,
+               let first = repaired.dropFirst(delimiterRun.count).first,
+               first.isUppercase {
+                repaired = " " + repaired
+            }
         }
         return repaired
     }

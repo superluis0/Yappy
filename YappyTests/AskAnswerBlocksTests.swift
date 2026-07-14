@@ -998,6 +998,65 @@ final class AskAnswerBlocksTests: XCTestCase {
         )
     }
 
+    func testRepairGluedSentencesThroughMarkdownDelimiters() {
+        // grok glues its narration segment straight onto a bold answer opener
+        // ("rankings.**Tokyo") — the delimiter run must not hide the boundary.
+        XCTAssertEqual(
+            AskAnswerBlock.repairGluedSentences(
+                previous: "",
+                delta: "vs metro rankings.**Tokyo, Osaka, and Nagoya** lead."
+            ),
+            "vs metro rankings. **Tokyo, Osaka, and Nagoya** lead."
+        )
+        // Same shape when the bold opener starts a fresh delta.
+        XCTAssertEqual(
+            AskAnswerBlock.repairGluedSentences(
+                previous: "vs metro rankings.",
+                delta: "**Tokyo, Osaka, and Nagoya** lead."
+            ),
+            " **Tokyo, Osaka, and Nagoya** lead."
+        )
+        // Bold digits (version fragments) stay glued: the capital requirement holds.
+        XCTAssertEqual(
+            AskAnswerBlock.repairGluedSentences(previous: "", delta: "shipped in v2.**8** today"),
+            "shipped in v2.**8** today"
+        )
+        // A join landing INSIDE the delimiter run is left alone (documented
+        // limitation: no insertion point can match the whole-text repair).
+        XCTAssertEqual(
+            AskAnswerBlock.repairGluedSentences(previous: "vs metro rankings.*", delta: "*Tokyo leads."),
+            "*Tokyo leads."
+        )
+    }
+
+    func testStripsBareGerundResearchNarration() {
+        // The exact field shape (2026-07-14): verbless research-gerund
+        // sentences fused ahead of a bold answer, post glue-repair.
+        let japan = "Checking current city-population rankings for Japan. "
+            + "Confirming city-proper vs metro rankings. "
+            + "**Tokyo, Osaka, and Nagoya** — Japan's three largest urban areas by population."
+        XCTAssertEqual(
+            AskAnswerBlock.strippingLeadingNarration(japan),
+            "**Tokyo, Osaka, and Nagoya** — Japan's three largest urban areas by population."
+        )
+
+        let everest = "Checking the currently accepted official height of Mount Everest. "
+            + "**Mount Everest is 8,848.86 meters (29,031.7 feet) tall.**"
+        XCTAssertEqual(
+            AskAnswerBlock.strippingLeadingNarration(everest),
+            "**Mount Everest is 8,848.86 meters (29,031.7 feet) tall.**"
+        )
+
+        // A gerund-subject sentence with a conjugated verb is prose — kept.
+        let prose = "Verifying a backup takes about a minute. Run the restore check monthly."
+        XCTAssertEqual(AskAnswerBlock.strippingLeadingNarration(prose), prose)
+
+        // Same guard at line granularity: a short gerund-opener LINE that
+        // reads as prose survives even with content below it.
+        let proseLines = "Checking the weather is easy.\nJust look outside."
+        XCTAssertEqual(AskAnswerBlock.strippingLeadingNarration(proseLines), proseLines)
+    }
+
     // MARK: - Streaming: unclosed inline spans withhold
 
     func testBoldSpanningSentencesWithholdsUntilCloserArrives() {
