@@ -29,7 +29,11 @@ No API keys. No cloud. No subscriptions. Dictation never leaves the device.</p>
 
 Most dictation apps stream your microphone to a server. Yappy doesn't. It runs NVIDIA's **Parakeet** speech model directly on the **Apple Neural Engine** (via [FluidAudio](https://github.com/FluidInference/FluidAudio)) — so transcription is fast, private, and works on a plane with the Wi‑Fi off.
 
-It stays out of your way until you need it: a single global hotkey, a small recording pill that fades in only while you talk, and text that lands wherever your cursor already is — your editor, Slack, the browser, a terminal, anywhere.
+It stays out of your way until you need it: a single global hotkey, a small recording pill that fades in only while you talk, and text that lands wherever your cursor already is — your editor, Slack, the browser, a terminal, anywhere. While you hold the key, a soft glow circles the pill so you always know Yappy is listening — rainbow by default, or a calm white or orange if you prefer.
+
+<div align="center">
+<img src="Documentation/assets/listening-glow.png" alt="The recording pill while listening, ringed by the slowly circling rainbow glow" width="460">
+</div>
 
 <div align="center">
 <img src="Documentation/assets/how-it-works.png" alt="Hold the hotkey, speak naturally, release — text lands at your cursor" width="820">
@@ -61,10 +65,16 @@ Everything is configurable in one place — hotkey, sounds, number formatting, n
 
 ## Answers — hold Fn, get an answer
 
-Dictation types what you say. **Answers researches what you ask.** Hold the **Fn (Globe)** key, say the question out loud — *"what were the top AI headlines this week?"*, *"compare the M4 chips in a table"* — and release. The answer streams into a floating dark-glass card at the bottom of your screen: live research steps while the model searches the web, then the answer itself, with the domains it cited shown as clickable **source chips** and a badge naming the model that answered. Tables render as real tables, code as code boxes, lists as lists, images load on click — and a wide table widens the card to fit. The card auto-dismisses on its own (longer answers linger longer); **hover to pause it, click to pin it.**
+Dictation types what you say. **Answers researches what you ask.** Hold the **Fn (Globe)** key, say the question out loud — *"what were the top AI headlines this week?"*, *"compare the M4 chips in a table"* — and release. The same listening glow rings the Answers pill while you speak, and stays on the card while it researches and answers — one glance tells you the mic is live.
 
 <div align="center">
-<img src="Documentation/assets/ask-pill.png" alt="The Answers card answering a spoken question with a rendered comparison table and a cited source" width="520">
+<img src="Documentation/assets/ask-listening-glow.png" alt="The Answers pill listening to a spoken question, ringed by the circling glow" width="440">
+</div>
+
+The answer streams into a floating dark-glass card at the bottom of your screen: live research steps while the model searches the web, then the answer itself, with the domains it cited shown as clickable **source chips** and a badge naming the model that answered. Tables render as real tables, code as code boxes, lists as lists, images load on click — and a wide table widens the card to fit. The card auto-dismisses on its own (longer answers linger longer); **hover to pause it, click to pin it.**
+
+<div align="center">
+<img src="Documentation/assets/ask-pill.png" alt="The Answers card answering a spoken question with a rendered table, ringed by the glow" width="520">
 </div>
 
 It goes further than a one-shot answer:
@@ -73,7 +83,7 @@ It goes further than a one-shot answer:
 - **Land the answer where you're working.** Hit **Insert**, or just say *"insert that"*, and the answer drops in as clean plain text at the cursor of the app you were in (tables become tab-separated). The card never stole your focus, so it goes exactly where you left off. **Copy** and **Ask again** are a click away too.
 - **Drive the card by voice.** Whole-utterance commands only, so a real question is never mistaken for one: *"copy that"*, *"insert that"*, *"pin that"*, *"dismiss"*, *"try again"*.
 - **Ask for more thinking when it matters.** Prefix a question with *"think harder, …"* and Yappy routes that one question at higher reasoning effort.
-- **Hear the answer, hands-free.** Turn on *Read answers aloud* and a **Speak** button appears on the card (or just say *"read that"*); *"stop talking"* stops it. This one is **100% local** — a neural voice runs entirely on your Mac, so the answer text never leaves it. Optional and off by default: it lights up green once the voice engine is installed (`brew install espeak-ng && pip3 install mlx-audio "misaki[en]" && python3 -m spacy download en_core_web_sm`, Apple Silicon), then downloads a small voice model on first use. Pick from eight American and British voices, or have every answer read automatically.
+- **Hear the answer, hands-free.** Turn on *Read answers aloud* and a **Speak** button appears on the card (or just say *"read that"*); *"stop talking"* stops it. This one is **100% local** — a neural voice runs entirely on your Mac, so the answer text never leaves it. Optional and off by default: it lights up green once the voice engine is installed (`brew install espeak-ng && pip3 install mlx-audio "misaki[en]" && python3 -m spacy download en_core_web_sm`, Apple Silicon), then downloads a small voice model on first use. Pick from eight American and British voices **at the pace you like** — Relaxed, Normal, Brisk, or Quick — or have every answer read automatically. It reads like a person, not a parser: dates, times, temperatures, and abbreviations are spoken the way you'd say them, tables are summarized into sentences instead of recited row by row, and markdown never leaks into the audio.
 
 A few honest facts about how it works:
 
@@ -139,7 +149,7 @@ Pick your answering model — **Codex (gpt-5.5)** or **Grok** (Composer 2.5 Fast
 
 **Polished hotkeys** — hold Right ⌘, double-tap Right ⌘, hold Right ⌥, or hold Right ⌃ for dictation; hold **Fn** for Answers (when enabled). A debounced state machine ignores key repeats and accidental taps, so it never fires when you don't mean it. Press **Esc** to cancel while recording — or while Yappy is still transcribing, to stop the text *before* it lands.
 
-**Considered details** — a molten-glass recording pill whose glow breathes with your voice and shifts into a quiet *Polishing* state while AI cleanup runs, a menu bar icon that animates while recording, and subtle custom start/stop/done sounds — including a distinct cue when something goes wrong, so failure never sounds like success.
+**Considered details** — a molten-glass recording pill whose glow breathes with your voice and shifts into a quiet *Polishing* state while AI cleanup runs, a **listening glow** that slowly circles the pill while the key is held (rainbow, white, or orange — pick in Settings, and it carries through to the Answers card), a menu bar icon that animates while recording, and subtle custom start/stop/done sounds — including a distinct cue when something goes wrong, so failure never sounds like success.
 
 **Private by design** — audio is transcribed on-device and never written to disk; no telemetry, no account. After the one-time model download, dictation runs fully offline — nothing you dictate leaves your Mac. The only exception is opt-in and clearly labeled: the **Answers** feature, off by default, which sends your transcribed question (never the audio) to the model account you connect, and runs that model read-only — it can research and answer, but a tool or command event kills the turn. A privacy panel on the home screen reflects this state at a glance.
 
@@ -251,7 +261,7 @@ Yappy's two capabilities have different privacy stories, and we'd rather you kno
 xcodebuild -project Yappy.xcodeproj -scheme Yappy test
 ```
 
-599 tests cover the hotkey state machine, settings persistence and migration, the transcript pipeline (numbers, lists, spoken punctuation, cross-stage interactions), the AI-cleanup accept/reject guard policy (never answer, never invent, never drop), deterministic tone transforms, the custom dictionary with speech-model term boosting and correction mining, the notes store, history-based shortcut suggestions, voice-command parsing, adaptive per-app mode resolution, dictation history and stats, voice-shortcut expansion, app-context classification, and the Answers stack (run state machine, Fn-hold state machine, controller orchestration driven through injected fakes — follow-ups, insert-at-cursor, and card voice commands, Codex/Grok wire-format parsers, block markdown rendering, and answer history persistence).
+Over 800 tests cover the hotkey state machine, settings persistence and migration, the transcript pipeline (numbers, lists, spoken punctuation, cross-stage interactions), the AI-cleanup accept/reject guard policy (never answer, never invent, never drop), deterministic tone transforms, the custom dictionary with speech-model term boosting and correction mining, the notes store, history-based shortcut suggestions, voice-command parsing, adaptive per-app mode resolution, dictation history and stats, voice-shortcut expansion, app-context classification, and the Answers stack (run state machine, Fn-hold state machine, controller orchestration driven through injected fakes — follow-ups, insert-at-cursor, and card voice commands, Codex/Grok wire-format parsers, block markdown rendering, and answer history persistence).
 
 ## Built with
 
