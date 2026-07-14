@@ -52,6 +52,21 @@ struct AppUsage: Identifiable, Equatable {
 final class HistoryStore: ObservableObject {
     @Published private(set) var entries: [DictationEntry] = []
 
+    // MARK: - Lifetime stats
+    //
+    // The headline numbers (words dictated, time saved) are LIFETIME counters:
+    // they only ever increase, persist in a sidecar file next to history.json,
+    // and survive Clear All, per-entry deletes, the entry cap, and retention
+    // pruning. Deleting conversations clears the list, never the record of use.
+
+    private(set) var totalWords = 0
+    private(set) var totalDurationSeconds: Double = 0
+
+    private struct LifetimeStats: Codable {
+        var words: Int
+        var durationSeconds: Double
+    }
+
     // MARK: - Cached derived stats
     //
     // These depend only on `entries`, so they're recomputed once per mutation
@@ -59,8 +74,6 @@ final class HistoryStore: ObservableObject {
     // Date-relative stats (today/yesterday/this-week/streak) stay computed below
     // so they remain correct across midnight without a mutation.
 
-    private(set) var totalWords = 0
-    private(set) var totalDurationSeconds: Double = 0
     private(set) var cachedTopApps: [AppUsage] = []
     private(set) var cachedHeatmapRows: [HeatmapWeekday] = []
     private(set) var cachedPersonalRecords: PersonalRecords = .empty
@@ -70,6 +83,10 @@ final class HistoryStore: ObservableObject {
     var retentionDays: Int = 0
 
     private let fileURL: URL
+    /// Sidecar for the lifetime counters ("history.stats.json" beside
+    /// "history.json"), so clearing the entries file can never take the
+    /// lifetime stats with it.
+    private let statsFileURL: URL
     private let ioQueue = DispatchQueue(label: "com.yappy.historystore", qos: .utility)
     private var derivedRecomputeScheduled = false
     private static let encoder = JSONEncoder()
@@ -90,7 +107,11 @@ final class HistoryStore: ObservableObject {
             try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: dir.path)
             self.fileURL = dir.appendingPathComponent("history.json")
         }
+        self.statsFileURL = self.fileURL
+            .deletingPathExtension()
+            .appendingPathExtension("stats.json")
         loadFromDisk()
+        loadLifetimeStats()
         recomputeDerived()
     }
 
@@ -102,16 +123,26 @@ final class HistoryStore: ObservableObject {
             entries.removeLast(entries.count - Constants.historyLimit)
         }
         entries = Self.applyingRetention(to: entries, days: retentionDays, now: Date())
+        // Lifetime counters accumulate here and only here — O(1), so it stays
+        // off the deferred path even though add() is latency-sensitive.
+        totalWords += entry.wordCount
+        totalDurationSeconds += entry.durationSeconds
+        persistLifetimeStats()
         scheduleRecomputeDerived()
         persist()
     }
 
+    /// Removes one conversation from the list. The lifetime stats deliberately
+    /// keep counting it — the words were dictated; deleting the transcript
+    /// shouldn't rewrite the record of use.
     func delete(_ entry: DictationEntry) {
         entries.removeAll { $0.id == entry.id }
         recomputeDerived()
         persist()
     }
 
+    /// Clears the conversation list only. Lifetime stats (words dictated, time
+    /// saved) are untouched — that's the point of the sidecar.
     func clearAll() {
         entries.removeAll()
         recomputeDerived()
@@ -119,9 +150,9 @@ final class HistoryStore: ObservableObject {
     }
 
     /// Recomputes the entries-derived caches. Called on every mutation and load.
+    /// Lifetime counters are NOT derived here — they accumulate in `add` and
+    /// persist independently, so pruning or clearing entries can't shrink them.
     private func recomputeDerived() {
-        totalWords = entries.reduce(0) { $0 + $1.wordCount }
-        totalDurationSeconds = entries.reduce(0.0) { $0 + $1.durationSeconds }
         cachedTopApps = Self.computeTopApps(entries)
         cachedHeatmapRows = HeatmapModel.hourlyRows(entries: entries)
         cachedPersonalRecords = PersonalRecords.compute(from: entries)
@@ -284,6 +315,41 @@ final class HistoryStore: ObservableObject {
                 try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
             } catch {
                 VLog.store("failed to write HistoryStore: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    /// Loads the lifetime counters, seeding them for pre-sidecar installs: the
+    /// first run takes whichever is larger, the persisted counters or the sum
+    /// of the entries on disk — so an existing user's numbers carry over
+    /// exactly, and the counters can never load LOWER than what the visible
+    /// history already proves happened.
+    private func loadLifetimeStats() {
+        let entriesWords = entries.reduce(0) { $0 + $1.wordCount }
+        let entriesDuration = entries.reduce(0.0) { $0 + $1.durationSeconds }
+        var stats = LifetimeStats(words: 0, durationSeconds: 0)
+        if let data = try? Data(contentsOf: statsFileURL),
+           let loaded = try? Self.decoder.decode(LifetimeStats.self, from: data) {
+            stats = loaded
+        }
+        totalWords = max(stats.words, entriesWords)
+        totalDurationSeconds = max(stats.durationSeconds, entriesDuration)
+        // Write the seeded values back so the migration happens exactly once.
+        if totalWords != stats.words || totalDurationSeconds != stats.durationSeconds {
+            persistLifetimeStats()
+        }
+    }
+
+    private func persistLifetimeStats() {
+        let snapshot = LifetimeStats(words: totalWords, durationSeconds: totalDurationSeconds)
+        let url = statsFileURL
+        ioQueue.async {
+            do {
+                let data = try Self.encoder.encode(snapshot)
+                try data.write(to: url, options: .atomic)
+                try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+            } catch {
+                VLog.store("failed to write lifetime stats: \(error.localizedDescription)")
             }
         }
     }

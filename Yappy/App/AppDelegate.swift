@@ -1272,6 +1272,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func speakAnswerText(_ raw: String) {
+        let speechRequestedAt = CACurrentMediaTime()
         stopAnswerSpeech()
         speakGeneration += 1
         let generation = speakGeneration
@@ -1291,15 +1292,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
+        // Decide the pad before warming: warmOutputDevice() stamps lastPlaybackAt.
+        let firstPadMs = Self.firstChunkPadMs(
+            isBuiltInOutput: Self.defaultOutputIsBuiltIn(),
+            secondsSinceLastOutput: soundPlayer.lastPlaybackAt.map { -$0.timeIntervalSinceNow }
+        )
+        soundPlayer.warmOutputDevice()
+
         speakPipelineTask = Task { @MainActor [weak self] in
             guard let self else { return }
             var chunkIndex = 0
             do {
-                let firstPadMs = Self.firstChunkPadMs(
-                    isBuiltInOutput: Self.defaultOutputIsBuiltIn(),
-                    secondsSinceLastOutput: self.soundPlayer.lastPlaybackAt.map { -$0.timeIntervalSinceNow }
-                )
+                let firstSynthesisStartedAt = CACurrentMediaTime()
                 var pending = try await self.synthesizeAndPrepareAnswerChunk(chunks[0], padStartMs: firstPadMs)
+                let firstSynthesisMs = Int((CACurrentMediaTime() - firstSynthesisStartedAt) * 1_000)
                 var completedNaturally = true
 
                 for index in chunks.indices {
@@ -1318,6 +1324,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         // overlaps current playback instead of at the gapless seam.
                         async let nextPrepared = self.synthesizeAndPrepareAnswerChunk(chunks[index + 1])
                         self.askController.setSpeakingPhase(.speaking)
+                        if index == chunks.startIndex {
+                            let totalMs = Int((CACurrentMediaTime() - speechRequestedAt) * 1_000)
+                            VLog.tts("first-audio path=manual synth_ms=\(firstSynthesisMs) pad_ms=\(firstPadMs) total_ms=\(totalMs)")
+                        }
                         let finished = await self.playPreparedAndWait(sound, generation: generation)
                         guard finished, self.speakGeneration == generation, !Task.isCancelled else {
                             completedNaturally = false
@@ -1327,6 +1337,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         pending = try await nextPrepared
                     } else {
                         self.askController.setSpeakingPhase(.speaking)
+                        if index == chunks.startIndex {
+                            let totalMs = Int((CACurrentMediaTime() - speechRequestedAt) * 1_000)
+                            VLog.tts("first-audio path=manual synth_ms=\(firstSynthesisMs) pad_ms=\(firstPadMs) total_ms=\(totalMs)")
+                        }
                         let finished = await self.playPreparedAndWait(sound, generation: generation)
                         guard finished, self.speakGeneration == generation, !Task.isCancelled else {
                             completedNaturally = false
@@ -1426,6 +1440,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func handleStreamingSpeechText(_ newText: String, isStart: Bool) {
         if isStart {
+            let speechRequestedAt = CACurrentMediaTime()
             stopAnswerSpeech()
             speakGeneration += 1
             let generation = speakGeneration
@@ -1454,29 +1469,50 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         self.streamingSpeechQueue.removeAll()
                         let firstLimit = self.streamingFirstChunkEver ? 90 : 280
                         let chunks = AskController.speechChunks(combined, firstLimit: firstLimit)
-                        for chunk in chunks {
-                            guard self.speakGeneration == generation, !Task.isCancelled else { return }
-                            let isFirstChunkEver = self.streamingFirstChunkEver
-                            self.streamingFirstChunkEver = false
-                            let padStartMs = isFirstChunkEver
-                                ? Self.firstChunkPadMs(
-                                    isBuiltInOutput: Self.defaultOutputIsBuiltIn(),
-                                    secondsSinceLastOutput: self.soundPlayer.lastPlaybackAt.map { -$0.timeIntervalSinceNow }
-                                  )
-                                : 0
-                            do {
-                                guard let sound = try await self.synthesizeAndPrepareAnswerChunk(chunk, padStartMs: padStartMs) else {
-                                    return
+                        guard !chunks.isEmpty else { continue }
+
+                        let batchStartsSpeech = self.streamingFirstChunkEver
+                        let firstPadMs = batchStartsSpeech
+                            ? Self.firstChunkPadMs(
+                                isBuiltInOutput: Self.defaultOutputIsBuiltIn(),
+                                secondsSinceLastOutput: self.soundPlayer.lastPlaybackAt.map { -$0.timeIntervalSinceNow }
+                              )
+                            : 0
+                        self.streamingFirstChunkEver = false
+                        let firstSynthesisStartedAt = CACurrentMediaTime()
+                        do {
+                            var pending = try await self.synthesizeAndPrepareAnswerChunk(chunks[0], padStartMs: firstPadMs)
+                            let firstSynthesisMs = Int((CACurrentMediaTime() - firstSynthesisStartedAt) * 1_000)
+
+                            for index in chunks.indices {
+                                guard self.speakGeneration == generation, !Task.isCancelled else { return }
+                                guard let sound = pending else { return }
+
+                                if index + 1 < chunks.count {
+                                    async let nextPrepared = self.synthesizeAndPrepareAnswerChunk(chunks[index + 1])
+                                    self.askController.setSpeakingPhase(.speaking)
+                                    if batchStartsSpeech, index == chunks.startIndex {
+                                        let totalMs = Int((CACurrentMediaTime() - speechRequestedAt) * 1_000)
+                                        VLog.tts("first-audio path=stream synth_ms=\(firstSynthesisMs) pad_ms=\(firstPadMs) total_ms=\(totalMs)")
+                                    }
+                                    let finished = await self.playPreparedAndWait(sound, generation: generation)
+                                    guard finished, self.speakGeneration == generation, !Task.isCancelled else { return }
+                                    pending = try await nextPrepared
+                                } else {
+                                    self.askController.setSpeakingPhase(.speaking)
+                                    if batchStartsSpeech, index == chunks.startIndex {
+                                        let totalMs = Int((CACurrentMediaTime() - speechRequestedAt) * 1_000)
+                                        VLog.tts("first-audio path=stream synth_ms=\(firstSynthesisMs) pad_ms=\(firstPadMs) total_ms=\(totalMs)")
+                                    }
+                                    let finished = await self.playPreparedAndWait(sound, generation: generation)
+                                    guard finished, self.speakGeneration == generation, !Task.isCancelled else { return }
                                 }
-                                self.askController.setSpeakingPhase(.speaking)
-                                let finished = await self.playPreparedAndWait(sound, generation: generation)
-                                guard finished, self.speakGeneration == generation, !Task.isCancelled else { return }
-                            } catch {
-                                if self.speakGeneration == generation { VLog.tts("streaming pipeline failed") }
-                                return
                             }
-                            self.askController.setSpeakingPhase(.synthesizing)
+                        } catch {
+                            if self.speakGeneration == generation { VLog.tts("streaming pipeline failed") }
+                            return
                         }
+                        self.askController.setSpeakingPhase(.synthesizing)
                     } else if !self.streamingSpeechFinished {
                         try? await Task.sleep(nanoseconds: 50_000_000)
                     } else {
@@ -1547,6 +1583,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         askController.stopSpeaking = { [weak self] in
             self?.stopAnswerSpeech()
         }
+        askController.warmAudioOutput = { [weak self] in
+            self?.soundPlayer.warmOutputDevice()
+        }
         askController.speakStreamingText = { [weak self] text, isStart in
             self?.handleStreamingSpeechText(text, isStart: isStart)
         }
@@ -1594,10 +1633,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         else { return }
         askFnDownAt = fnDownAt
 
-        // If the user has auto-speak on, warm the TTS helper NOW so the model is
-        // loaded by the time the answer arrives — the ~2s cold load then overlaps
-        // the transcription + model answer instead of stalling before speech.
-        if askController.speakAvailable, settings.answersAutoSpeak {
+        // Warm for auto-speak and manual Speak; the helper's 120s idle timer
+        // bounds residency after this overlaps setup with transcription/answering.
+        if askController.speakAvailable {
             ttsClient.prewarm()
             soundPlayer.warmOutputDevice()
         }

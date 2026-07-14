@@ -252,12 +252,44 @@ final class AskControllerTests: XCTestCase {
 
         await yieldUntil { grok.askCalls.count == 1 }
         XCTAssertTrue(codex.askCalls.isEmpty)
-        XCTAssertEqual(controller.backend, .grok)
+        // The fallback is per-question: the user's selection stays intact so
+        // the next question re-tries it once the backend is usable again.
+        XCTAssertEqual(controller.backend, .codex)
 
         await pushGrok(grok, event: .text(delta: "Grok says hi."))
         await pushGrok(grok, event: .end(stopReason: "EndTurn", sessionId: nil))
         await yieldUntil { controller.run?.status == .completed }
         XCTAssertEqual(controller.run?.answerText, "Grok says hi.")
+    }
+
+    func testFallbackDoesNotStickOnceSelectedBackendUsableAgain() async {
+        // Regression: grok selected but signed out at launch → codex answers via
+        // fallback. After the user signs back into grok (selection unchanged, so
+        // no settings event fires), the NEXT question must route to grok again.
+        let codex = FakeCodexClient()
+        let grok = FakeGrokClient()
+        let (controller, _, _) = makeController(codex: codex, grok: grok)
+        controller.backend = .grok
+        var grokSignedIn = false
+        controller.backendUsable = { backend in
+            backend == .codex || grokSignedIn
+        }
+        controller.saveHistory = false
+
+        await completeCodexRun(
+            controller: controller,
+            codex: codex,
+            question: "Asked while grok is signed out",
+            answer: "Codex fallback answer."
+        )
+        XCTAssertEqual(controller.backend, .grok)
+
+        grokSignedIn = true
+        controller.beginListening()
+        controller.submit("Asked after grok re-login")
+
+        await yieldUntil { grok.askCalls.count == 1 }
+        XCTAssertEqual(codex.askCalls.count, 1)
     }
 
     // MARK: - f. Tool blocklist
@@ -1231,6 +1263,210 @@ final class AskControllerTests: XCTestCase {
         XCTAssertTrue(streamed.dropFirst().allSatisfy { !$0.isStart })
         XCTAssertEqual(finishCount, 1)
         XCTAssertTrue(fullSpoken.isEmpty)
+    }
+
+    func testGrokStreamingSpeechReevaluatesBoundaryOnLookaheadDelta() async {
+        let grok = FakeGrokClient()
+        let (controller, _, _) = makeController(grok: grok)
+        controller.backend = .grok
+        controller.saveHistory = false
+        controller.autoSpeak = true
+        controller.speakAvailable = true
+        var streamed: [(text: String, isStart: Bool)] = []
+        controller.speakStreamingText = { text, isStart in streamed.append((text, isStart)) }
+
+        controller.beginListening()
+        controller.submit("Question?")
+        await yieldUntil { grok.askCalls.count == 1 }
+        await pushGrok(grok, event: .text(delta: "This is sentence one."))
+        XCTAssertTrue(streamed.isEmpty)
+
+        await pushGrok(grok, event: .text(delta: " and more words arrive"))
+
+        XCTAssertEqual(streamed.count, 1)
+        XCTAssertTrue(streamed[0].text.contains("This is sentence one."))
+        XCTAssertTrue(streamed[0].isStart)
+    }
+
+    func testFirstEmissionSpeaksLeadingClauseBeforeSentenceCompletes() async {
+        let grok = FakeGrokClient()
+        let (controller, _, _) = makeController(grok: grok)
+        controller.backend = .grok
+        controller.saveHistory = false
+        controller.autoSpeak = true
+        controller.speakAvailable = true
+        var streamed: [(text: String, isStart: Bool)] = []
+        controller.speakStreamingText = { text, isStart in streamed.append((text, isStart)) }
+
+        controller.beginListening()
+        controller.submit("Question?")
+        await yieldUntil { grok.askCalls.count == 1 }
+
+        // 78 chars up to the comma, plain prose, lookahead present — the clause
+        // gate should speak it without waiting for the sentence terminator.
+        await pushGrok(grok, event: .text(
+            delta: "Yes, macOS Tahoe fully supports Apple Intelligence on every M-series Mac model, and even"
+        ))
+
+        XCTAssertEqual(streamed.count, 1)
+        XCTAssertTrue(streamed[0].text.hasSuffix(","), "clause emission ends at the comma: \(streamed)")
+        XCTAssertTrue(streamed[0].isStart)
+
+        // The sentence completion must extend the clause exactly (prefix rule).
+        await pushGrok(grok, event: .text(delta: " older machines handle it. Next"))
+        XCTAssertEqual(streamed.count, 2)
+        XCTAssertFalse(streamed[1].isStart)
+        XCTAssertTrue(streamed[1].text.hasPrefix(" and even"), "remainder continues the clause: \(streamed)")
+    }
+
+    func testLeadingClausePendingBoundaryFiresOnPunctuationFreeLookaheadDelta() async {
+        let grok = FakeGrokClient()
+        let (controller, _, _) = makeController(grok: grok)
+        controller.backend = .grok
+        controller.saveHistory = false
+        controller.autoSpeak = true
+        controller.speakAvailable = true
+        var streamed: [(text: String, isStart: Bool)] = []
+        controller.speakStreamingText = { text, isStart in streamed.append((text, isStart)) }
+
+        controller.beginListening()
+        controller.submit("Question?")
+        await yieldUntil { grok.askCalls.count == 1 }
+
+        // Delta ends exactly at the clause comma — no lookahead yet.
+        await pushGrok(grok, event: .text(
+            delta: "Yes, macOS Tahoe fully supports Apple Intelligence on every M-series Mac model,"
+        ))
+        XCTAssertTrue(streamed.isEmpty)
+
+        // The lookahead arrives in a punctuation-free delta; the pending
+        // boundary must force re-evaluation and speak the clause.
+        await pushGrok(grok, event: .text(delta: " and even older machines"))
+        XCTAssertEqual(streamed.count, 1)
+        XCTAssertTrue(streamed[0].text.hasSuffix(","))
+        XCTAssertTrue(streamed[0].isStart)
+    }
+
+    func testCodexAutoSpeakStreamsBeforeCompletionThenSpeaksRemainder() async {
+        let codex = FakeCodexClient()
+        let (controller, _, _) = makeController(codex: codex)
+        controller.saveHistory = false
+        controller.autoSpeak = true
+        controller.speakAvailable = true
+        var streamed: [(text: String, isStart: Bool)] = []
+        var finishCount = 0
+        controller.speakStreamingText = { text, isStart in streamed.append((text, isStart)) }
+        controller.finishStreamingSpeech = { finishCount += 1 }
+
+        controller.beginListening()
+        controller.submit("Question?")
+        await yieldUntil { codex.askCalls.count == 1 }
+        await pushCodex(codex, event: .agentMessageDelta(itemID: "msg1", delta: "First sentence."))
+        await pushCodex(codex, event: .agentMessageDelta(itemID: "msg1", delta: " Second sentence. trailing remainder"))
+
+        XCTAssertFalse(streamed.isEmpty)
+        XCTAssertEqual(streamed.first?.isStart, true)
+        XCTAssertEqual(finishCount, 0)
+        let countBeforeCompletion = streamed.count
+
+        await pushCodex(codex, event: .turnCompleted(failureMessage: nil))
+        await yieldUntil { controller.run?.status == .completed }
+
+        XCTAssertEqual(streamed.count, countBeforeCompletion + 1)
+        XCTAssertEqual(streamed.last?.isStart, false)
+        XCTAssertTrue(streamed.last?.text.contains("trailing remainder") == true)
+        XCTAssertEqual(finishCount, 1)
+    }
+
+    func testCodexNarrationDeltasNeverFeedStreamingSpeech() async {
+        let codex = FakeCodexClient()
+        let (controller, _, _) = makeController(codex: codex)
+        controller.saveHistory = false
+        controller.autoSpeak = true
+        controller.speakAvailable = true
+        var streamed = 0
+        controller.speakStreamingText = { _, _ in streamed += 1 }
+
+        controller.beginListening()
+        controller.submit("Question?")
+        await yieldUntil { codex.askCalls.count == 1 }
+        await pushCodex(codex, event: .agentMessageStarted(itemID: "work1", phase: "commentary"))
+        await pushCodex(codex, event: .agentMessageDelta(itemID: "work1", delta: "Searching now. More follows."))
+
+        XCTAssertEqual(streamed, 0)
+    }
+
+    func testCodexStreamingSpeechDivergenceEndsWithoutSpeakingAuthoritativeText() async {
+        let codex = FakeCodexClient()
+        let (controller, _, _) = makeController(codex: codex)
+        controller.saveHistory = false
+        controller.autoSpeak = true
+        controller.speakAvailable = true
+        var streamed: [(text: String, isStart: Bool)] = []
+        var finishCount = 0
+        controller.speakStreamingText = { text, isStart in streamed.append((text, isStart)) }
+        controller.finishStreamingSpeech = { finishCount += 1 }
+
+        controller.beginListening()
+        controller.submit("Question?")
+        await yieldUntil { codex.askCalls.count == 1 }
+        await pushCodex(codex, event: .agentMessageDelta(itemID: "msg1", delta: "Original prefix."))
+        await pushCodex(codex, event: .agentMessageDelta(itemID: "msg1", delta: " lookahead"))
+        XCTAssertEqual(streamed.count, 1)
+
+        await pushCodex(codex, event: .agentMessageCompleted(itemID: "msg1", phase: "final_answer", text: "Different authoritative answer."))
+        await pushCodex(codex, event: .turnCompleted(failureMessage: nil))
+        await yieldUntil { controller.run?.status == .completed }
+
+        XCTAssertEqual(streamed.count, 1)
+        XCTAssertEqual(finishCount, 1)
+    }
+
+    func testFirstAnswerTokenWarmsAudioOncePerRunWhenSpeechAvailable() async {
+        let codex = FakeCodexClient()
+        let (codexController, _, _) = makeController(codex: codex)
+        codexController.saveHistory = false
+        codexController.speakAvailable = true
+        var codexWarmCount = 0
+        codexController.warmAudioOutput = { codexWarmCount += 1 }
+
+        codexController.beginListening()
+        codexController.submit("Codex question?")
+        await yieldUntil { codex.askCalls.count == 1 }
+        await pushCodex(codex, event: .agentMessageDelta(itemID: "msg1", delta: "First"))
+        await pushCodex(codex, event: .agentMessageDelta(itemID: "msg1", delta: " second"))
+        XCTAssertEqual(codexWarmCount, 1)
+
+        let grok = FakeGrokClient()
+        let (grokController, _, _) = makeController(grok: grok)
+        grokController.backend = .grok
+        grokController.saveHistory = false
+        grokController.speakAvailable = true
+        var grokWarmCount = 0
+        grokController.warmAudioOutput = { grokWarmCount += 1 }
+
+        grokController.beginListening()
+        grokController.submit("Grok question?")
+        await yieldUntil { grok.askCalls.count == 1 }
+        await pushGrok(grok, event: .text(delta: "First"))
+        await pushGrok(grok, event: .text(delta: " second"))
+        XCTAssertEqual(grokWarmCount, 1)
+    }
+
+    func testFirstAnswerTokenDoesNotWarmAudioWhenSpeechUnavailable() async {
+        let codex = FakeCodexClient()
+        let (controller, _, _) = makeController(codex: codex)
+        controller.saveHistory = false
+        controller.speakAvailable = false
+        var warmCount = 0
+        controller.warmAudioOutput = { warmCount += 1 }
+
+        controller.beginListening()
+        controller.submit("Question?")
+        await yieldUntil { codex.askCalls.count == 1 }
+        await pushCodex(codex, event: .agentMessageDelta(itemID: "msg1", delta: "Answer"))
+
+        XCTAssertEqual(warmCount, 0)
     }
 
     func testCodexAutoSpeakUsesFullAnswerPathUnchanged() async {

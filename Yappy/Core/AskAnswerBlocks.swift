@@ -233,7 +233,18 @@ enum AskAnswerBlock: Equatable {
     /// Prefix of the eventual `speakableText` that is already safe to speak while
     /// an answer is still streaming in. Monotone under append-only input and
     /// convergent to `speakableText` once every block has closed.
-    static func stableSpeakablePrefix(fromStreaming accumulated: String) -> String {
+    ///
+    /// - Parameter allowLeadingClause: When `true`, the first emission may end
+    ///   mid-sentence at a clause boundary (`, ` / `; ` / `: `) if no full
+    ///   sentence is yet available. Callers must only pass `true` while nothing
+    ///   has been emitted yet (first emission). MONOTONE and PREFIX guarantees
+    ///   still hold for any subsequent call with either flag value: a clause
+    ///   emission is always a prefix of later non-empty results and of the
+    ///   final `speakableText`.
+    static func stableSpeakablePrefix(
+        fromStreaming accumulated: String,
+        allowLeadingClause: Bool = false
+    ) -> String {
         guard !isNarrationOnly(accumulated) else { return "" }
         let stripped = strippingLeadingNarration(accumulated)
         guard !stripped.isEmpty else { return "" }
@@ -262,13 +273,115 @@ enum AskAnswerBlock: Equatable {
                 rawAccumulated: accumulated
             ))
         }
-        return finalizeSpeakableOutput(from: segments)
+        let sentenceLevel = finalizeSpeakableOutput(from: segments)
+        // Clause emission is strictly subordinate to sentences: never replace
+        // or reorder an available full-sentence result.
+        if allowLeadingClause, sentenceLevel.isEmpty,
+           let clause = stableLeadingClauseSegment(from: blocks, rawAccumulated: accumulated) {
+            return finalizeSpeakableOutput(from: [clause])
+        }
+        return sentenceLevel
+    }
+
+    /// Opt-in first-chunk clause for a single growing plain paragraph when no
+    /// sentence is ready yet. Returns the strip-transformed clause without
+    /// `ensureTerminalPunctuation` (which would break PREFIX).
+    private static func stableLeadingClauseSegment(
+        from blocks: [AskAnswerBlock],
+        rawAccumulated: String
+    ) -> String? {
+        guard blocks.count == 1, case .paragraph(let text) = blocks[0] else { return nil }
+        guard !growingBlockFirstLineBlocksStreamingEmission(text) else { return nil }
+        if isCitationHeaderLine(text.components(separatedBy: "\n").first ?? "") { return nil }
+        guard let clauseRaw = extractStableLeadingClause(from: text, inRawAccumulated: rawAccumulated) else {
+            return nil
+        }
+        guard isMarkdownStableClauseFragment(clauseRaw) else { return nil }
+        let transformed = stripInlineMarkdown(
+            clauseRaw,
+            linkStyle: .labelOnly,
+            droppingBareURLs: true,
+            droppingCitations: true
+        )
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+        return transformed.isEmpty ? nil : transformed
+    }
+
+    /// Leading clause whose boundary (`, ` / `; ` / `: ` after a letter/digit)
+    /// has at least one more streamed character after the following space.
+    /// Candidate is paragraph-start through the punctuation inclusive, ≥ 60
+    /// characters. Uses the last qualifying boundary.
+    private static func extractStableLeadingClause(
+        from text: String,
+        inRawAccumulated rawAccumulated: String
+    ) -> String? {
+        guard let textRange = rawAccumulated.range(of: text, options: .backwards) else { return nil }
+
+        func absoluteIndex(in text: String, at local: String.Index) -> String.Index {
+            let offset = text.distance(from: text.startIndex, to: local)
+            return rawAccumulated.index(textRange.lowerBound, offsetBy: offset)
+        }
+
+        func hasMoreStreamContent(after absolute: String.Index) -> Bool {
+            rawAccumulated.index(after: absolute) < rawAccumulated.endIndex
+        }
+
+        var lastBoundaryEnd: String.Index?
+        var index = text.startIndex
+        while index < text.endIndex {
+            let character = text[index]
+            let next = text.index(after: index)
+            if (character == "," || character == ";" || character == ":"),
+               next < text.endIndex,
+               text[next] == " ",
+               index > text.startIndex {
+                let previous = text[text.index(before: index)]
+                if previous.isLetter || previous.isNumber {
+                    // Lookahead past the space after the clause punctuation —
+                    // without it the boundary may still be mid-token in the stream.
+                    let absSpace = absoluteIndex(in: text, at: next)
+                    if hasMoreStreamContent(after: absSpace) {
+                        // Inclusive of punctuation; exclusive of the following space.
+                        lastBoundaryEnd = next
+                    }
+                }
+            }
+            index = next
+        }
+
+        guard let end = lastBoundaryEnd else { return nil }
+        let candidate = String(text[text.startIndex..<end])
+        guard candidate.count >= 60 else { return nil }
+        return candidate
+    }
+
+
+    /// Rejects clause fragments where `stripInlineMarkdown` of the span alone
+    /// could diverge from the same span stripped inside the full sentence.
+    ///
+    /// Deliberately blunt: the fragment must contain NO inline-markdown
+    /// delimiter characters at all. Three review rounds of span-closure
+    /// scanning each leaked a false ACCEPT (even-count unclosed openers,
+    /// adjacent empty pairs, emphasis characters hiding inside code spans whose
+    /// literal content the strip regexes keep), because "closed here" cannot
+    /// prove "strips the same once the rest of the sentence arrives". With no
+    /// delimiter characters inside the fragment, no strip regex can begin a
+    /// match inside it, so the emitted prefix is stable by construction.
+    /// Markdown-flavored openings simply fall back to the full-sentence wait.
+    private static func isMarkdownStableClauseFragment(_ text: String) -> Bool {
+        if text.contains(where: { "`*_~[]".contains($0) }) { return false }
+        if text.filter({ $0 == "(" }).count != text.filter({ $0 == ")" }).count { return false }
+        if text.contains("http") || text.contains("www.") { return false }
+        return true
     }
 
     /// Paragraphs that still look like an opening table/list/heading line can
     /// reflow when more lines arrive, even when the parser temporarily closed
     /// them because another block followed. Tables wait until the next block is
     /// equally stable — a pipe-line "paragraph" between rows is not enough.
+    /// Lists withhold when the following block is a partial list marker (`2.`,
+    /// `-`) that will rejoin the list once the rest of the item streams in —
+    /// otherwise a temporarily-closed list would emit then shrink (MONOTONE).
     private static func blockSafeForStreamingEmission(
         _ block: AskAnswerBlock,
         blocks: [AskAnswerBlock],
@@ -280,9 +393,33 @@ enum AskAnswerBlock: Equatable {
         case .table:
             guard index + 1 < blocks.count else { return false }
             return blockSafeForStreamingEmission(blocks[index + 1], blocks: blocks, at: index + 1)
-        case .code, .list, .image:
+        case .list:
+            guard index + 1 < blocks.count else { return true }
+            if case .paragraph(let text) = blocks[index + 1], looksLikePartialListMarker(text) {
+                return false
+            }
+            return blockSafeForStreamingEmission(blocks[index + 1], blocks: blocks, at: index + 1)
+        case .code, .image:
             return true
         }
+    }
+
+    /// Digits / `N.` / lone bullet markers that are not yet a full list item line
+    /// (`listItem` requires `"N. "` or `"- "`). Mid-stream these appear as tiny
+    /// paragraphs that close the preceding list, then rejoin it.
+    private static func looksLikePartialListMarker(_ text: String) -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !trimmed.contains("\n") else { return false }
+        if trimmed == "-" || trimmed == "*" || trimmed == "•" { return true }
+        if trimmed.allSatisfy(\.isNumber) { return true }
+        if let dot = trimmed.firstIndex(of: "."), dot != trimmed.startIndex {
+            let num = trimmed[trimmed.startIndex..<dot]
+            let rest = trimmed[trimmed.index(after: dot)...]
+            if !num.isEmpty, num.allSatisfy(\.isNumber), rest.isEmpty || rest.allSatisfy(\.isWhitespace) {
+                return true
+            }
+        }
+        return false
     }
 
     private static func finalizeSpeakableOutput(from segments: [String]) -> String {
@@ -309,6 +446,12 @@ enum AskAnswerBlock: Equatable {
         switch block {
         case .paragraph(let text), .heading(_, let text):
             guard !growingBlockFirstLineBlocksStreamingEmission(text) else { return [] }
+            // "Sources\n- …" is one growing paragraph until the list line completes;
+            // newline sentence extraction would otherwise speak "Sources." which
+            // final speakableText drops via citation-trailer stripping (PREFIX).
+            if isCitationHeaderLine(text.components(separatedBy: "\n").first ?? "") {
+                return []
+            }
             guard let stable = stableLeadingProseSegment(from: text, inRawAccumulated: rawAccumulated) else {
                 return []
             }
@@ -417,24 +560,29 @@ enum AskAnswerBlock: Equatable {
     /// sentence. Inline "Source: …" clauses tacked onto content are handled
     /// separately (stripped in `stripInlineMarkdown` with `droppingCitations`).
     private static func droppingTrailingCitationBlocks(_ blocks: [AskAnswerBlock]) -> [AskAnswerBlock] {
-        let markers: Set<String> = [
-            "sources", "source", "references", "reference",
-            "citations", "citation", "further reading",
-        ]
-        func isCitationHeader(_ text: String) -> Bool {
-            let bare = text
-                .lowercased()
-                .trimmingCharacters(in: CharacterSet(charactersIn: " *:_"))
-            return markers.contains(bare)
-        }
         let cut = blocks.firstIndex { block in
             switch block {
-            case .heading(_, let text), .paragraph(let text): isCitationHeader(text)
+            case .heading(_, let text), .paragraph(let text): isCitationHeaderLine(text)
             default: false
             }
         }
         guard let cut else { return blocks }
         return Array(blocks.prefix(cut))
+    }
+
+    private static let citationHeaderMarkers: Set<String> = [
+        "sources", "source", "references", "reference",
+        "citations", "citation", "further reading",
+    ]
+
+    /// True when `text` is a bare citation-section label (optionally wrapped in
+    /// markdown emphasis). Multi-line paragraphs are judged on the full string
+    /// so `"Sources\n-"` does not match here — use the first-line form for that.
+    private static func isCitationHeaderLine(_ text: String) -> Bool {
+        let bare = text
+            .lowercased()
+            .trimmingCharacters(in: CharacterSet(charactersIn: " *:_"))
+        return citationHeaderMarkers.contains(bare)
     }
 
     private static func plainTextBlock(_ block: AskAnswerBlock) -> String? {

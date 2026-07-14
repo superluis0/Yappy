@@ -18,6 +18,9 @@ enum StatFraming {
         Tier(floor: 15_000,  phrase: "a novella's worth"),
         Tier(floor: 40_000,  phrase: "a short novel's worth"),
         Tier(floor: 100_000, phrase: "a full novel's worth"),
+        Tier(floor: 200_000, phrase: "a couple of novels' worth"),
+        Tier(floor: 350_000, phrase: "a trilogy's worth"),
+        Tier(floor: 600_000, phrase: "War and Peace, and then some"),
     ]
 
     private static let timeTiers: [Tier] = [
@@ -28,14 +31,28 @@ enum StatFraming {
         Tier(floor: 2_400, phrase: "a full workweek saved"),
     ]
 
-    /// e.g. "a novella's worth", or nil under ~1,000 words.
+    /// A typical novel, for the unbounded rung past the named tiers.
+    private static let wordsPerNovel = 100_000
+    /// A 5×8-hour workweek in minutes, for the unbounded time rung.
+    private static let minutesPerWorkweek = 2_400
+
+    /// e.g. "a novella's worth", or nil under ~1,000 words. Never goes stale:
+    /// past the named tiers it keeps counting in whole novels, so the line
+    /// still moves for someone who dictates for years.
     static func wordsMilestone(_ words: Int) -> String? {
-        highestPhrase(for: words, in: wordTiers)
+        if words >= 1_000_000 {
+            return "about \(words / wordsPerNovel) novels' worth"
+        }
+        return highestPhrase(for: words, in: wordTiers)
     }
 
-    /// e.g. "half a workday saved", or nil under ~15 minutes.
+    /// e.g. "half a workday saved", or nil under ~15 minutes. Same unbounded
+    /// tail as the words milestone: two workweeks and up counts itself.
     static func timeSavedRelatable(minutes: Int) -> String? {
-        highestPhrase(for: minutes, in: timeTiers)
+        if minutes >= minutesPerWorkweek * 2 {
+            return "\(minutes / minutesPerWorkweek) workweeks saved"
+        }
+        return highestPhrase(for: minutes, in: timeTiers)
     }
 
     private static func highestPhrase(for value: Int, in tiers: [Tier]) -> String? {

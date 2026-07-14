@@ -20,8 +20,14 @@ final class HistoryStoreTests: XCTestCase {
 
     override func tearDown() {
         try? FileManager.default.removeItem(at: fileURL)
+        try? FileManager.default.removeItem(at: statsFileURL)
         store = nil
         super.tearDown()
+    }
+
+    /// The lifetime-stats sidecar the store writes beside its entries file.
+    var statsFileURL: URL {
+        fileURL.deletingPathExtension().appendingPathExtension("stats.json")
     }
 
     func testStartsEmpty() {
@@ -87,6 +93,70 @@ final class HistoryStoreTests: XCTestCase {
         store.clearAll()
 
         XCTAssertTrue(store.entries.isEmpty)
+    }
+
+    // MARK: - Lifetime stats survive list mutations
+
+    func testClearAllKeepsLifetimeStats() {
+        store.add(DictationEntry(text: "one two three", durationSeconds: 3))
+        store.add(DictationEntry(text: "four five", durationSeconds: 2))
+
+        store.clearAll()
+
+        XCTAssertTrue(store.entries.isEmpty)
+        XCTAssertEqual(store.totalWords, 5)
+        XCTAssertEqual(store.totalDurationSeconds, 5, accuracy: 0.001)
+    }
+
+    func testDeleteKeepsLifetimeStats() {
+        let entry = DictationEntry(text: "delete me now", durationSeconds: 2)
+        store.add(entry)
+        store.add(DictationEntry(text: "keep me", durationSeconds: 1))
+
+        store.delete(entry)
+
+        XCTAssertEqual(store.entries.count, 1)
+        XCTAssertEqual(store.totalWords, 5)
+    }
+
+    func testLifetimeStatsSurviveClearAcrossRelaunch() {
+        store.add(DictationEntry(text: "one two three four", durationSeconds: 4))
+        store.clearAll()
+
+        // Wait for the async sidecar write, then simulate an app relaunch.
+        let settled = expectation(description: "io settles")
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.3) { settled.fulfill() }
+        wait(for: [settled], timeout: 2)
+
+        let reloaded = HistoryStore(fileURL: fileURL)
+        XCTAssertTrue(reloaded.entries.isEmpty)
+        XCTAssertEqual(reloaded.totalWords, 4)
+    }
+
+    func testLifetimeStatsSeedFromExistingEntriesOnFirstLoad() throws {
+        // Pre-sidecar install: entries exist on disk, no stats file. The first
+        // load must seed the lifetime counters from the visible history.
+        let entries = [
+            DictationEntry(text: "six words here in this entry", durationSeconds: 6),
+            DictationEntry(text: "two more", durationSeconds: 2),
+        ]
+        let data = try JSONEncoder().encode(entries)
+        try data.write(to: fileURL)
+
+        let migrated = HistoryStore(fileURL: fileURL)
+        XCTAssertEqual(migrated.totalWords, 8)
+        XCTAssertEqual(migrated.totalDurationSeconds, 8, accuracy: 0.001)
+    }
+
+    func testLifetimeStatsNeverLoadLowerThanVisibleEntries() throws {
+        // A stale/corrupt sidecar that undercounts is corrected upward by the
+        // entries that are plainly on disk.
+        let entries = [DictationEntry(text: "one two three four five", durationSeconds: 5)]
+        try JSONEncoder().encode(entries).write(to: fileURL)
+        try Data(#"{"words":2,"durationSeconds":1}"#.utf8).write(to: statsFileURL)
+
+        let reloaded = HistoryStore(fileURL: fileURL)
+        XCTAssertEqual(reloaded.totalWords, 5)
     }
 
     // MARK: - Retention

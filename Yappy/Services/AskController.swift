@@ -180,6 +180,9 @@ final class AskController: ObservableObject {
     var autoSpeak = false
     var speakAnswer: (String) -> Void = { _ in }
     var stopSpeaking: () -> Void = { }
+    /// Injected by AppDelegate to keep the current output route awake when the
+    /// backend produces its first answer token.
+    var warmAudioOutput: () -> Void = { }
     /// Emits an incremental chunk of newly-stable speakable text; `isStreamStart`
     /// is true only for the very first emission of a given run's stream.
     var speakStreamingText: (String, Bool) -> Void = { _, _ in }
@@ -236,6 +239,9 @@ final class AskController: ObservableObject {
     /// in-flight grok run — gates finish() between the streaming handoff and the
     /// legacy full-answer speak path.
     private var streamingSpeechActive = false
+    /// A terminator at the end of the accumulated answer needs the next delta's
+    /// lookahead even when that delta contains no punctuation of its own.
+    private var pendingSpeechBoundary = false
     /// True when the current capture started from a completed card, so a whole
     /// utterance can target that visible answer instead of becoming a follow-up.
     private var capturedOverCompletedCard = false
@@ -775,13 +781,17 @@ final class AskController: ObservableObject {
         // Every turn starts its research budget fresh.
         grokResearchToolsCompleted = 0
         // Fall back to the other backend when the selected one isn't usable but
-        // the other is — persist the switch so the next question keeps it.
+        // the other is — for THIS question only. `backend` (mirroring the
+        // setting) is never overwritten: the probes are cheap file checks, so
+        // each question re-tries the selection, and the moment the user signs
+        // back in the next answer routes to their chosen backend again.
+        // (A sticky flip here once stranded Ask on codex after a grok re-login,
+        // because re-selecting grok in Settings was a no-op change.)
         var backendForRun = backend
         let other: AskBackend = backendForRun == .codex ? .grok : .codex
         if !backendUsable(backendForRun), backendUsable(other) {
-            VLog.store("backend fallback — \(backendForRun.rawValue) unusable, using \(other.rawValue)")
+            VLog.store("backend fallback — \(backendForRun.rawValue) unusable, using \(other.rawValue) for this question")
             backendForRun = other
-            backend = other
         }
         // Snapshot the backend for this run — the live `backend` may change
         // mid-run (Settings picker) and must only affect the NEXT question.
@@ -963,8 +973,10 @@ final class AskController: ObservableObject {
             } else {
                 if lastRunMetrics.firstAnswerTokenAt == nil {
                     lastRunMetrics.firstAnswerTokenAt = metricsClock()
+                    if speakAvailable { warmAudioOutput() }
                 }
                 r.answerText = (r.answerText ?? "") + delta
+                feedStreamingSpeech(delta: delta, run: &r)
             }
 
         case .agentMessageCompleted(let itemID, let phase, let text):
@@ -1082,18 +1094,10 @@ final class AskController: ObservableObject {
             completeStep(kind: .thinking, title: thoughtTitle, in: &r)
             if lastRunMetrics.firstAnswerTokenAt == nil {
                 lastRunMetrics.firstAnswerTokenAt = metricsClock()
+                if speakAvailable { warmAudioOutput() }
             }
             r.answerText = (r.answerText ?? "") + delta
-            if autoSpeak, speakAvailable, delta.contains(where: { ".!?\n".contains($0) }) {
-                let stable = AskAnswerBlock.stableSpeakablePrefix(fromStreaming: r.answerText ?? "")
-                if stable.count > streamedSpeechConsumed {
-                    let newText = String(stable.dropFirst(streamedSpeechConsumed))
-                    speakStreamingText(newText, streamedSpeechConsumed == 0)
-                    streamedSpeechConsumed = stable.count
-                    streamedSpeechText = stable
-                    streamingSpeechActive = true
-                }
-            }
+            feedStreamingSpeech(delta: delta, run: &r)
 
         case .toolStarted(let title):
             // Grok's plan mode already refuses mutating tools; this is the same
@@ -1162,6 +1166,38 @@ final class AskController: ObservableObject {
         }
 
         run = r
+    }
+
+    /// Feeds newly stable answer text into the streaming TTS handoff shared by
+    /// grok and non-narration codex answer deltas.
+    private func feedStreamingSpeech(delta: String, run r: inout AskRun) {
+        guard autoSpeak, speakAvailable else { return }
+        let shouldEvaluate = delta.contains(where: { ".!?\n".contains($0) })
+            || pendingSpeechBoundary
+            || (streamedSpeechConsumed == 0 && delta.contains(where: { ",;:".contains($0) }))
+        guard shouldEvaluate else { return }
+
+        let answer = r.answerText ?? ""
+        // The clause gate only applies to the very first emission — mid-stream
+        // emissions stay sentence-aligned for prosody, and the extractor's
+        // guarantees require the flag only while nothing has been spoken yet.
+        let stable = AskAnswerBlock.stableSpeakablePrefix(
+            fromStreaming: answer,
+            allowLeadingClause: streamedSpeechConsumed == 0
+        )
+        if stable.count > streamedSpeechConsumed {
+            let newText = String(stable.dropFirst(streamedSpeechConsumed))
+            speakStreamingText(newText, streamedSpeechConsumed == 0)
+            streamedSpeechConsumed = stable.count
+            streamedSpeechText = stable
+            streamingSpeechActive = true
+        }
+        // A terminator (or, before anything is spoken, a clause boundary) at
+        // the very end of the buffer is awaiting its lookahead character — the
+        // next delta must re-evaluate even if it carries no punctuation itself.
+        pendingSpeechBoundary = answer.last.map {
+            ".!?\n".contains($0) || (streamedSpeechConsumed == 0 && ",;:".contains($0))
+        } ?? false
     }
 
     // MARK: - Step helpers
@@ -1331,6 +1367,7 @@ final class AskController: ObservableObject {
         streamedSpeechConsumed = 0
         streamedSpeechText = ""
         streamingSpeechActive = false
+        pendingSpeechBoundary = false
     }
 
     /// Returns the pill to idle after long enough to actually READ the answer:

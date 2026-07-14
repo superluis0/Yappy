@@ -508,6 +508,390 @@ final class AskAnswerBlocksTests: XCTestCase {
         )
     }
 
+    // MARK: - Leading clause (opt-in)
+
+    /// 70-char clause through the comma; full sentence continues after.
+    private static let longCommaSentence =
+        "The weather forecast across the region this week remains mild overall, with only occasional showers expected near the coast."
+
+    func testLeadingClauseEmitsLongCommaThenSentenceExtendsIt() {
+        // Mid-stream: comma past 60 chars + lookahead char after the space.
+        let mid = "The weather forecast across the region this week remains mild overall, with only"
+        let clause = AskAnswerBlock.stableSpeakablePrefix(fromStreaming: mid, allowLeadingClause: true)
+        XCTAssertEqual(
+            clause,
+            "The weather forecast across the region this week remains mild overall,"
+        )
+        XCTAssertTrue(clause.hasSuffix(","))
+
+        // Once the sentence completes (period + space + lookahead), sentence-level
+        // result must extend the clause (PREFIX / monotone).
+        let afterSentence = Self.longCommaSentence + " Next."
+        let sentenceLevel = AskAnswerBlock.stableSpeakablePrefix(
+            fromStreaming: afterSentence,
+            allowLeadingClause: true
+        )
+        XCTAssertTrue(
+            sentenceLevel.hasPrefix(clause),
+            "sentence-level must extend clause: clause=\(clause) sentence=\(sentenceLevel)"
+        )
+        XCTAssertEqual(
+            sentenceLevel,
+            "The weather forecast across the region this week remains mild overall, with only occasional showers expected near the coast."
+        )
+    }
+
+    func testLeadingClauseRejectsShortCommaAndMissingLookahead() {
+        // Comma well before 60 chars.
+        let short = "Short intro, more text arrives later and keeps going past sixty eventually."
+        XCTAssertEqual(
+            AskAnswerBlock.stableSpeakablePrefix(fromStreaming: short, allowLeadingClause: true),
+            ""
+        )
+
+        // Boundary at end of stream: comma+space with no lookahead char after the space.
+        let noLookahead =
+            "The weather forecast across the region this week remains mild overall, "
+        XCTAssertEqual(
+            AskAnswerBlock.stableSpeakablePrefix(fromStreaming: noLookahead, allowLeadingClause: true),
+            ""
+        )
+    }
+
+    func testLeadingClauseSemicolonAndColonBoundaries() {
+        let semicolonMid =
+            "After a careful review of the available evidence from multiple teams; the committee"
+        XCTAssertEqual(
+            AskAnswerBlock.stableSpeakablePrefix(fromStreaming: semicolonMid, allowLeadingClause: true),
+            "After a careful review of the available evidence from multiple teams;"
+        )
+
+        let colonMid =
+            "Please arrive early for check-in at the main stadium gate entrance: doors open"
+        XCTAssertEqual(
+            AskAnswerBlock.stableSpeakablePrefix(fromStreaming: colonMid, allowLeadingClause: true),
+            "Please arrive early for check-in at the main stadium gate entrance:"
+        )
+
+        // "7:30" has no space after the colon — never a clause boundary.
+        let timeOfDay =
+            "The shuttle leaves at 7:30 AM from the north terminal with several stops planned along the route for passengers."
+        XCTAssertEqual(
+            AskAnswerBlock.stableSpeakablePrefix(fromStreaming: timeOfDay, allowLeadingClause: true),
+            ""
+        )
+    }
+
+    func testLeadingClauseRejectsUnsafeMarkdownFragments() {
+        // Markdown link spanning / inside the candidate.
+        let withLink =
+            "According to the detailed report available at [label](https://example.com/path), further analysis"
+        XCTAssertEqual(
+            AskAnswerBlock.stableSpeakablePrefix(fromStreaming: withLink, allowLeadingClause: true),
+            ""
+        )
+
+        // Bare URL / http substring.
+        let withHTTP =
+            "See the public archive mirrored at http for the complete dataset dump, further notes"
+        // Ensure length past 60 before comma: pad carefully.
+        let withHTTPLong =
+            "See the lengthy public archive mirrored online at http for the complete dump, further notes"
+        XCTAssertEqual(
+            AskAnswerBlock.stableSpeakablePrefix(fromStreaming: withHTTPLong, allowLeadingClause: true),
+            ""
+        )
+        _ = withHTTP
+
+        let withWWW =
+            "See the lengthy public archive mirrored online at www.example for the dump, further notes"
+        XCTAssertEqual(
+            AskAnswerBlock.stableSpeakablePrefix(fromStreaming: withWWW, allowLeadingClause: true),
+            ""
+        )
+
+        // Odd backticks.
+        let oddBackticks =
+            "The sample uses `code that clearly exceeds sixty characters of span, and more"
+        XCTAssertEqual(
+            AskAnswerBlock.stableSpeakablePrefix(fromStreaming: oddBackticks, allowLeadingClause: true),
+            ""
+        )
+
+        // Odd asterisks.
+        let oddStars =
+            "The sample uses *emphasis that clearly exceeds sixty characters of span, and more"
+        XCTAssertEqual(
+            AskAnswerBlock.stableSpeakablePrefix(fromStreaming: oddStars, allowLeadingClause: true),
+            ""
+        )
+
+        // Unbalanced parenthesis spanning the cut.
+        let unbalanced =
+            "Researchers noted a result that clearly exceeds sixty characters of length (see appendix, and then more"
+        XCTAssertEqual(
+            AskAnswerBlock.stableSpeakablePrefix(fromStreaming: unbalanced, allowLeadingClause: true),
+            ""
+        )
+    }
+
+    func testLeadingClauseRejectsGrowingFirstLineShapesAndMultiBlock() {
+        // Table / list / fence / heading first-line shapes — existing guards.
+        XCTAssertEqual(
+            AskAnswerBlock.stableSpeakablePrefix(
+                fromStreaming: "| City | Country | more cells that exceed sixty characters total here, x",
+                allowLeadingClause: true
+            ),
+            ""
+        )
+        XCTAssertEqual(
+            AskAnswerBlock.stableSpeakablePrefix(
+                fromStreaming: "- item that is long enough to clearly exceed sixty characters of text, x",
+                allowLeadingClause: true
+            ),
+            ""
+        )
+        XCTAssertEqual(
+            AskAnswerBlock.stableSpeakablePrefix(
+                fromStreaming: "```swift\nlet value = 1 // long enough comment past sixty chars maybe, x",
+                allowLeadingClause: true
+            ),
+            ""
+        )
+        // Heading block (not a paragraph).
+        XCTAssertEqual(
+            AskAnswerBlock.stableSpeakablePrefix(
+                fromStreaming: "## A long heading that clearly exceeds sixty characters of plain text, x",
+                allowLeadingClause: true
+            ),
+            ""
+        )
+
+        // Two blocks present → no clause emission (even if second is growing prose).
+        let twoBlocks =
+            "First closed paragraph ends here.\n\nThe weather forecast across the region this week remains mild overall, with only"
+        XCTAssertEqual(
+            AskAnswerBlock.stableSpeakablePrefix(fromStreaming: twoBlocks, allowLeadingClause: true),
+            "First closed paragraph ends here."
+        )
+        // Sentence-level non-empty → equals today's result; not a clause from block 2.
+        XCTAssertEqual(
+            AskAnswerBlock.stableSpeakablePrefix(fromStreaming: twoBlocks, allowLeadingClause: true),
+            AskAnswerBlock.stableSpeakablePrefix(fromStreaming: twoBlocks, allowLeadingClause: false)
+        )
+    }
+
+    func testLeadingClauseDefersToCompleteSentenceWhenAvailable() {
+        let withSentence =
+            "Paris is nice. It sits on the river with several notable landmarks nearby for visitors."
+        let withFlag = AskAnswerBlock.stableSpeakablePrefix(
+            fromStreaming: withSentence,
+            allowLeadingClause: true
+        )
+        let withoutFlag = AskAnswerBlock.stableSpeakablePrefix(
+            fromStreaming: withSentence,
+            allowLeadingClause: false
+        )
+        XCTAssertEqual(withFlag, withoutFlag)
+        XCTAssertEqual(withFlag, "Paris is nice.")
+    }
+
+    func testLeadingClauseDisabledMatchesLegacyBehaviorOnNewFixtures() {
+        let fixtures = [
+            Self.longCommaSentence + " Next.",
+            "After a careful review of the available evidence from multiple teams; the committee endorsed the plan without further delay. ",
+            "Please arrive early for check-in at the main stadium gate entrance: doors open for the public shortly after seven. ",
+            "The shuttle leaves at 7:30 AM from the north terminal with several stops planned along the route for passengers. ",
+            "Short intro, more text arrives later and keeps going past sixty eventually. ",
+            "## A long heading that clearly exceeds sixty characters of plain text, x",
+            "First closed paragraph ends here.\n\nThe weather forecast across the region this week remains mild overall, with only",
+        ]
+        for fixture in fixtures {
+            let legacy = AskAnswerBlock.stableSpeakablePrefix(fromStreaming: fixture)
+            let explicitFalse = AskAnswerBlock.stableSpeakablePrefix(
+                fromStreaming: fixture,
+                allowLeadingClause: false
+            )
+            XCTAssertEqual(legacy, explicitFalse, "default/false mismatch for: \(fixture.prefix(40))…")
+            // Flag off must not produce a mid-sentence clause emission.
+            if !legacy.isEmpty {
+                XCTAssertFalse(
+                    legacy.hasSuffix(",") && !legacy.contains("."),
+                    "legacy path should not emit bare clause for: \(fixture.prefix(40))…"
+                )
+            }
+        }
+
+        // On the mid-stream long-comma fixture, flag false stays empty while true emits.
+        let mid = "The weather forecast across the region this week remains mild overall, with only"
+        XCTAssertEqual(AskAnswerBlock.stableSpeakablePrefix(fromStreaming: mid), "")
+        XCTAssertEqual(
+            AskAnswerBlock.stableSpeakablePrefix(fromStreaming: mid, allowLeadingClause: false),
+            ""
+        )
+        XCTAssertFalse(
+            AskAnswerBlock.stableSpeakablePrefix(fromStreaming: mid, allowLeadingClause: true).isEmpty
+        )
+    }
+
+    // MARK: - Markdown span closure verification (P1 fix for attempt 2)
+
+    func testLeadingClauseRejectsUnclosedBoldSpan() {
+        // Unclosed ** before comma: even count (2 asterisks) but still open
+        let unclosedBold =
+            "The report shows a **bold unfinished statement here exceeds sixty characters total, more text"
+        XCTAssertEqual(
+            AskAnswerBlock.stableSpeakablePrefix(fromStreaming: unclosedBold, allowLeadingClause: true),
+            ""
+        )
+
+        // After the closing ** arrives and sentence completes
+        let closedBoldComplete =
+            "The report shows a **bold unfinished statement here exceeds sixty characters total,** and more text. Next."
+        let withFlag = AskAnswerBlock.stableSpeakablePrefix(
+            fromStreaming: closedBoldComplete,
+            allowLeadingClause: true
+        )
+        XCTAssertFalse(withFlag.isEmpty, "Should emit sentence once complete")
+        let withoutFlag = AskAnswerBlock.stableSpeakablePrefix(
+            fromStreaming: closedBoldComplete,
+            allowLeadingClause: false
+        )
+        XCTAssertEqual(withFlag, withoutFlag)
+    }
+
+    func testLeadingClauseWithholdsClosedBoldSpanConservatively() {
+        // Even a CLOSED bold span withholds clause emission: the guard is
+        // delimiter-free by policy (span-closure proofs kept leaking — see
+        // isMarkdownStableClauseFragment). The sentence-level path still
+        // emits once the sentence completes.
+        let closedBold =
+            "The analysis concludes that **yes**, this clearly exceeds sixty characters of text, next sentence"
+        XCTAssertEqual(
+            AskAnswerBlock.stableSpeakablePrefix(fromStreaming: closedBold, allowLeadingClause: true),
+            ""
+        )
+
+        let completed = closedBold + " arrives now. Next."
+        let sentenceLevel = AskAnswerBlock.stableSpeakablePrefix(
+            fromStreaming: completed,
+            allowLeadingClause: true
+        )
+        XCTAssertFalse(sentenceLevel.isEmpty, "sentence path must still emit once complete")
+        XCTAssertFalse(sentenceLevel.contains("**"), "bold markers stripped in sentence path")
+    }
+
+    func testLeadingClauseRejectsUnclosedBacktickSpan() {
+        // Unclosed backtick before comma: odd count but the span never closes
+        let unclosedCode =
+            "The function uses `code_span that remains open across this clause boundary here exceeds chars, next"
+        XCTAssertEqual(
+            AskAnswerBlock.stableSpeakablePrefix(fromStreaming: unclosedCode, allowLeadingClause: true),
+            ""
+        )
+    }
+
+    func testLeadingClauseWithholdsClosedBacktickSpanConservatively() {
+        // Closed code spans also withhold (delimiter-free guard policy).
+        let closedCode =
+            "The `getData()` function is declared in the main file and is available for use across many systems, more text"
+        XCTAssertEqual(
+            AskAnswerBlock.stableSpeakablePrefix(fromStreaming: closedCode, allowLeadingClause: true),
+            ""
+        )
+    }
+
+    func testLeadingClauseRejectsEmphasisCharacterInsideClosedCodeSpan() {
+        // Arbiter-review counterexample: the strip regex KEEPS code-span inner
+        // content as literal text, so a `*` inside a closed code span can pair
+        // with a later `*emphasis*` and mutate the already-emitted region.
+        // Delimiter-free rejection covers this class by construction.
+        let starInCode =
+            "The helper `a*b` computes a quick product for callers across the module, then more"
+        XCTAssertEqual(
+            AskAnswerBlock.stableSpeakablePrefix(fromStreaming: starInCode, allowLeadingClause: true),
+            ""
+        )
+
+        // Invariant check for the full divergent continuation.
+        let full = "The helper `a*b` computes a quick product for callers across the module, "
+            + "then multiplies by a *scaling* factor before returning. Next."
+        let streamed = AskAnswerBlock.stableSpeakablePrefix(fromStreaming: full, allowLeadingClause: true)
+        XCTAssertTrue(
+            AskAnswerBlock.speakableText(from: full).hasPrefix(streamed),
+            "streamed prefix must remain a prefix of the final speakable text"
+        )
+    }
+
+    func testLeadingClauseRejectsUnclosedUnderscoreSpan() {
+        // Unclosed single underscore before comma
+        let unclosedEmph =
+            "The _emphasis here is not closed and continues across this boundary, more text"
+        XCTAssertEqual(
+            AskAnswerBlock.stableSpeakablePrefix(fromStreaming: unclosedEmph, allowLeadingClause: true),
+            ""
+        )
+    }
+
+    func testLeadingClauseWithholdsClosedUnderscoreSpanConservatively() {
+        // Closed emphasis spans also withhold (delimiter-free guard policy).
+        let closedEmph =
+            "The _current_ implementation works well and is available for all users here, more text"
+        XCTAssertEqual(
+            AskAnswerBlock.stableSpeakablePrefix(fromStreaming: closedEmph, allowLeadingClause: true),
+            ""
+        )
+    }
+
+    func testLeadingClauseRejectsUnclosedDoubleUnderscoreSpan() {
+        // Unclosed __ before comma
+        let unclosedStrong =
+            "The __strong emphasis here is not closed and continues across this boundary, more text"
+        XCTAssertEqual(
+            AskAnswerBlock.stableSpeakablePrefix(fromStreaming: unclosedStrong, allowLeadingClause: true),
+            ""
+        )
+    }
+
+    func testLeadingClauseWithholdsClosedDoubleUnderscoreSpanConservatively() {
+        // Closed strong-emphasis spans also withhold (delimiter-free guard policy).
+        let closedStrong =
+            "The __critical__ point here is available and well documented for all implementations, next sentence"
+        XCTAssertEqual(
+            AskAnswerBlock.stableSpeakablePrefix(fromStreaming: closedStrong, allowLeadingClause: true),
+            ""
+        )
+    }
+
+    func testLeadingClauseRejectsAdjacentEmptyDelimiterPairs() {
+        let adjacentBackticks =
+            "The report includes ```` beside an unusually detailed explanation for everyone, more text"
+        XCTAssertEqual(
+            AskAnswerBlock.stableSpeakablePrefix(
+                fromStreaming: adjacentBackticks,
+                allowLeadingClause: true
+            ),
+            ""
+        )
+
+        // A later closing pair must not retroactively change an emitted prefix.
+        let laterBacktickPair = adjacentBackticks + " arrives before the real closing pair `` and conclusion. Next."
+        let laterResult = AskAnswerBlock.stableSpeakablePrefix(
+            fromStreaming: laterBacktickPair,
+            allowLeadingClause: false
+        )
+        XCTAssertTrue(AskAnswerBlock.speakableText(from: laterBacktickPair).hasPrefix(laterResult))
+
+        let adjacentAsterisks =
+            "The report includes **** beside an unusually detailed explanation for everyone, more text"
+        XCTAssertEqual(
+            AskAnswerBlock.stableSpeakablePrefix(
+                fromStreaming: adjacentAsterisks,
+                allowLeadingClause: true
+            ),
+            ""
+        )
+    }
     // MARK: - Streaming stable prefix: property tests
 
     private static let monotoneFixtureA = """
@@ -640,4 +1024,116 @@ final class AskAnswerBlocksTests: XCTestCase {
         }
     }
 
+    // MARK: - Leading clause: streaming property tests
+
+    /// Corpus for clause-aware streaming: plain prose, links, bold/italic, inline
+    /// code, numbered list, table, citations, and a Sources trailer.
+    private static let leadingClausePropertyFixtures: [(name: String, text: String)] = [
+        (
+            "plain_prose",
+            """
+            The weather forecast across the region this week remains mild overall, with only occasional showers expected near the coast. Pack a light jacket just in case you go out after dusk.
+            """
+        ),
+        (
+            "markdown_links",
+            """
+            According to [Reuters](https://reuters.com/article/x), the launch window opens Monday morning with a backup on Tuesday. Full coverage is on their site.
+            """
+        ),
+        (
+            "bold_italic",
+            """
+            The **primary** recommendation is simple and clear for most travelers, while _secondary_ tips cover packing layers near the waterfront each evening.
+            """
+        ),
+        (
+            "inline_code",
+            """
+            Use the `encode` helper when you prepare the payload for the client, then verify the checksum before you ship the binary to production systems.
+            """
+        ),
+        (
+            "numbered_list",
+            """
+            Follow these steps carefully before you begin the migration process today.
+
+            1. Back up the database and export a cold snapshot
+            2. Apply the schema migration during a quiet maintenance window
+            3. Verify application health checks after traffic returns
+            """
+        ),
+        (
+            "table",
+            """
+            Here are two cities worth visiting this spring season overall.
+
+            | City | Country |
+            | --- | --- |
+            | Paris | France |
+            | Rome | Italy |
+
+            Both reward a slow afternoon walk through the historic center.
+            """
+        ),
+        (
+            "citations",
+            """
+            Mars averages about 140 million miles away from Earth [1]. The exact distance varies with orbital position across the year.
+            """
+        ),
+        (
+            "sources_trailer",
+            """
+            Chiropractic was founded in 1895 and spread through clinics worldwide over the following decades.
+
+            Sources
+            - [Palmer](https://example.com/palmer)
+            - [History](https://example.com/history)
+            """
+        ),
+        (
+            "bold_span_crossing_comma",
+            """
+            The recommendation is clearly important and **this statement about the matter crosses the boundary**, so the next sentence follows. Additional details may apply.
+            """
+        ),
+        (
+            "adjacent_backtick_pairs",
+            """
+            The report includes ```` beside an unusually detailed explanation for everyone, more text arrives before the real closing pair `` and conclusion. Additional details may apply.
+            """
+        ),
+    ]
+
+    func testLeadingClauseStreamingPropertyMonotoneAndPrefix() {
+        for (name, fixture) in Self.leadingClausePropertyFixtures {
+            let finalSpeakable = AskAnswerBlock.speakableText(from: fixture)
+            var previousNonEmpty = ""
+            var hasEmitted = false
+            var offset = 0
+            while offset <= fixture.count {
+                let prefix = String(fixture.prefix(offset))
+                let result = AskAnswerBlock.stableSpeakablePrefix(
+                    fromStreaming: prefix,
+                    allowLeadingClause: !hasEmitted
+                )
+                XCTAssertTrue(
+                    finalSpeakable.hasPrefix(result),
+                    "PREFIX violation fixture=\(name) offset=\(offset) result=«\(result)» final=«\(finalSpeakable)» prefixTail=«\(prefix.suffix(60))»"
+                )
+                if !result.isEmpty {
+                    XCTAssertTrue(
+                        result.hasPrefix(previousNonEmpty),
+                        "MONOTONE violation fixture=\(name) offset=\(offset) previous=«\(previousNonEmpty)» result=«\(result)»"
+                    )
+                    previousNonEmpty = result
+                    hasEmitted = true
+                }
+                if offset == fixture.count { break }
+                let step = 1 + (offset % 7) // 1...7 character appends
+                offset = min(offset + step, fixture.count)
+            }
+        }
+    }
 }
