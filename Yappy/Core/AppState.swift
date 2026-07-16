@@ -41,6 +41,13 @@ final class AppState: ObservableObject {
     /// Current error state, if any.
     @Published private(set) var error: Error?
 
+    /// Transient user-facing failure line rendered inside the pill (e.g. "No
+    /// audio from the mic" when the input device delivered pure digital
+    /// silence). Set alongside the failure sound so a dead mic never LOOKS
+    /// like Yappy simply ignoring the user; cleared by `reset()` and whenever
+    /// a new session begins.
+    @Published private(set) var failureMessage: String?
+
     /// Timestamp of the most recent real *voice* dictation that landed (text
     /// transcribed and inserted via the hotkey path). Set by `AppDelegate` on
     /// each successful insertion; nil until the user has dictated at least once.
@@ -58,6 +65,7 @@ final class AppState: ObservableObject {
         isPreparing = false
         isRecording = true
         error = nil
+        failureMessage = nil
         currentTranscription = ""
         audioLevels = Array(repeating: 0.0, count: Constants.pillBarCount)
     }
@@ -104,6 +112,7 @@ final class AppState: ObservableObject {
         audioLevels = Array(repeating: 0.0, count: Constants.pillBarCount)
         currentTranscription = ""
         error = nil
+        failureMessage = nil
     }
 
     /// Appends a new audio level sample, dropping the oldest.
@@ -121,6 +130,15 @@ final class AppState: ObservableObject {
     }
 
     /// Sets an error state.
+    /// Shows a short failure line in the pill (with `isProcessing` cleared so
+    /// the pill stops reading as "working"). The caller keeps the pill visible
+    /// briefly and then calls `reset()`.
+    func showFailure(_ message: String) {
+        isProcessing = false
+        isPolishing = false
+        failureMessage = message
+    }
+
     func setError(_ error: Error) {
         self.error = error
         isProcessing = false

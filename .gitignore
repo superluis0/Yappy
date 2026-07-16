@@ -46,3 +46,6 @@ dist/
 # Python bytecode (bundled TTS helper)
 __pycache__/
 *.pyc
+
+# Xcode per-user state (embeds the local username in its path)
+xcuserdata/

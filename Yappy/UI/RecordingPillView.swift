@@ -130,6 +130,19 @@ struct RecordingPillView: View {
                         glow: accent.opacity(0.7)
                     )
                     .transition(.opacity)
+                } else if let failure = appState.failureMessage {
+                    // Visible failure state: a dead input device (pure digital
+                    // silence) must not read as Yappy ignoring the user.
+                    HStack(spacing: 6) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.system(size: 10, weight: .semibold))
+                        Text(failure)
+                            .font(.system(size: 11, weight: .semibold))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                    }
+                    .foregroundStyle(Color(red: 1.0, green: 0.55, blue: 0.35))
+                    .transition(.opacity)
                 } else if appState.isProcessing || appState.isPreparing {
                     processingIndicator
                         .transition(.opacity)
@@ -145,6 +158,7 @@ struct RecordingPillView: View {
         // Cross-fade the neutral dots into the accent-tinted "Polishing" look when
         // AI cleanup starts, so the sub-phase reads without any layout jump.
         .animation(.easeInOut(duration: 0.2), value: appState.isPolishing)
+        .animation(.easeInOut(duration: 0.2), value: appState.failureMessage)
         // Fill the (larger) panel with a clear, non-interactive container so the
         // capsule is centered and its shadow fades into transparent margin
         // rather than being clipped at the panel's rectangular edge.

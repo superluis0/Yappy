@@ -231,4 +231,29 @@ final class AppStateTests: XCTestCase {
         XCTAssertFalse(state.isProcessing, "isProcessing should be false after setError()")
         XCTAssertFalse(state.isRecording, "isRecording should be false after setError()")
     }
+
+    // MARK: - Failure message (visible dead-mic state)
+
+    func testShowFailureSetsMessageAndStopsProcessing() {
+        state.startRecording()
+        state.stopRecording() // enters processing
+
+        state.showFailure("No audio from the mic")
+
+        XCTAssertEqual(state.failureMessage, "No audio from the mic")
+        XCTAssertFalse(state.isProcessing, "the pill must stop reading as 'working' while the failure shows")
+        XCTAssertFalse(state.isPolishing)
+    }
+
+    func testResetClearsFailureMessage() {
+        state.showFailure("No audio from the mic")
+        state.reset()
+        XCTAssertNil(state.failureMessage)
+    }
+
+    func testStartRecordingClearsFailureMessage() {
+        state.showFailure("No audio from the mic")
+        state.startRecording()
+        XCTAssertNil(state.failureMessage, "a new session must never carry the previous failure line")
+    }
 }

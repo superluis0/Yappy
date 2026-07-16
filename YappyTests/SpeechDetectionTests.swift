@@ -3,6 +3,7 @@
 //  YappyTests
 //
 
+import AVFoundation
 import XCTest
 @testable import Yappy
 
@@ -84,5 +85,64 @@ final class SpeechDetectionTests: XCTestCase {
         XCTAssertFalse(ParakeetTranscriptionService.acceptsTranscript(confidence: 0.29))
         XCTAssertTrue(ParakeetTranscriptionService.acceptsTranscript(confidence: 0.30))
         XCTAssertTrue(ParakeetTranscriptionService.acceptsTranscript(confidence: 0.95))
+    }
+
+    // MARK: - Digital silence (dead input device, 2026-07-16 login-boot regression)
+
+    /// Exact zeros of any meaningful length = the device delivered no audio at
+    /// all. Distinct from a quiet room: real mics always carry self-noise.
+    func testAllZeroClipIsDigitalSilence() {
+        XCTAssertTrue(AudioRecorder.isDigitalSilence([Float](repeating: 0, count: 16000)))
+    }
+
+    /// Room tone — tiny but nonzero — is NOT digital silence; it must keep
+    /// today's silent-discard path, never the loud device-failure path.
+    func testRoomToneIsNotDigitalSilence() {
+        XCTAssertFalse(AudioRecorder.isDigitalSilence(sine(amplitude: 0.002, seconds: 0.6)))
+        // Even a single nonzero sample disqualifies the clip.
+        var samples = [Float](repeating: 0, count: 16000)
+        samples[9000] = 0.0001
+        XCTAssertFalse(AudioRecorder.isDigitalSilence(samples))
+    }
+
+    /// "Nothing recorded" is a different condition from "recorded nothing".
+    func testEmptyClipIsNotDigitalSilence() {
+        XCTAssertFalse(AudioRecorder.isDigitalSilence([]))
+    }
+
+    // MARK: - Zero-buffer detection (the self-heal's audio-thread arm)
+
+    private func buffer(channels: AVAudioChannelCount, frames: AVAudioFrameCount,
+                        fill: (Int, Int) -> Float) -> AVAudioPCMBuffer {
+        let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 48000,
+                                   channels: channels, interleaved: false)!
+        let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: max(frames, 1))!
+        buffer.frameLength = frames
+        for ch in 0..<Int(channels) {
+            let data = buffer.floatChannelData![ch]
+            for i in 0..<Int(frames) { data[i] = fill(ch, i) }
+        }
+        return buffer
+    }
+
+    func testZeroBufferIsDetected() {
+        XCTAssertTrue(AudioRecorder.bufferIsEntirelyZero(
+            buffer(channels: 2, frames: 2048) { _, _ in 0 }
+        ))
+    }
+
+    /// Audio on ANY channel disarms the detector — a stereo device delivering
+    /// on only one channel is alive (the converter downmixes it), so rebuilding
+    /// the engine then would cut into real speech.
+    func testAudioOnSecondChannelOnlyIsNotZero() {
+        XCTAssertFalse(AudioRecorder.bufferIsEntirelyZero(
+            buffer(channels: 2, frames: 2048) { ch, i in ch == 1 && i == 1500 ? 0.01 : 0 }
+        ))
+    }
+
+    func testEmptyBufferCountsAsZero() {
+        XCTAssertTrue(AudioRecorder.bufferIsEntirelyZero(
+            buffer(channels: 1, frames: 0) { _, _ in 0.5 }
+        ))
     }
 }

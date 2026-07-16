@@ -614,6 +614,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // diagnose. Counts only — never transcript content.
             guard AudioRecorder.containsSpeech(samples) else {
                 Self.logger.notice("Discarded clip without speech (\(samples.count, privacy: .public) samples, \(duration, format: .fixed(precision: 1), privacy: .public)s held; \(AudioRecorder.speechDiagnostics(samples), privacy: .public))")
+                // A held-long-enough clip of PURE digital zeros is a device
+                // failure the self-heal couldn't fix (hardware mic mute, dead
+                // USB input) — never a quiet user; real mics always carry
+                // self-noise. Vanishing silently here made a dead mic look
+                // like Yappy ignoring the user (login-boot regression,
+                // 2026-07-16) — surface it: failure cue + a pill message,
+                // briefly, then tear down as usual. Short taps stay silent.
+                if duration >= 1.0, AudioRecorder.isDigitalSilence(samples) {
+                    self.ifCurrent(generation) {
+                        self.playFailureFeedback()
+                        self.appState.showFailure("No audio from the mic")
+                    }
+                    try? await Task.sleep(nanoseconds: 2_200_000_000)
+                }
                 self.ifCurrent(generation) {
                     self.appState.reset()
                     self.pillController.hide()

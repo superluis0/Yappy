@@ -17,10 +17,34 @@ final class AudioRecorder {
     /// a dictation that silently vanishes must leave a diagnosable trace.
     private static let logger = Logger(subsystem: "com.yappy.app", category: "audio")
 
-    private let audioEngine = AVAudioEngine()
+    private var audioEngine = AVAudioEngine()
     private var converter: AVAudioConverter?
     private var samples: [Float] = []
     private let samplesLock = NSLock()
+
+    // MARK: Dead-input self-heal state (all guarded by `samplesLock`)
+    //
+    // A cold-boot/login race can leave THIS engine instance bound to an input
+    // device context that delivers only zeroed buffers forever — while a fresh
+    // AVAudioEngine in the same process captures fine (seen 2026-07-16 with a
+    // USB webcam mic as default input after auto-start at login; stop()/reset()
+    // do NOT rebuild the device binding). Real microphones always carry
+    // self-noise, so an opening run of PURELY zero buffers is a dead binding,
+    // not a quiet room: detect it and swap in a fresh engine once, early enough
+    // that the user's words aren't lost.
+    private var zeroFramesSinceStart = 0
+    private var sawNonZeroSample = false
+    private var zeroRebuildRequested = false
+    private var rebuildInProgress = false
+    /// Identifies one recording session; the async rebuild aborts if the
+    /// session it was requested for has already ended.
+    private var sessionToken = 0
+
+    /// Seconds of pure digital zeros (measured in input frames, so the HAL's
+    /// buffer size doesn't matter) before rebuilding. Late enough to skip the
+    /// transient start-up zeros some devices emit, early enough to precede the
+    /// first word.
+    private static let deadInputZeroSeconds = 0.26
 
     /// Samples handed off when an `AVAudioEngineConfigurationChange` (e.g. AirPods
     /// connecting, an input-device switch) forces us to tear the engine down
@@ -53,6 +77,16 @@ final class AudioRecorder {
     )
 
     init() {
+        observeEngine()
+    }
+
+    /// (Re-)registers the configuration-change observer for the CURRENT engine
+    /// instance. Must be called again whenever `audioEngine` is replaced, or the
+    /// observer would keep watching the discarded instance.
+    private func observeEngine() {
+        NotificationCenter.default.removeObserver(
+            self, name: .AVAudioEngineConfigurationChange, object: nil
+        )
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handleConfigurationChange),
@@ -119,6 +153,27 @@ final class AudioRecorder {
         return rms >= Constants.speechRMSFloor && voiced >= voicedFloor
     }
 
+    /// True when the clip is PURE digital silence — every sample exactly zero.
+    /// Real microphones always carry self-noise, so an all-zero clip of any
+    /// length means the capture path delivered no audio at all (dead device
+    /// binding after a login-time race, or a hardware mic mute) — a device
+    /// failure, never just a quiet room. Empty input returns false: "nothing
+    /// recorded" is a different condition from "recorded nothing".
+    static func isDigitalSilence(_ samples: [Float]) -> Bool {
+        !samples.isEmpty && !samples.contains(where: { $0 != 0 })
+    }
+
+    /// True when every channel of the buffer holds only exact zeros. Scans for
+    /// the first nonzero sample, so on a live input it exits almost instantly.
+    static func bufferIsEntirelyZero(_ buffer: AVAudioPCMBuffer) -> Bool {
+        guard let channelData = buffer.floatChannelData, buffer.frameLength > 0 else { return true }
+        for channel in 0..<Int(buffer.format.channelCount) {
+            let data = UnsafeBufferPointer(start: channelData[channel], count: Int(buffer.frameLength))
+            for sample in data where sample != 0 { return false }
+        }
+        return true
+    }
+
     /// One-line diagnostic for the no-speech breadcrumb: measured levels vs the
     /// floors, so a silent-mic capture (rms ~ 0 -> wrong/dead input device) is
     /// distinguishable from a threshold misjudging real speech, straight from the
@@ -172,6 +227,10 @@ final class AudioRecorder {
         samples.removeAll(keepingCapacity: true)
         samples.reserveCapacity(Int(Self.targetSampleRate) * 60)
         finishedEarlySamples = nil // drop any leftover early-handoff from a prior session
+        zeroFramesSinceStart = 0
+        sawNonZeroSample = false
+        zeroRebuildRequested = false
+        sessionToken += 1
         samplesLock.unlock()
 
         inputNode.installTap(onBus: 0, bufferSize: 2048, format: inputFormat) { [weak self] buffer, _ in
@@ -228,6 +287,7 @@ final class AudioRecorder {
         converter = nil
         let recorded = samples
         samples.removeAll(keepingCapacity: false)
+        sessionToken += 1 // invalidate any dead-input rebuild still queued for this session
         samplesLock.unlock()
 
         return recorded
@@ -308,10 +368,15 @@ final class AudioRecorder {
     /// — is flipped on the main queue so it stays serialized with those readers.
     @objc private func handleConfigurationChange() {
         // A change while previewing or idle is irrelevant; only a live recording
-        // has captured audio to preserve. Read the flag under the lock.
+        // has captured audio to preserve. Read the flag under the lock. Ignore
+        // everything during a dead-input engine rebuild: stopping the wedged
+        // engine fires this notification, and acting on it would stash the
+        // zero-only capture as an early handoff and kill the rebuilt session.
         samplesLock.lock()
         let wasRecording = isRecording
+        let rebuilding = rebuildInProgress
         samplesLock.unlock()
+        guard !rebuilding else { return }
         // Only act when the change actually STOPPED the engine (a real device
         // switch). This notification also fires benignly — including around the
         // engine's own start/format renegotiation — while audio keeps flowing;
@@ -335,6 +400,7 @@ final class AudioRecorder {
         converter = nil
         finishedEarlySamples = samples
         samples.removeAll(keepingCapacity: false)
+        sessionToken += 1 // invalidate any dead-input rebuild still queued for this session
         samplesLock.unlock()
 
         // Flip the flag where the main thread reads it. The sample handoff above
@@ -386,7 +452,97 @@ final class AudioRecorder {
         }
     }
 
+    /// Audio-thread arm of the dead-input self-heal (see the state block at the
+    /// top): counts an opening run of purely-zero buffers and requests ONE
+    /// engine rebuild on the main queue. Any nonzero sample ever seen disarms
+    /// it for the rest of the session.
+    private func checkForDeadInput(_ buffer: AVAudioPCMBuffer) {
+        var requestToken: Int?
+        samplesLock.lock()
+        if sawNonZeroSample || zeroRebuildRequested {
+            samplesLock.unlock()
+            return
+        }
+        if Self.bufferIsEntirelyZero(buffer) {
+            zeroFramesSinceStart += Int(buffer.frameLength)
+            let threshold = Int(Self.deadInputZeroSeconds * buffer.format.sampleRate)
+            if zeroFramesSinceStart >= threshold {
+                zeroRebuildRequested = true
+                requestToken = sessionToken
+            }
+        } else {
+            sawNonZeroSample = true
+        }
+        samplesLock.unlock()
+
+        if let requestToken {
+            DispatchQueue.main.async { [weak self] in
+                self?.rebuildDeadEngine(token: requestToken)
+            }
+        }
+    }
+
+    /// Main-thread arm of the dead-input self-heal: replaces the wedged engine
+    /// with a FRESH instance (the only thing that re-binds the input device —
+    /// stop()/reset() keep the dead binding) and resumes the same recording
+    /// session. On any failure it leaves the session alive; a still-silent clip
+    /// is then surfaced to the user at stop time instead of vanishing.
+    private func rebuildDeadEngine(token: Int) {
+        guard let targetFormat else { return }
+        samplesLock.lock()
+        let stillCurrent = token == sessionToken && isRecording && !rebuildInProgress
+        if stillCurrent { rebuildInProgress = true }
+        samplesLock.unlock()
+        guard stillCurrent else { return }
+
+        Self.logger.notice("Input delivered only zeroed buffers after start — rebuilding the audio engine (dead device binding)")
+
+        // Tear the wedged engine down. removeTap blocks until any in-flight tap
+        // callback returns, so nothing runs against the old engine afterwards.
+        audioEngine.inputNode.removeTap(onBus: 0)
+        audioEngine.stop()
+
+        audioEngine = AVAudioEngine()
+        observeEngine()
+
+        defer {
+            samplesLock.lock()
+            rebuildInProgress = false
+            samplesLock.unlock()
+        }
+
+        let inputNode = audioEngine.inputNode
+        let inputFormat = inputNode.outputFormat(forBus: 0)
+        guard inputFormat.sampleRate > 0, inputFormat.channelCount > 0,
+              let converter = AVAudioConverter(from: inputFormat, to: targetFormat) else {
+            Self.logger.error("Audio-engine rebuild found no usable input format; keeping the session alive")
+            return
+        }
+
+        samplesLock.lock()
+        self.converter = converter
+        samples.removeAll(keepingCapacity: true) // the captured prefix is all zeros
+        samplesLock.unlock()
+
+        inputNode.installTap(onBus: 0, bufferSize: 2048, format: inputFormat) { [weak self] buffer, _ in
+            guard let self else { return }
+            if let onBuffer = self.onBuffer, let copy = Self.copy(of: buffer) {
+                onBuffer(copy)
+            }
+            self.process(buffer: buffer)
+        }
+
+        do {
+            try audioEngine.start()
+            Self.logger.notice("Audio engine rebuilt and restarted after dead-input detection")
+        } catch {
+            inputNode.removeTap(onBus: 0)
+            Self.logger.error("Audio-engine rebuild failed to start: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
     private func process(buffer: AVAudioPCMBuffer) {
+        checkForDeadInput(buffer)
         guard let converter, let targetFormat else { return }
 
         let ratio = Self.targetSampleRate / buffer.format.sampleRate
