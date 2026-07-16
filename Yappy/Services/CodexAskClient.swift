@@ -279,8 +279,20 @@ final class CodexAskClient: @unchecked Sendable {
             let threadID = try await createThread()
             lock.withLock { warmThreadID = threadID }
             VLog.codex("prewarmed thread \(threadID)")
+            onNotification?(CodexEventEnvelope(
+                threadID: threadID,
+                turnID: nil,
+                event: .ignored(method: askPrewarmReadySignal)
+            ))
         } catch {
             VLog.codex("prewarm failed: \(error.localizedDescription)")
+            if isAuthFailure(error.localizedDescription) {
+                onNotification?(CodexEventEnvelope(
+                    threadID: nil,
+                    turnID: nil,
+                    event: .serverError(message: error.localizedDescription)
+                ))
+            }
         }
     }
 

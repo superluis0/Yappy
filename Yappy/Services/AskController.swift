@@ -27,6 +27,35 @@ enum AskBackend: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
+enum AskBackendHealth: Equatable, Sendable {
+    case ready
+    case authExpired
+    case notInstalled
+    case unknown
+}
+
+let askPrewarmReadySignal = "ask/prewarm-ready"
+
+/// Phrase-level matches ONLY. Bare substrings ("token", "expired", "401",
+/// "login") false-positive on real non-auth failures — "rate limit: token
+/// budget exhausted", "session expired" in tool output, an HTTP 401 quoted
+/// inside a fetched page — and a false auth verdict poisons backend health
+/// and reroutes questions. Add new shapes as full phrases with a test.
+func isAuthFailure(_ message: String) -> Bool {
+    let message = message.lowercased()
+    return message.contains("authentication required")
+        || message.contains("not logged in")
+        || message.contains("not signed in")
+        || message.contains("please log in")
+        || message.contains("please sign in")
+        || message.contains("401 unauthorized")
+        || message.contains("invalid credentials")
+        || message.contains("token expired")
+        || message.contains("session has expired")
+        || message.contains("credentials have expired")
+        || message.contains("login required")
+}
+
 /// Which xAI model answers when the Grok backend is selected. Always passed
 /// explicitly via `-m` — the CLI's own default has changed between releases
 /// (composer-2.5-fast → grok-build → grok-4.5), so relying on it would silently
@@ -178,6 +207,10 @@ final class AskController: ObservableObject {
     /// The active run — drives the pill. Nil when idle.
     @Published private(set) var run: AskRun?
     @Published private(set) var speakingPhase: AskSpeakingPhase = .idle
+    @Published private(set) var codexHealth: AskBackendHealth = .unknown
+    @Published private(set) var grokHealth: AskBackendHealth = .unknown
+    @Published private(set) var fallbackCaption: String?
+    @Published private(set) var transientCaption: String?
     /// Rolling microphone amplitude ring for the listening waveform. AppDelegate
     /// pushes real levels during capture.
     @Published var audioLevels: [Double] = Array(repeating: 0.18, count: 16)
@@ -269,12 +302,16 @@ final class AskController: ObservableObject {
     /// The in-flight codex dispatch (awaiting turn/start), retained so abort()
     /// can cancel it and the post-await path can clean up an orphaned turn.
     private var dispatchTask: Task<Void, Never>?
+    private var dispatchGeneration = 0
     /// Turn IDs cleared for a continuation — stray events from the prior turn
     /// must not be adopted as the new turn's ID.
     private var rejectedTurnIDs: Set<String> = []
     private var activityWatchdog: Task<Void, Never>?
     /// Seconds to wait for the first backend event before failing the run.
-    var firstActivityTimeout: TimeInterval = 20
+    var firstActivityTimeout: TimeInterval = 8
+    private var fallbackAttempted = false
+    private var authFailedBackend: AskBackend?
+    private var transientCaptionTask: Task<Void, Never>?
 
     /// agentMessage item IDs whose phase marks them as working narration
     /// (preamble/plan text) rather than the final answer — kept out of the answer.
@@ -478,6 +515,48 @@ final class AskController: ObservableObject {
 
     // MARK: - Coarse state (for AppDelegate wiring)
 
+    func health(for backend: AskBackend) -> AskBackendHealth {
+        switch backend {
+        case .codex: codexHealth
+        case .grok: grokHealth
+        }
+    }
+
+    func setHealth(_ health: AskBackendHealth, for backend: AskBackend) {
+        switch backend {
+        case .codex:
+            if codexHealth != health { codexHealth = health }
+        case .grok:
+            if grokHealth != health { grokHealth = health }
+        }
+    }
+
+    func updateInstallationState(installed: Bool, for backend: AskBackend) {
+        if !installed {
+            setHealth(.notInstalled, for: backend)
+        } else if health(for: backend) == .notInstalled {
+            setHealth(.unknown, for: backend)
+        }
+    }
+
+    func showSpeakFailureCaption(duration: TimeInterval = 3) {
+        transientCaptionTask?.cancel()
+        transientCaption = "Couldn't speak — check voice setup in Settings"
+        transientCaptionTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(duration * 1_000_000_000))
+            guard !Task.isCancelled else { return }
+            self?.transientCaption = nil
+        }
+    }
+
+    /// Clears the caption AND cancels its expiry task — a bare `= nil` would
+    /// let a stale 3s timer clip the next caption short.
+    private func clearTransientCaption() {
+        transientCaptionTask?.cancel()
+        transientCaptionTask = nil
+        transientCaption = nil
+    }
+
     var status: AskRunStatus { run?.status ?? .idle }
     /// Busy from the moment the Fn key goes down until the run is terminal —
     /// blocks dictation / scratchpad while Ask owns the shared audio engine.
@@ -500,6 +579,7 @@ final class AskController: ObservableObject {
     }
 
     func shutdown() {
+        transientCaptionTask?.cancel()
         codexClient.stop()
         grokClient.stop()
     }
@@ -630,6 +710,10 @@ final class AskController: ObservableObject {
         if r.status == .listening { try? r.transition(to: .transcribing) }
         try? r.transition(to: .thinking)
         run = r
+        fallbackAttempted = false
+        authFailedBackend = nil
+        fallbackCaption = nil
+        clearTransientCaption()
         dispatch(question: extracted.question, runID: r.id, thinkHarder: extracted.thinkHarder)
     }
 
@@ -639,6 +723,19 @@ final class AskController: ObservableObject {
         let question = r.rawTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !question.isEmpty else { return }
 
+        var retryBackend: AskBackend?
+        if let failedBackend = authFailedBackend,
+           health(for: failedBackend) == .authExpired {
+            let other = otherBackend(to: failedBackend)
+            guard canUseBackend(other) else {
+                var unchanged = r
+                unchanged.result = authGuidance(for: failedBackend)
+                run = unchanged
+                return
+            }
+            retryBackend = other
+        }
+
         resetStreamingSpeechState()
         pillPinned = false
         narrationItemIDs.removeAll()
@@ -646,7 +743,20 @@ final class AskController: ObservableObject {
         configureThinkingTitles(thinkHarder: thinkHarder)
         let fresh = AskRun(rawTranscript: question, status: .thinking, thinkHarder: thinkHarder)
         run = fresh
-        dispatch(question: question, runID: fresh.id, thinkHarder: thinkHarder)
+        fallbackAttempted = retryBackend != nil
+        authFailedBackend = nil
+        clearTransientCaption()
+        if let retryBackend {
+            fallbackCaption = fallbackCaptionText(answering: retryBackend, failed: otherBackend(to: retryBackend))
+        } else {
+            fallbackCaption = nil
+        }
+        dispatch(
+            question: question,
+            runID: fresh.id,
+            thinkHarder: thinkHarder,
+            backendOverride: retryBackend
+        )
     }
 
     func insertAnswer() {
@@ -685,6 +795,8 @@ final class AskController: ObservableObject {
         narrationItemIDs.removeAll()
         if r.turns.isEmpty {
             run = nil
+            fallbackCaption = nil
+            clearTransientCaption()
         } else {
             _ = restoreCompletedCard()
         }
@@ -736,6 +848,8 @@ final class AskController: ObservableObject {
         cancelActivityWatchdog()
         rejectedTurnIDs.removeAll()
         run = nil
+        fallbackCaption = nil
+        clearTransientCaption()
         pillPinned = false
         capturedOverCompletedCard = false
     }
@@ -751,6 +865,8 @@ final class AskController: ObservableObject {
     func showEntry(_ entry: AskHistoryEntry) {
         guard !isBusy else { return }
         pillPinned = true
+        fallbackCaption = nil
+        clearTransientCaption()
         run = AskRun(
             rawTranscript: entry.question,
             status: .completed,
@@ -829,9 +945,15 @@ final class AskController: ObservableObject {
         thoughtTitle = thinkHarder ? "Thought hard" : "Thought"
     }
 
-    private func dispatch(question: String, runID: UUID, thinkHarder: Bool) {
+    private func dispatch(
+        question: String,
+        runID: UUID,
+        thinkHarder: Bool,
+        backendOverride: AskBackend? = nil
+    ) {
         // Every turn starts its research budget fresh.
         grokResearchToolsCompleted = 0
+        lastRunMetrics = AskRunMetrics()
         // Fall back to the other backend when the selected one isn't usable but
         // the other is — for THIS question only. `backend` (mirroring the
         // setting) is never overwritten: the probes are cheap file checks, so
@@ -839,11 +961,17 @@ final class AskController: ObservableObject {
         // back in the next answer routes to their chosen backend again.
         // (A sticky flip here once stranded Ask on codex after a grok re-login,
         // because re-selecting grok in Settings was a no-op change.)
-        var backendForRun = backend
-        let other: AskBackend = backendForRun == .codex ? .grok : .codex
-        if !backendUsable(backendForRun), backendUsable(other) {
+        var backendForRun = backendOverride ?? backend
+        let other = otherBackend(to: backendForRun)
+        if backendOverride == nil, !canUseBackend(backendForRun), canUseBackend(other) {
             VLog.store("backend fallback — \(backendForRun.rawValue) unusable, using \(other.rawValue) for this question")
             backendForRun = other
+            fallbackAttempted = true
+        }
+        if !canUseBackend(backendForRun), health(for: backendForRun) == .authExpired {
+            authFailedBackend = backendForRun
+            fail(runID: runID, message: authGuidance(for: backendForRun))
+            return
         }
         // Snapshot the backend for this run — the live `backend` may change
         // mid-run (Settings picker) and must only affect the NEXT question.
@@ -854,6 +982,7 @@ final class AskController: ObservableObject {
             run = r
         }
         lastRunMetrics = AskRunMetrics(dispatchedAt: metricsClock())
+        dispatchGeneration += 1
         VLog.store("dispatch — backend=\(activeBackend.rawValue) chars=\(question.count)")
 
         armActivityWatchdog(runID: runID)
@@ -862,6 +991,85 @@ final class AskController: ObservableObject {
         case .codex: dispatchCodex(question, runID: runID, thinkHarder: thinkHarder)
         case .grok: dispatchGrok(question, runID: runID, thinkHarder: thinkHarder)
         }
+    }
+
+    private func canUseBackend(_ backend: AskBackend) -> Bool {
+        backendUsable(backend) && health(for: backend) != .authExpired
+    }
+
+    private func otherBackend(to backend: AskBackend) -> AskBackend {
+        backend == .codex ? .grok : .codex
+    }
+
+    private func backendName(_ backend: AskBackend) -> String {
+        backend == .codex ? "Codex" : "Grok"
+    }
+
+    private func authGuidance(for backend: AskBackend) -> String {
+        "\(backendName(backend)) session expired — run `\(backend.rawValue)` in Terminal, then try again."
+    }
+
+    private func fallbackCaptionText(answering: AskBackend, failed: AskBackend) -> String {
+        "Answered by \(backendName(answering)) — \(backendName(failed)) needs re-login."
+    }
+
+    private func handleAuthFailure(
+        backend failedBackend: AskBackend,
+        message: String,
+        runID: UUID?
+    ) {
+        // Guard FIRST: stray envelopes (a prior turn's tail, stale prewarm
+        // noise, an auth-looking string quoted inside tool output) must not
+        // poison health or stop a client mid-run. Act only when the failure
+        // belongs to the CURRENT run on this backend, or is a prewarm probe
+        // (nil runID) while no live run is using the backend.
+        let liveRun = run.flatMap { $0.status.isTerminal ? nil : $0 }
+        if let runID {
+            guard let r = liveRun, r.id == runID, activeBackend == failedBackend else { return }
+        } else {
+            guard liveRun == nil || activeBackend != failedBackend else { return }
+        }
+
+        setHealth(.authExpired, for: failedBackend)
+        VLog.store("\(failedBackend.rawValue) auth expired: \(message)")
+        switch failedBackend {
+        case .codex: codexClient.stop()
+        case .grok: grokClient.stop()
+        }
+
+        guard let runID,
+              var r = run,
+              r.id == runID,
+              !r.status.isTerminal,
+              r.status == .thinking || r.status == .working,
+              activeBackend == failedBackend else { return }
+
+        let other = otherBackend(to: failedBackend)
+        if !fallbackAttempted, canUseBackend(other) {
+            fallbackAttempted = true
+            authFailedBackend = failedBackend
+            cancelActivityWatchdog()
+            dispatchTask?.cancel()
+            resetStreamingSpeechState()
+            r.steps.removeAll()
+            r.answerText = nil
+            r.result = nil
+            r.codexTurnID = nil
+            r.grokSessionID = nil
+            run = r
+            fallbackCaption = fallbackCaptionText(answering: other, failed: failedBackend)
+            VLog.store("runtime auth fallback — \(failedBackend.rawValue) → \(other.rawValue)")
+            dispatch(
+                question: r.rawTranscript,
+                runID: runID,
+                thinkHarder: r.thinkHarder,
+                backendOverride: other
+            )
+            return
+        }
+
+        authFailedBackend = failedBackend
+        fail(runID: runID, message: authGuidance(for: failedBackend))
     }
 
     private func armActivityWatchdog(runID: UUID) {
@@ -893,6 +1101,7 @@ final class AskController: ObservableObject {
     }
 
     private func dispatchCodex(_ question: String, runID: UUID, thinkHarder: Bool) {
+        let generation = dispatchGeneration
         let continuingThreadID = (run?.id == runID) ? run?.codexThreadID : nil
         // A follow-up with turns but NO codex thread (the conversation started
         // on grok) still deserves its context — send the prior turns inline;
@@ -904,7 +1113,9 @@ final class AskController: ObservableObject {
             priorTurns: priorTurns.map { (question: $0.question, answer: $0.answer) })
         dispatchTask = Task { @MainActor [weak self] in
             guard let self else { return }
-            defer { self.dispatchTask = nil }
+            defer {
+                if self.dispatchGeneration == generation { self.dispatchTask = nil }
+            }
             do {
                 let start = try await self.codexClient.ask(
                     transcript: transcript,
@@ -925,13 +1136,20 @@ final class AskController: ObservableObject {
                 }
                 self.run = r
             } catch {
-                VLog.codex("codex ask failed: \(error.localizedDescription)")
-                self.fail(runID: runID, message: self.friendly(error))
+                guard self.dispatchGeneration == generation else { return }
+                let message = self.friendly(error)
+                VLog.codex("codex ask failed: \(message)")
+                if isAuthFailure(message) {
+                    self.handleAuthFailure(backend: .codex, message: message, runID: runID)
+                } else {
+                    self.fail(runID: runID, message: message)
+                }
             }
         }
     }
 
     private func dispatchGrok(_ question: String, runID: UUID, thinkHarder: Bool) {
+        let generation = dispatchGeneration
         let resume = (run?.id == runID) ? run?.grokSessionID : nil
         let prompt: String
         if resume != nil {
@@ -952,12 +1170,20 @@ final class AskController: ObservableObject {
         )
         dispatchTask = Task { @MainActor [weak self] in
             guard let self else { return }
-            defer { self.dispatchTask = nil }
+            defer {
+                if self.dispatchGeneration == generation { self.dispatchTask = nil }
+            }
             do {
                 try await self.grokClient.ask(request)
             } catch {
-                VLog.grok("grok ask failed: \(error.localizedDescription)")
-                self.fail(runID: runID, message: self.friendly(error))
+                guard self.dispatchGeneration == generation else { return }
+                let message = self.friendly(error)
+                VLog.grok("grok ask failed: \(message)")
+                if isAuthFailure(message) {
+                    self.handleAuthFailure(backend: .grok, message: message, runID: runID)
+                } else {
+                    self.fail(runID: runID, message: message)
+                }
             }
         }
     }
@@ -983,6 +1209,22 @@ final class AskController: ObservableObject {
     // at the controller. Item IDs never leak into either.
 
     private func handleCodexEvent(_ envelope: CodexEventEnvelope) {
+        if case .ignored(let method) = envelope.event,
+           method == askPrewarmReadySignal {
+            setHealth(.ready, for: .codex)
+            return
+        }
+        let authMessage: String? = {
+            switch envelope.event {
+            case .serverError(let message): message
+            case .turnCompleted(let failureMessage): failureMessage
+            default: nil
+            }
+        }()
+        if let authMessage, isAuthFailure(authMessage) {
+            handleAuthFailure(backend: .codex, message: authMessage, runID: run?.id)
+            return
+        }
         guard var r = run, activeBackend == .codex, !r.status.isTerminal,
               r.status == .thinking || r.status == .working else { return }
         // Ignore stray events from a stale (prewarm/previous) thread.
@@ -1098,6 +1340,7 @@ final class AskController: ObservableObject {
                 failRunningSteps(in: &r)
                 try? r.transition(to: .failed)
             } else {
+                setHealth(.ready, for: .codex)
                 r.result = r.answerText ?? "Done."
                 completeRunningSteps(in: &r)
                 try? r.transition(to: .completed)
@@ -1127,6 +1370,15 @@ final class AskController: ObservableObject {
     // `text` deltas (the answer), then `end`.
 
     private func handleGrokEvent(_ event: GrokEvent) {
+        if case .ignored(let type) = event,
+           type == askPrewarmReadySignal {
+            setHealth(.ready, for: .grok)
+            return
+        }
+        if case .error(let message) = event, isAuthFailure(message) {
+            handleAuthFailure(backend: .grok, message: message, runID: run?.id)
+            return
+        }
         guard var r = run, activeBackend == .grok, !r.status.isTerminal,
               r.status == .thinking || r.status == .working else { return }
 
@@ -1200,6 +1452,7 @@ final class AskController: ObservableObject {
             grokResearchToolsCompleted += 1
 
         case .end(let stopReason, let sessionId):
+            setHealth(.ready, for: .grok)
             r.grokSessionID = sessionId ?? r.grokSessionID
             r.result = r.answerText ?? "Done."
             completeRunningSteps(in: &r)
@@ -1462,6 +1715,8 @@ final class AskController: ObservableObject {
             }
             guard let self, self.run?.id == runID, self.run?.status.isTerminal == true else { return }
             self.run = nil
+            self.fallbackCaption = nil
+            self.transientCaption = nil
         }
     }
 }

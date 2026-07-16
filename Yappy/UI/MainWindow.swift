@@ -8,11 +8,28 @@ import SwiftUI
 
 // MARK: - Main Window Content
 
+/// The main window's sidebar selection, hoisted out of `MainWindowView`'s own
+/// `@State` so other views can navigate it too: the Home getting-started
+/// checklist jumps to a tab when a row is tapped, the Commands tab's "Off in
+/// Settings" badge jumps to Settings, Settings' "See every phrase" link jumps
+/// to Commands, and the menu bar's "Commands…" item selects Commands before
+/// presenting the window.
+final class MainWindowState: ObservableObject {
+    @Published var selection: MainWindowView.SidebarItem = .home
+
+    /// Navigates the sidebar to `item`. A thin, directly-testable wrapper
+    /// around setting `selection` — the one place every navigator calls through.
+    func select(_ item: MainWindowView.SidebarItem) {
+        selection = item
+    }
+}
+
 /// Sidebar navigation between Home (stats + history) and Settings.
 struct MainWindowView: View {
     enum SidebarItem: String, CaseIterable, Identifiable {
         case home = "Home"
         case shortcuts = "Shortcuts"
+        case commands = "Commands"
         case dictionary = "Dictionary"
         case modes = "Modes"
         case ask = "Answers"
@@ -24,6 +41,7 @@ struct MainWindowView: View {
             switch self {
             case .home: return "house"
             case .shortcuts: return "text.badge.plus"
+            case .commands: return "text.book.closed"
             case .dictionary: return "character.book.closed"
             case .modes: return "slider.horizontal.3"
             case .ask: return "questionmark.bubble"
@@ -41,8 +59,14 @@ struct MainWindowView: View {
     @ObservedObject var updateChecker: UpdateChecker
     @ObservedObject var whatsNewPresenter: WhatsNewPresenter
     @ObservedObject var askController: AskController
+    /// Shared sidebar-selection state, hoisted out of a local `@State` so other
+    /// views (the Home checklist, a Settings deep link, the Commands tab's "Off
+    /// in Settings" badge, the menu bar) can navigate the sidebar too.
+    @ObservedObject var windowState: MainWindowState
+    /// Opens the floating scratchpad — threaded from AppDelegate down to the
+    /// Home checklist's "Open the scratchpad" row.
+    var openScratchpad: () -> Void = {}
 
-    @State private var selection: SidebarItem = .home
     /// Per-session dismissal of the update banner ("Later"). The menu-bar item and
     /// icon badge remain as the always-on reminder; the banner returns next launch.
     @State private var updateBannerDismissed = false
@@ -95,7 +119,9 @@ struct MainWindowView: View {
 
             VStack(spacing: 4) {
                 ForEach(visibleSidebarItems) { item in
-                    SidebarNavRow(item: item, isSelected: selection == item) { selection = item }
+                    SidebarNavRow(item: item, isSelected: windowState.selection == item) {
+                        windowState.select(item)
+                    }
                 }
             }
             .padding(.horizontal, 10)
@@ -122,12 +148,15 @@ struct MainWindowView: View {
 
     @ViewBuilder
     private var detailContent: some View {
-        switch selection {
+        switch windowState.selection {
         case .home:
             HomeView(history: history, settings: settings, shortcutStore: shortcutStore,
-                     transcriptionService: transcriptionService)
+                     transcriptionService: transcriptionService, windowState: windowState,
+                     openScratchpad: openScratchpad)
         case .shortcuts:
             ShortcutsView(store: shortcutStore)
+        case .commands:
+            CommandsView(settings: settings, windowState: windowState)
         case .dictionary:
             DictionaryView(store: dictionaryStore, settings: settings, transcriptionService: transcriptionService)
         case .modes:
@@ -138,7 +167,8 @@ struct MainWindowView: View {
             SettingsView(settings: settings, transcriptionService: transcriptionService, updateChecker: updateChecker,
                          askController: askController,
                          historyStore: history,
-                         onShowReleaseNotes: { whatsNewPresenter.entry = WhatsNew.current ?? WhatsNew.latest })
+                         onShowReleaseNotes: { whatsNewPresenter.entry = WhatsNew.current ?? WhatsNew.latest },
+                         windowState: windowState)
         }
     }
 }
@@ -149,6 +179,13 @@ struct MainWindowView: View {
 /// (`.regular` activation policy); when it closes the app returns to
 /// menu-bar-only (`.accessory`).
 final class MainWindowController: NSWindowController, NSWindowDelegate {
+    /// The sidebar-selection state shared with the hosted `MainWindowView`.
+    /// Given a throwaway default here so the class satisfies Swift's "stored
+    /// properties need a value" rule with only a convenience initializer; the
+    /// convenience init below immediately overwrites it with the SAME instance
+    /// handed to the view, before this property is ever read.
+    private var windowState = MainWindowState()
+
     convenience init(
         settings: Settings,
         history: HistoryStore,
@@ -158,8 +195,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         transcriptionService: ParakeetTranscriptionService,
         updateChecker: UpdateChecker,
         whatsNewPresenter: WhatsNewPresenter,
-        askController: AskController
+        askController: AskController,
+        openScratchpad: @escaping () -> Void = {}
     ) {
+        let windowState = MainWindowState()
         let view = MainWindowView(
             settings: settings,
             history: history,
@@ -169,7 +208,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             transcriptionService: transcriptionService,
             updateChecker: updateChecker,
             whatsNewPresenter: whatsNewPresenter,
-            askController: askController
+            askController: askController,
+            windowState: windowState,
+            openScratchpad: openScratchpad
         )
 
         let window = NSWindow(
@@ -192,9 +233,17 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
         self.init(window: window)
         window.delegate = self
+        // Adopt the SAME state instance the hosted view observes, so
+        // `present(selecting:)` below actually reaches the live sidebar.
+        self.windowState = windowState
     }
 
-    func present() {
+    /// Presents the window, optionally selecting a sidebar tab first (e.g. the
+    /// menu bar's "Commands…" item, or a future caller). Passing nil (the
+    /// default) preserves whatever tab was last showing — unchanged from
+    /// before this parameter existed.
+    func present(selecting item: MainWindowView.SidebarItem? = nil) {
+        if let item { windowState.select(item) }
         showWindow(nil)
         window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)

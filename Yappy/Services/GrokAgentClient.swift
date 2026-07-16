@@ -92,8 +92,12 @@ final class GrokAgentClient: @unchecked Sendable {
             try await ensureReady(model: spawnedModel ?? Self.defaultWarmModel)
             try await ensureWarmSession()
             VLog.grok("agent prewarmed session=\(lock.withLock { warmSessionID ?? "?" })")
+            onEvent?(.ignored(type: askPrewarmReadySignal))
         } catch {
             VLog.grok("agent prewarm failed: \(error.localizedDescription)")
+            if isAuthFailure(error.localizedDescription) {
+                onEvent?(.error(message: error.localizedDescription))
+            }
         }
     }
 
@@ -541,6 +545,9 @@ final class GrokAgentClient: @unchecked Sendable {
 
             if let error = object["error"] as? [String: Any] {
                 let message = error["message"] as? String ?? "Unknown error"
+                if isAuthFailure(message) {
+                    onEvent?(.error(message: message))
+                }
                 continuation?.resume(throwing: ClientError.server(message))
             } else {
                 continuation?.resume(returning: object)

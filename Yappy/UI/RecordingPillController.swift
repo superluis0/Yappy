@@ -31,6 +31,12 @@ final class RecordingPillController {
     func show() {
         let panel = self.panel ?? makePanel()
         self.panel = panel
+        // A new session must never inherit recovery-mode interactivity: if the
+        // user re-dictates DURING a click-to-copy window, the old task's
+        // generation-gated teardown is skipped and a stale interactive panel
+        // would swallow clicks at the bottom of the screen for the whole
+        // session. Click-through is the default; recovery re-enables it.
+        setInteractive(false)
         position(panel)
         panel.alphaValue = 0
         panel.orderFrontRegardless()
@@ -43,6 +49,8 @@ final class RecordingPillController {
 
     func hide() {
         guard let panel else { return }
+        // Always restore click-through so a later non-recovery show isn't sticky.
+        setInteractive(false)
         NSAnimationContext.runAnimationGroup({ context in
             context.duration = 0.22
             panel.animator().alphaValue = 0
@@ -52,6 +60,12 @@ final class RecordingPillController {
                 panel.orderOut(nil)
             }
         })
+    }
+
+    /// Flips whether the panel receives mouse events. Used only for
+    /// click-to-copy recovery on insertion failures; default is click-through.
+    func setInteractive(_ enabled: Bool) {
+        panel?.ignoresMouseEvents = !enabled
     }
 
     // MARK: - Panel Setup

@@ -85,7 +85,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         transcriptionService: transcriptionService,
         updateChecker: updateChecker,
         whatsNewPresenter: whatsNewPresenter,
-        askController: askController
+        askController: askController,
+        openScratchpad: { [weak self] in self?.openScratchpadFromHome() }
     )
 
     // MARK: - State
@@ -635,6 +636,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 return
             }
 
+            // Hoisted so the catch can offer click-to-copy for insertion failures.
+            var attemptedInsertText: String?
             do {
                 // Warm the cleanup session now — the audio engine has already stopped,
                 // so this is audio-idle — so its system-prompt prefill overlaps
@@ -650,8 +653,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
 
                 // Nothing usable (too short, or discarded as low confidence).
+                // Speech energy was present (passed containsSpeech) but the model
+                // produced nothing — soft miss, not a hard error: keep the stop
+                // sound only (no failure cue), show a brief caption, then hide.
                 guard !raw.isEmpty else {
                     Self.logger.notice("Discarded empty transcript (\(samples.count, privacy: .public) samples, \(duration, format: .fixed(precision: 1), privacy: .public)s held)")
+                    self.ifCurrent(generation) {
+                        // The dictation is over — release Esc BEFORE the display
+                        // hold, or the interceptor swallows Escape system-wide
+                        // for the caption's duration with nothing to cancel.
+                        self.escapeInterceptor.stop()
+                        self.appState.showFailure(Self.emptyTranscriptCaption)
+                    }
+                    try? await Task.sleep(nanoseconds: 1_800_000_000)
                     self.ifCurrent(generation) {
                         self.appState.reset()
                         self.pillController.hide()
@@ -759,6 +773,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                 text: canned, durationSeconds: duration,
                                 appName: targetAppName, bundleID: bundleID))
                         }
+                        // Arm click-to-copy recovery for THIS insert too — a
+                        // failed canned-shortcut paste is as recoverable as a
+                        // failed dictation paste.
+                        attemptedInsertText = canned
                         try self.textInserter.insert(text: canned, allowLeadingSpace: false)
                         self.ifCurrent(generation) {
                             self.appState.lastDictationAt = Date()
@@ -930,6 +948,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     VLog.store("continuation-decide reason=\(joinReason) gap_ms=\(resumeGapSeconds.map { Int($0 * 1000) } ?? -1)")
                 }
 
+                // `attemptedInsertText` is set just before insert so a failed
+                // paste can surface click-to-copy recovery (text is already in history).
                 if !finalText.isEmpty {
                     // Record to history BEFORE inserting so a failed insert
                     // (accessibility revoked mid-session, event-synthesis failure)
@@ -957,6 +977,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     let trimmedExpanded = expanded.trimmingCharacters(in: .whitespacesAndNewlines)
                     let rawEndedMidThought = trimmedExpanded.last.map { !".!?…".contains($0) } ?? false
                     let insertStartedAt = CACurrentMediaTime()
+                    attemptedInsertText = finalText
                     try self.textInserter.insert(text: finalText,
                                                  joinContinuation: joinContinuation,
                                                  rawEndedMidThought: rawEndedMidThought)
@@ -977,20 +998,93 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self.ifCurrent(generation) { self.appState.setTranscription(finalText) }
             } catch {
                 // Transcription or insertion failed. The transcript (if any) is
-                // already in history, so it's recoverable. Surface the failure
-                // audibly — success and failure were previously indistinguishable —
-                // and log the cause for triage. `setError` is retained though the
-                // pill doesn't render it yet (a visual error state is deferred).
+                // already in history — surface a reason on the pill, and for
+                // recoverable insertion failures offer one-click copy.
                 Self.logger.error("Dictation failed: \(error.localizedDescription, privacy: .public)")
+                let baseCaption = Self.dictationFailureCaption(for: error)
+                let recoveryText = Self.isRecoverableInsertionFailure(error)
+                    ? attemptedInsertText
+                    : nil
+                // Click-to-copy only when we actually have the failed text.
+                let displayCaption = recoveryText != nil
+                    ? Self.insertFailureClickToCopyCaption
+                    : baseCaption
+                let holdNs: UInt64 = recoveryText != nil
+                    ? 6_000_000_000
+                    : 2_500_000_000
                 self.ifCurrent(generation) {
+                    // The dictation is over — release Esc BEFORE the display
+                    // hold (2.5–6 s), or the interceptor swallows Escape
+                    // system-wide with nothing left to cancel.
+                    self.escapeInterceptor.stop()
                     self.playFailureFeedback()
                     self.appState.setError(error)
+                    self.appState.showFailure(displayCaption, recoveryText: recoveryText)
+                    if recoveryText != nil {
+                        self.pillController.setInteractive(true)
+                    }
+                }
+                if recoveryText != nil {
+                    await self.waitForFailureRecoveryOrTimeout(
+                        generation: generation,
+                        timeoutNanoseconds: holdNs
+                    )
+                } else {
+                    try? await Task.sleep(nanoseconds: holdNs)
                 }
             }
             self.ifCurrent(generation) {
+                self.pillController.setInteractive(false)
                 self.appState.reset()
                 self.pillController.hide()
             }
+        }
+    }
+
+    /// Caption shown when speech energy was present but transcription produced
+    /// nothing usable. Soft miss — no failure sound.
+    nonisolated static let emptyTranscriptCaption = "Didn't catch that"
+
+    /// Caption for recoverable insertion failures (click-to-copy affordance).
+    nonisolated static let insertFailureClickToCopyCaption = "Couldn't insert — click to copy"
+
+    /// Maps a dictation-path error to a short pill caption. Pure / unit-testable.
+    /// `nonisolated` so unit tests can call it without hopping to MainActor.
+    nonisolated static func dictationFailureCaption(for error: Error) -> String {
+        if let insertion = error as? TextInserter.InsertionError {
+            switch insertion {
+            case .accessibilityPermissionDenied:
+                return "Enable Accessibility to insert"
+            case .eventCreationFailed:
+                return "Couldn't insert — saved to History"
+            }
+        }
+        return "Transcription failed — try again"
+    }
+
+    /// True when the failure is an insertion problem that still has the text in
+    /// History — not accessibility-denied (that needs a Settings fix first).
+    nonisolated static func isRecoverableInsertionFailure(_ error: Error) -> Bool {
+        guard let insertion = error as? TextInserter.InsertionError else { return false }
+        if case .accessibilityPermissionDenied = insertion { return false }
+        return true
+    }
+
+    /// Holds the recovery-class failure pill until the user clicks to copy, or
+    /// `timeoutNanoseconds` elapses. After a successful copy, shows "Copied"
+    /// for 0.8s before returning so the caller can tear down.
+    private func waitForFailureRecoveryOrTimeout(
+        generation: Int,
+        timeoutNanoseconds: UInt64
+    ) async {
+        let deadline = Date().addingTimeInterval(Double(timeoutNanoseconds) / 1_000_000_000)
+        while Date() < deadline {
+            if generation != dictationGeneration { return }
+            if appState.failureRecoveryCopied {
+                try? await Task.sleep(nanoseconds: 800_000_000)
+                return
+            }
+            try? await Task.sleep(nanoseconds: 50_000_000)
         }
     }
 
@@ -1370,6 +1464,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             } catch {
                 if self.speakGeneration == generation {
                     self.askController.setSpeakingPhase(.idle)
+                    self.askController.showSpeakFailureCaption()
                     VLog.tts("pipeline failed (chunk \(chunkIndex))")
                     self.ttsClient.noteIdle()
                     self.speakPipelineTask = nil
@@ -1646,6 +1741,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             case .grok: GrokAskClient.isAvailable && GrokAskClient.isSignedIn
             }
         }
+        askController.updateInstallationState(installed: CodexAskClient.isInstalled, for: .codex)
+        askController.updateInstallationState(installed: GrokAskClient.isAvailable, for: .grok)
         askHotkey.onStart = { [weak self] in self?.beginAsk() }
         askHotkey.onStop = { [weak self] in self?.finishAsk() }
         askHotkey.onCancel = { [weak self] in self?.cancelAsk() }
@@ -1914,6 +2011,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(NSMenuItem(title: "Scratchpad (⌥⇧S)", action: #selector(toggleScratchpad), keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: "Show Last Answer", action: #selector(showLastAskAnswer), keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: "Configure Answers…", action: #selector(openMainWindow), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "Commands…", action: #selector(openCommands), keyEquivalent: ""))
         menu.addItem(NSMenuItem.separator())
 
         let modeItem = NSMenuItem(title: "Mode", action: nil, keyEquivalent: "")
@@ -2438,13 +2536,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 stopLevelPreview: { [weak self] in self?.audioRecorder.stopLevelPreview() },
                 applyUseCase: { [weak self] picks in self?.applyUseCasePresets(picks) },
                 onFinish: { [weak self] in
+                    self?.completeOnboarding()
+                },
+                onBrowseCommands: { [weak self] in
                     guard let self else { return }
-                    self.audioRecorder.stopLevelPreview()
-                    self.onboardingLevelModel = nil
-                    self.settings.onboardingComplete = true
-                    self.onboardingWindow?.close()
-                    self.onboardingWindow = nil
-                    self.startTaps()
+                    self.completeOnboarding()
+                    // The whole point of the button: land the new user on the
+                    // cheat sheet, not just close the window.
+                    self.mainWindowController.present(selecting: .commands)
                 }
             )
             // Pin the window size: an auto-sizing NSHostingController animates the
@@ -2527,6 +2626,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         showMainWindow()
     }
 
+    /// Menu bar → Commands…: opens the main window with the Commands cheat
+    /// sheet selected, regardless of whatever tab was showing before.
+    /// Shared tail of both onboarding exits ("Finish" and "Browse the commands").
+    private func completeOnboarding() {
+        audioRecorder.stopLevelPreview()
+        onboardingLevelModel = nil
+        settings.onboardingComplete = true
+        onboardingWindow?.close()
+        onboardingWindow = nil
+        startTaps()
+    }
+
+    @objc private func openCommands() {
+        mainWindowController.present(selecting: .commands)
+    }
+
     /// Re-show the "What's New" card on demand (menu bar + Settings → Software Update).
     /// Falls back to the latest entry if the running version has no notes of its own.
     @objc private func showWhatsNew() {
@@ -2543,6 +2658,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             settings.hasOpenedScratchpad = true
         }
         scratchpadController.toggle()
+    }
+
+    /// The Home checklist's "Open the scratchpad" row: always SHOWS (a
+    /// checklist action should do the thing, not toggle it away) and marks the
+    /// checklist item done.
+    private func openScratchpadFromHome() {
+        guard !askController.isBusy else { return }
+        settings.hasOpenedScratchpad = true
+        scratchpadController.show()
     }
 
     @objc private func showAbout() {

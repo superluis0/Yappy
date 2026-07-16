@@ -10,6 +10,12 @@ struct HomeView: View {
     @ObservedObject var settings: Settings
     @ObservedObject var shortcutStore: ShortcutStore
     @ObservedObject var transcriptionService: ParakeetTranscriptionService
+    /// Shared sidebar-selection state — lets the getting-started checklist
+    /// rows below navigate to the tab they describe.
+    @ObservedObject var windowState: MainWindowState
+    /// Actually opens the floating scratchpad (AppDelegate's controller) —
+    /// the one checklist action no sidebar tab can answer.
+    var openScratchpad: () -> Void = {}
 
     @State private var editingSuggestion: ShortcutSuggestion?
     @State private var searchText = ""
@@ -221,22 +227,27 @@ struct HomeView: View {
             GettingStartedItem(
                 title: "Dictate your first words",
                 subtitle: nil,
-                done: !history.entries.isEmpty
+                done: !history.entries.isEmpty,
+                destination: nil
             ),
             GettingStartedItem(
                 title: "Try a mode",
                 subtitle: "Switch tone per app",
-                done: settings.hasTriedMode
+                done: settings.hasTriedMode,
+                destination: .modes
             ),
             GettingStartedItem(
                 title: "Add a dictionary term",
                 subtitle: "Teach it your jargon",
-                done: settings.hasAddedDictionaryTerm
+                done: settings.hasAddedDictionaryTerm,
+                destination: .dictionary
             ),
             GettingStartedItem(
                 title: "Open the scratchpad",
                 subtitle: "\u{2325}\u{21E7}S",
-                done: settings.hasOpenedScratchpad
+                done: settings.hasOpenedScratchpad,
+                destination: nil,
+                action: openScratchpad
             ),
         ]
     }
@@ -255,49 +266,11 @@ struct HomeView: View {
                             if index > 0 {
                                 Divider().overlay(Color.white.opacity(0.07))
                             }
-                            checklistRow(item)
+                            ChecklistRow(item: item, windowState: windowState)
                         }
                     }
                 }
             }
-        }
-    }
-
-    private func checklistRow(_ item: GettingStartedItem) -> some View {
-        HStack(spacing: 11) {
-            checklistMark(done: item.done)
-            HStack(spacing: 5) {
-                Text(item.title)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(item.done ? Brand.ink3 : Brand.ink)
-                if let subtitle = item.subtitle {
-                    Text(subtitle)
-                        .font(.system(size: 12.5))
-                        .foregroundStyle(Brand.ink4)
-                }
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(.vertical, 9)
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    /// The 19pt circular status mark: a filled green check when done, a hollow
-    /// hairline circle when still to do (mirrors the mockup `.ci .mark`).
-    @ViewBuilder
-    private func checklistMark(done: Bool) -> some View {
-        if done {
-            ZStack {
-                Circle().fill(Brand.ready)
-                Image(systemName: "checkmark")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(.white)
-            }
-            .frame(width: 19, height: 19)
-        } else {
-            Circle()
-                .strokeBorder(Color.white.opacity(0.22), lineWidth: 1.5)
-                .frame(width: 19, height: 19)
         }
     }
 
@@ -792,11 +765,103 @@ struct HomeView: View {
 
 // MARK: - Getting-started checklist model
 
-/// One row of the Home getting-started checklist: a title, an optional subtitle,
-/// and whether the user has completed it. Rows are informational for now (no tap
-/// navigation — that needs sidebar selection state and is a deliberate follow-up).
+/// One row of the Home getting-started checklist: a title, an optional
+/// subtitle, whether the user has completed it, and — when there's a single
+/// sidebar tab that answers it — where tapping the row navigates. `nil` means
+/// the row isn't tappable (e.g. "dictate your first words" has no one tab to
+/// jump to; it just describes the global hotkey).
 private struct GettingStartedItem {
     let title: String
     let subtitle: String?
     let done: Bool
+    let destination: MainWindowView.SidebarItem?
+    /// When set, tapping the row performs this directly (e.g. actually opening
+    /// the scratchpad) instead of navigating the sidebar. Wins over
+    /// `destination`.
+    var action: (() -> Void)?
+}
+
+/// One checklist row. Tappable rows (those with a `destination`) navigate the
+/// shared sidebar selection on tap, with a hover cursor + trailing chevron
+/// making the affordance legible; non-tappable rows render identically minus
+/// those two cues. The "done" checkmark behavior is unchanged either way.
+private struct ChecklistRow: View {
+    let item: GettingStartedItem
+    @ObservedObject var windowState: MainWindowState
+    @State private var hovering = false
+
+    private var isTappable: Bool { item.action != nil || item.destination != nil }
+
+    var body: some View {
+        Group {
+            if let action = item.action {
+                Button(action: action) {
+                    rowContent(tappable: true)
+                }
+                .buttonStyle(.plain)
+            } else if let destination = item.destination {
+                Button {
+                    windowState.select(destination)
+                } label: {
+                    rowContent(tappable: true)
+                }
+                .buttonStyle(.plain)
+            } else {
+                rowContent(tappable: false)
+            }
+        }
+        .onHover { isHovering in
+            guard isTappable else { return }
+            hovering = isHovering
+            if isHovering { NSCursor.pointingHand.push() } else { NSCursor.pop() }
+        }
+    }
+
+    private func rowContent(tappable: Bool) -> some View {
+        HStack(spacing: 11) {
+            checklistMark
+            HStack(spacing: 5) {
+                Text(item.title)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(item.done ? Brand.ink3 : Brand.ink)
+                if let subtitle = item.subtitle {
+                    Text(subtitle)
+                        .font(.system(size: 12.5))
+                        .foregroundStyle(Brand.ink4)
+                }
+            }
+            Spacer(minLength: 0)
+            if tappable {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(hovering ? Brand.ink2 : Brand.ink4)
+            }
+        }
+        .padding(.vertical, 9)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(tappable && hovering ? Color.white.opacity(0.05) : Color.clear)
+        )
+    }
+
+    /// The 19pt circular status mark: a filled green check when done, a hollow
+    /// hairline circle when still to do (mirrors the mockup `.ci .mark`).
+    @ViewBuilder
+    private var checklistMark: some View {
+        if item.done {
+            ZStack {
+                Circle().fill(Brand.ready)
+                Image(systemName: "checkmark")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(.white)
+            }
+            .frame(width: 19, height: 19)
+        } else {
+            Circle()
+                .strokeBorder(Color.white.opacity(0.22), lineWidth: 1.5)
+                .frame(width: 19, height: 19)
+        }
+    }
 }

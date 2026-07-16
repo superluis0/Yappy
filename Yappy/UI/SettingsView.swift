@@ -21,15 +21,24 @@ struct SettingsView: View {
     var historyStore: HistoryStore? = nil
     /// Re-shows the "What's New" card; wired by MainWindowView to the presenter.
     var onShowReleaseNotes: () -> Void = {}
+    /// Shared sidebar-selection state — lets the collapsed voice-commands
+    /// group's "See every phrase" link jump to the Commands tab.
+    @ObservedObject var windowState: MainWindowState
 
     @State private var microphoneGranted = AudioRecorder.hasPermission
     @State private var accessibilityGranted = AXIsProcessTrusted()
+    /// Whether the collapsed "Voice commands & formatting" group is expanded.
+    /// Intentionally plain `@State` (not persisted) — resets each time Settings
+    /// is opened, which is fine for a disclosure group.
+    @State private var voiceCommandsExpanded = false
+    @State private var confirmClearHistory = false
 
     /// One backend's connection state, for the Ask "green light". Checked
     /// silently (file probes only, no network) and re-checked whenever the app
     /// becomes active — install codex in Terminal, switch back, light turns on.
-    enum AskBackendReadiness {
+    enum AskBackendReadiness: Equatable {
         case ready
+        case authExpired
         case needsLogin
         case notInstalled
     }
@@ -75,16 +84,31 @@ struct SettingsView: View {
             refreshAskReadiness()
             refreshTTSReadiness()
         }
+        .onReceive(askController.$codexHealth) { _ in refreshAskReadiness() }
+        .onReceive(askController.$grokHealth) { _ in refreshAskReadiness() }
     }
 
     /// Silent infrastructure check for Ask: cheap file probes, no network.
     private func refreshAskReadiness() {
-        askCodexReadiness = CodexAskClient.isInstalled
-            ? (CodexAskClient.isSignedIn ? .ready : .needsLogin)
-            : .notInstalled
-        askGrokReadiness = GrokAskClient.isAvailable
-            ? (GrokAskClient.isSignedIn ? .ready : .needsLogin)
-            : .notInstalled
+        askController.updateInstallationState(installed: CodexAskClient.isInstalled, for: .codex)
+        askController.updateInstallationState(installed: GrokAskClient.isAvailable, for: .grok)
+        askCodexReadiness = Self.lightState(
+            fileSignedIn: CodexAskClient.isSignedIn,
+            health: CodexAskClient.isInstalled ? askController.codexHealth : .notInstalled
+        )
+        askGrokReadiness = Self.lightState(
+            fileSignedIn: GrokAskClient.isSignedIn,
+            health: GrokAskClient.isAvailable ? askController.grokHealth : .notInstalled
+        )
+    }
+
+    static func lightState(
+        fileSignedIn: Bool,
+        health: AskBackendHealth
+    ) -> AskBackendReadiness {
+        if health == .notInstalled { return .notInstalled }
+        if health == .authExpired { return .authExpired }
+        return fileSignedIn ? .ready : .needsLogin
     }
 
     private func refreshTTSReadiness() {
@@ -141,33 +165,58 @@ struct SettingsView: View {
                 }
             }
             RowDivider()
-            SettingToggle(icon: "number", title: "Spoken numbers as digits",
-                          subtitle: "“three thirty PM” becomes 3:30 PM, “twenty dollars” becomes $20.",
-                          isOn: $settings.numberFormattingEnabled)
-            RowDivider()
-            SettingToggle(icon: "list.number", title: "Spoken numbered lists",
-                          subtitle: "Count off items and Yappy lays them out as a 1. 2. 3. list.",
-                          isOn: $settings.numberedListsEnabled)
-            RowDivider()
-            SettingToggle(icon: "eraser", title: "Remove filler words",
-                          subtitle: "Strips stray “um”, “uh”, “erm”, and “hmm”.",
-                          isOn: $settings.fillerRemovalEnabled)
-            RowDivider()
-            SettingToggle(icon: "text.alignleft", title: "Spoken formatting commands",
-                          subtitle: "Say “new line” or “new paragraph” to insert line breaks.",
-                          isOn: $settings.spokenCommandsEnabled)
-            RowDivider()
-            SettingToggle(icon: "questionmark.circle", title: "Spoken punctuation",
-                          subtitle: "Say “comma”, “period”, or “question mark” to punctuate.",
-                          isOn: $settings.spokenPunctuationEnabled)
-            RowDivider()
-            SettingToggle(icon: "arrow.uturn.backward", title: "Voice editing commands",
-                          subtitle: "“scratch that”, “delete the last word”, or “all caps that”.",
-                          isOn: $settings.voiceEditingEnabled)
-            RowDivider()
-            SettingToggle(icon: "wand.and.rays", title: "Voice commands",
-                          subtitle: "“switch to <mode> mode”, “open scratchpad”, or “new note”.",
-                          isOn: $settings.voiceControlEnabled)
+            DisclosureGroup(isExpanded: $voiceCommandsExpanded) {
+                VStack(spacing: 0) {
+                    RowDivider()
+                    SettingToggle(icon: "number", title: "Spoken numbers as digits",
+                                  subtitle: "“three thirty PM” becomes 3:30 PM, “twenty dollars” becomes $20.",
+                                  isOn: $settings.numberFormattingEnabled)
+                    RowDivider()
+                    SettingToggle(icon: "list.number", title: "Spoken numbered lists",
+                                  subtitle: "Count off items and Yappy lays them out as a 1. 2. 3. list.",
+                                  isOn: $settings.numberedListsEnabled)
+                    RowDivider()
+                    SettingToggle(icon: "eraser", title: "Remove filler words",
+                                  subtitle: "Strips stray “um”, “uh”, “erm”, and “hmm”.",
+                                  isOn: $settings.fillerRemovalEnabled)
+                    RowDivider()
+                    SettingToggle(icon: "text.alignleft", title: "Spoken formatting commands",
+                                  subtitle: "Say “new line” or “new paragraph” to insert line breaks.",
+                                  isOn: $settings.spokenCommandsEnabled)
+                    RowDivider()
+                    SettingToggle(icon: "questionmark.circle", title: "Spoken punctuation",
+                                  subtitle: "Say “comma”, “period”, or “question mark” to punctuate.",
+                                  isOn: $settings.spokenPunctuationEnabled)
+                    RowDivider()
+                    SettingToggle(icon: "arrow.uturn.backward", title: "Voice editing commands",
+                                  subtitle: "“scratch that”, “delete the last word”, or “all caps that”.",
+                                  isOn: $settings.voiceEditingEnabled)
+                    RowDivider()
+                    SettingToggle(icon: "wand.and.rays", title: "Voice commands",
+                                  subtitle: "“switch to <mode> mode”, “open scratchpad”, or “new note”.",
+                                  isOn: $settings.voiceControlEnabled)
+                    RowDivider()
+                    SettingRow(icon: "text.book.closed", title: "See every phrase",
+                               subtitle: "The full list of spoken commands and formatting Yappy understands.") {
+                        Button("Open Commands") { windowState.select(.commands) }
+                    }
+                }
+            } label: {
+                HStack(spacing: 13) {
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .fill(Color.white.opacity(0.06))
+                        .frame(width: 34, height: 34)
+                        .overlay(Image(systemName: "gearshape.2").font(.system(size: 15, weight: .medium))
+                            .foregroundStyle(Brand.ink3))
+                        .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous)
+                            .strokeBorder(Color.white.opacity(0.06)))
+                    Text("Voice commands & formatting")
+                        .font(.system(size: 14, weight: .medium)).foregroundStyle(Brand.ink)
+                    Spacer(minLength: 0)
+                }
+            }
+            .padding(.horizontal, 16).padding(.vertical, 12)
+            .tint(Brand.ink3)
         }
     }
 
@@ -352,6 +401,7 @@ struct SettingsView: View {
     /// for setup messaging.
     private var effectiveAskBackendForReadiness: AskBackend {
         let selected = settings.askBackend
+        if askReadiness(for: selected) == .authExpired { return selected }
         if askReadiness(for: selected) == .ready { return selected }
         let other: AskBackend = selected == .codex ? .grok : .codex
         if askReadiness(for: other) == .ready { return other }
@@ -372,6 +422,13 @@ struct SettingsView: View {
         let selectedReady = askReadiness(for: settings.askBackend) == .ready
 
         let (color, title, subtitle): (Color, String, String) = {
+            if effectiveReadiness == .authExpired {
+                return (
+                    Color.accentColor,
+                    "\(effective == .codex ? "Codex" : "Grok") session expired",
+                    "Signed in session expired — run `\(effective.rawValue)` in Terminal to re-login."
+                )
+            }
             if askAnyBackendReady {
                 if selectedReady {
                     switch settings.askBackend {
@@ -395,6 +452,8 @@ struct SettingsView: View {
             switch effectiveReadiness {
             case .ready:
                 return (Brand.ready, "\(effective.displayName) connected", "Answers is ready.")
+            case .authExpired:
+                return (Color.accentColor, "Session expired", "Re-login in Terminal, then return to Yappy.")
             case .needsLogin:
                 switch effective {
                 case .codex:
@@ -417,12 +476,23 @@ struct SettingsView: View {
         }()
 
         return SettingRow(icon: "circle.fill", title: title, subtitle: subtitle, iconColor: color) {
-            if askAnyBackendReady {
+            if effectiveReadiness == .authExpired {
+                let command = effective.rawValue
+                Button(copiedLoginCommand ? "Copied" : "Copy “\(command)”") {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(command, forType: .string)
+                    copiedLoginCommand = true
+                    Task { try? await Task.sleep(nanoseconds: 1_500_000_000); copiedLoginCommand = false }
+                }
+                .buttonStyle(.bordered)
+            } else if askAnyBackendReady {
                 Image(systemName: "checkmark.seal.fill")
                     .foregroundStyle(Brand.ready)
             } else {
                 switch effectiveReadiness {
                 case .ready:
+                    EmptyView()
+                case .authExpired:
                     EmptyView()
                 case .needsLogin:
                     let command = effective == .codex ? "codex login" : "grok login"
@@ -531,7 +601,15 @@ struct SettingsView: View {
                 SettingRow(icon: "trash", title: "Clear history now",
                            subtitle: "Permanently deletes every stored dictation. This can’t be undone.",
                            iconColor: Brand.danger) {
-                    Button("Clear history") { historyStore.clearAll() }
+                    Button("Clear history") { confirmClearHistory = true }
+                        .confirmationDialog(
+                            "Delete all \(historyStore.entries.count) dictations? This can't be undone.",
+                            isPresented: $confirmClearHistory,
+                            titleVisibility: .visible
+                        ) {
+                            Button("Delete All", role: .destructive) { historyStore.clearAll() }
+                            Button("Cancel", role: .cancel) {}
+                        }
                 }
             }
             RowDivider()
@@ -563,6 +641,10 @@ struct SettingsView: View {
                     if let release = updateChecker.available {
                         Label("v\(release.version) ready", systemImage: "arrow.down.circle.fill")
                             .font(.system(size: 12, weight: .medium)).foregroundStyle(Color.accentColor)
+                    } else if case .upToDate = updateChecker.lastCheckResult, !updateChecker.isChecking {
+                        Text("You're on the latest version")
+                            .font(.system(size: 12))
+                            .foregroundStyle(Brand.ink3)
                     }
                     Button {
                         updateChecker.checkForUpdates()

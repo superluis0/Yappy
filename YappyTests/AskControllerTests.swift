@@ -57,8 +57,12 @@ final class FakeGrokClient: GrokAsking {
     private(set) var prewarmCount = 0
     private(set) var cancelCount = 0
     var askError: Error?
+    var prewarmEvent: GrokEvent?
 
-    func prewarm() async { prewarmCount += 1 }
+    func prewarm() async {
+        prewarmCount += 1
+        if let prewarmEvent { onEvent?(prewarmEvent) }
+    }
 
     func ask(_ request: GrokAskRequest) async throws {
         askCalls.append(request)
@@ -290,6 +294,111 @@ final class AskControllerTests: XCTestCase {
 
         await yieldUntil { grok.askCalls.count == 1 }
         XCTAssertEqual(codex.askCalls.count, 1)
+    }
+
+    func testRuntimeAuthFailureFallsBackOnceAndKeepsSelection() async {
+        let codex = FakeCodexClient()
+        let grok = FakeGrokClient()
+        let (controller, _, _) = makeController(codex: codex, grok: grok)
+        controller.backend = .grok
+        controller.backendUsable = { _ in true }
+        controller.saveHistory = false
+
+        controller.beginListening()
+        controller.submit("Runtime fallback question")
+        await yieldUntil { grok.askCalls.count == 1 }
+
+        await pushGrok(grok, event: .error(message: "Grok agent error: Authentication required"))
+        await yieldUntil { codex.askCalls.count == 1 }
+        await pushCodex(codex, event: .agentMessageDelta(itemID: "msg1", delta: "Codex answered."))
+        await pushCodex(codex, event: .turnCompleted(failureMessage: nil))
+        await yieldUntil { controller.run?.status == .completed }
+
+        XCTAssertEqual(controller.run?.result, "Codex answered.")
+        XCTAssertEqual(controller.fallbackCaption, "Answered by Codex — Grok needs re-login.")
+        XCTAssertEqual(controller.grokHealth, .authExpired)
+        XCTAssertEqual(controller.codexHealth, .ready)
+        XCTAssertEqual(controller.backend, .grok)
+    }
+
+    func testRuntimeAuthFallbackIsOneHopWhenBothBackendsExpire() async {
+        let codex = FakeCodexClient()
+        let grok = FakeGrokClient()
+        let (controller, _, _) = makeController(codex: codex, grok: grok)
+        controller.backend = .grok
+        controller.backendUsable = { _ in true }
+        controller.saveHistory = false
+
+        controller.beginListening()
+        controller.submit("Both expired")
+        await yieldUntil { grok.askCalls.count == 1 }
+        await pushGrok(grok, event: .error(message: "token expired"))
+        await yieldUntil { codex.askCalls.count == 1 }
+        await pushCodex(codex, event: .serverError(message: "401 Unauthorized"))
+        await yieldUntil { controller.run?.status == .failed }
+
+        XCTAssertEqual(grok.askCalls.count, 1)
+        XCTAssertEqual(codex.askCalls.count, 1)
+        XCTAssertEqual(controller.grokHealth, .authExpired)
+        XCTAssertEqual(controller.codexHealth, .authExpired)
+        XCTAssertEqual(
+            controller.run?.result,
+            "Codex session expired — run `codex` in Terminal, then try again."
+        )
+    }
+
+    func testRetryOfAuthFailureRoutesToHealthyOtherBackend() async {
+        let codex = FakeCodexClient()
+        let grok = FakeGrokClient()
+        let (controller, _, _) = makeController(codex: codex, grok: grok)
+        controller.backend = .grok
+        var codexAvailable = false
+        controller.backendUsable = { backend in backend == .grok || codexAvailable }
+        controller.saveHistory = false
+
+        controller.beginListening()
+        controller.submit("Retry me")
+        await yieldUntil { grok.askCalls.count == 1 }
+        await pushGrok(grok, event: .error(message: "not logged in"))
+        await yieldUntil { controller.run?.status == .failed }
+
+        codexAvailable = true
+        controller.retry()
+        await yieldUntil { codex.askCalls.count == 1 }
+
+        XCTAssertEqual(grok.askCalls.count, 1)
+        XCTAssertEqual(controller.backend, .grok)
+        XCTAssertEqual(controller.fallbackCaption, "Answered by Codex — Grok needs re-login.")
+    }
+
+    func testPrewarmAuthFailureAndSuccessUpdateHealth() async {
+        let grok = FakeGrokClient()
+        let (controller, _, _) = makeController(grok: grok)
+        controller.backend = .grok
+        grok.prewarmEvent = .error(message: "Grok agent error: Authentication required")
+
+        controller.prewarm()
+        await yieldUntil { controller.grokHealth == .authExpired }
+
+        grok.prewarmEvent = .ignored(type: askPrewarmReadySignal)
+        controller.prewarm()
+        await yieldUntil { controller.grokHealth == .ready }
+    }
+
+    func testSuccessfulTurnRestoresReadyHealth() async {
+        let grok = FakeGrokClient()
+        let (controller, _, _) = makeController(grok: grok)
+        controller.backend = .grok
+        controller.backendUsable = { _ in true }
+        controller.saveHistory = false
+
+        controller.beginListening()
+        controller.submit("Health check")
+        await yieldUntil { grok.askCalls.count == 1 }
+        controller.setHealth(.authExpired, for: .grok)
+        await pushGrok(grok, event: .end(stopReason: "EndTurn", sessionId: nil))
+
+        XCTAssertEqual(controller.grokHealth, .ready)
     }
 
     // MARK: - f. Tool blocklist
@@ -870,6 +979,11 @@ final class AskControllerTests: XCTestCase {
 
     // MARK: - o. First-activity watchdog
 
+    func testFirstActivityWatchdogDefaultsToEightSeconds() {
+        let (controller, _, _) = makeController()
+        XCTAssertEqual(controller.firstActivityTimeout, 8)
+    }
+
     func testFirstActivityWatchdogFailsSilentBackend() async {
         let grok = FakeGrokClient()
         let (controller, _, _) = makeController(grok: grok)
@@ -1031,6 +1145,38 @@ final class AskControllerTests: XCTestCase {
     }
 
     // MARK: - p. Speak answers
+
+    func testSpeakFailureShowsTransientCaption() {
+        let (controller, _, _) = makeController()
+
+        controller.showSpeakFailureCaption()
+
+        XCTAssertEqual(controller.transientCaption, "Couldn't speak — check voice setup in Settings")
+    }
+
+    func testSpeakFailureCaptionExpiresAfterDuration() async {
+        let (controller, _, _) = makeController()
+
+        controller.showSpeakFailureCaption(duration: 0.05)
+        XCTAssertNotNil(controller.transientCaption)
+
+        // Give the expiry task comfortably more than its duration.
+        try? await Task.sleep(nanoseconds: 400_000_000)
+        XCTAssertNil(controller.transientCaption, "the caption must clear itself")
+    }
+
+    func testSpeakFailureCaptionRestartCancelsPriorExpiry() async {
+        let (controller, _, _) = makeController()
+
+        // First caption with a short fuse, then a second with a long one: the
+        // first timer must NOT clip the second caption early.
+        controller.showSpeakFailureCaption(duration: 0.05)
+        controller.showSpeakFailureCaption(duration: 600)
+
+        try? await Task.sleep(nanoseconds: 400_000_000)
+        XCTAssertNotNil(controller.transientCaption,
+                        "a superseded expiry timer must not clear the newer caption")
+    }
 
     func testSpeechChunksShortTextReturnsOneChunk() {
         XCTAssertEqual(AskController.speechChunks("Short answer."), ["Short answer."])

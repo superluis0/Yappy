@@ -137,6 +137,7 @@ final class GrokAskClient: @unchecked Sendable {
     /// web search + citation, no file or system mutation.
     /// The caller supplies the user prompt and optional system override separately.
     func ask(_ request: GrokAskRequest) async throws {
+        try Task.checkCancellation()
         guard let grokPath = Self.resolvedGrokPath else { throw ClientError.grokNotFound }
         let home = try Self.prepareGrokHome()
         let trimmedModel = request.model.trimmingCharacters(in: .whitespacesAndNewlines)

@@ -291,6 +291,18 @@ struct AskPillView: View {
                 AskSourceChips(sources: sources, textSecondary: textSecondary)
             }
             answerActionRow(run: run, text: text)
+            if let caption = controller.fallbackCaption {
+                Text(caption)
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(textTertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if let caption = controller.transientCaption {
+                Text(caption)
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(critical)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             answersPrivacyReceipt(run: run)
         }
     }

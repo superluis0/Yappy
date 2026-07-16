@@ -75,6 +75,9 @@ struct OnboardingView: View {
     /// Presets a Mode and seeds dictionary terms for each picked use case.
     let applyUseCase: (Set<UseCase>) -> Void
     let onFinish: () -> Void
+    /// Finishes onboarding AND opens the main window on the Commands tab —
+    /// the "Browse the commands" button's whole promise.
+    var onBrowseCommands: () -> Void = {}
 
     @State private var step = 0
     @State private var micGranted = AudioRecorder.hasPermission
@@ -314,6 +317,9 @@ struct OnboardingView: View {
 
             DiscoveryGrid()
                 .padding(.top, 2)
+            Text("Find all of this later in the main window.")
+                .font(.caption)
+                .foregroundStyle(Brand.ink4)
 
             Spacer(minLength: 8)
             Button("Continue") { step = 6 }
@@ -366,9 +372,14 @@ struct OnboardingView: View {
             }
 
             Spacer(minLength: 8)
-            Button(tryItSucceeded ? "Finish" : "Skip and finish", action: onFinish)
-                .keyboardShortcut(.defaultAction)
-                .controlSize(.large)
+            VStack(spacing: 8) {
+                Button(tryItSucceeded ? "Finish" : "Skip and finish", action: onFinish)
+                    .keyboardShortcut(.defaultAction)
+                    .controlSize(.large)
+                Button("Browse the commands", action: onBrowseCommands)
+                    .buttonStyle(.bordered)
+                    .controlSize(.large)
+            }
         }
         // Only a real Yappy voice dictation flips success. `lastDictationAt` is
         // stamped by AppDelegate the moment transcribed text is inserted, so
@@ -704,13 +715,13 @@ private struct DiscoveryCard: View {
         }
         .padding(11)
         .frame(maxWidth: .infinity, alignment: .leading)
+        // Fill only — no stroke border. A bordered rounded rect is this
+        // screen's language for a tappable control (see `UseCaseChip`); these
+        // cards are informational only, so they deliberately read as plain
+        // grouped content instead of buttons.
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(Color.white.opacity(0.05))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(Color.white.opacity(0.09), lineWidth: 1)
         )
         .accessibilityElement(children: .combine)
     }

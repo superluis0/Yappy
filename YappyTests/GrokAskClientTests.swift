@@ -8,6 +8,41 @@ import XCTest
 
 final class GrokAskClientTests: XCTestCase {
 
+    func testAuthFailureClassifier() {
+        for message in [
+            "Grok agent error: Authentication required",
+            "not logged in",
+            "401 Unauthorized",
+            "token expired",
+            "Your session has expired",
+            "invalid credentials",
+        ] {
+            XCTAssertTrue(isAuthFailure(message), message)
+        }
+        // Realistic non-auth failures that CONTAIN auth-ish substrings — a
+        // false positive here poisons backend health and reroutes questions,
+        // so the classifier must stay phrase-level (see isAuthFailure).
+        for message in [
+            "rate limit", "network timeout", "context canceled",
+            "rate limit: token budget exhausted for this window",
+            "your free trial expired yesterday, upgrade to continue",
+            "the page returned 401 in the body of the fetched article",
+            "tool output: user login page HTML follows",
+            "maximum context tokens reached",
+        ] {
+            XCTAssertFalse(isAuthFailure(message), message)
+        }
+    }
+
+    @MainActor
+    func testAnswersLightStateUsesFileAndLastKnownHealth() {
+        XCTAssertEqual(SettingsView.lightState(fileSignedIn: true, health: .unknown), .ready)
+        XCTAssertEqual(SettingsView.lightState(fileSignedIn: true, health: .ready), .ready)
+        XCTAssertEqual(SettingsView.lightState(fileSignedIn: true, health: .authExpired), .authExpired)
+        XCTAssertEqual(SettingsView.lightState(fileSignedIn: false, health: .ready), .needsLogin)
+        XCTAssertEqual(SettingsView.lightState(fileSignedIn: false, health: .notInstalled), .notInstalled)
+    }
+
     func testShouldRetryWhenQuickSilentFailure() {
         XCTAssertTrue(
             GrokAskClient.shouldRetryWithLegacyArgs(

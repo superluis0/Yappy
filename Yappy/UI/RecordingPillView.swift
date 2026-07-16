@@ -151,6 +151,16 @@ struct RecordingPillView: View {
             .padding(.horizontal, 14)
         }
         .frame(width: Constants.pillWidth, height: Constants.pillHeight)
+        // Click-to-copy recovery: the tap target is the ENTIRE visible capsule
+        // (the caption says "click to copy" — clicking anywhere on the pill
+        // must work, not just the text). The panel only receives mouse events
+        // during the recovery window, and the guard keeps every other state
+        // inert, so this gesture can live at capsule scope safely.
+        .contentShape(Capsule())
+        .onTapGesture {
+            guard appState.failureRecoveryText != nil else { return }
+            appState.copyFailureRecovery()
+        }
         .scaleEffect(visible ? 1.0 : 0.8)
         .opacity(visible ? 1.0 : 0.0)
         .animation(.spring(response: 0.22, dampingFraction: 0.82), value: visible)

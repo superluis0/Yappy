@@ -294,3 +294,48 @@ final class SettingsTests: XCTestCase {
         }
     }
 }
+
+// MARK: - CommandCatalog
+
+/// `CommandCatalog.sections` is mined verbatim from the spoken-phrase parsers
+/// (see the catalog's own doc comment), so these tests check catalog hygiene
+/// rather than any one phrase's exact wording.
+final class CommandCatalogTests: XCTestCase {
+
+    func testEverySectionIsNonEmpty() {
+        for section in CommandCatalog.sections {
+            XCTAssertFalse(section.entries.isEmpty, "\"\(section.title)\" has no entries")
+        }
+    }
+
+    func testEveryPhraseIsNonEmptyAndLowercaseComparable() {
+        for section in CommandCatalog.sections {
+            for entry in section.entries {
+                XCTAssertFalse(entry.phrase.isEmpty, "Empty phrase in \"\(section.title)\"")
+                // Only SPOKEN phrases must match the parsers' lowercase input;
+                // physical actions ("Press Esc") are display labels.
+                guard entry.isSpoken else { continue }
+                XCTAssertEqual(entry.phrase, entry.phrase.lowercased(),
+                                "\"\(entry.phrase)\" in \"\(section.title)\" isn't already lowercase")
+            }
+        }
+    }
+
+    func testNoDuplicatePhrasesAcrossSections() {
+        let allPhrases = CommandCatalog.sections.flatMap { $0.entries.map(\.phrase) }
+        XCTAssertEqual(allPhrases.count, Set(allPhrases).count, "A phrase repeats across sections")
+    }
+
+    func testAnswersSectionExists() {
+        XCTAssertTrue(CommandCatalog.sections.contains { $0.title == CommandCatalog.answersSectionTitle })
+    }
+
+    /// Spot-checks phrases that mirror the real parsers, so a rewrite that
+    /// silently drops one of them fails a test instead of shipping quietly.
+    func testKnownParserPhrasesArePresent() {
+        let allPhrases = Set(CommandCatalog.sections.flatMap { $0.entries.map(\.phrase) })
+        for phrase in ["scratch that", "press enter", "copy that", "new paragraph"] {
+            XCTAssertTrue(allPhrases.contains(phrase), "Missing expected phrase \"\(phrase)\"")
+        }
+    }
+}

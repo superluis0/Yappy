@@ -6,6 +6,7 @@
 //
 
 import XCTest
+import AppKit
 @testable import Yappy
 
 final class AppStateTests: XCTestCase {
@@ -243,17 +244,164 @@ final class AppStateTests: XCTestCase {
         XCTAssertEqual(state.failureMessage, "No audio from the mic")
         XCTAssertFalse(state.isProcessing, "the pill must stop reading as 'working' while the failure shows")
         XCTAssertFalse(state.isPolishing)
+        XCTAssertNil(state.failureRecoveryText)
+        XCTAssertFalse(state.failureRecoveryCopied)
+    }
+
+    func testShowFailureWithRecoveryText() {
+        state.startRecording()
+        state.stopRecording()
+
+        state.showFailure("Couldn't insert — click to copy", recoveryText: "hello world")
+
+        XCTAssertEqual(state.failureMessage, "Couldn't insert — click to copy")
+        XCTAssertEqual(state.failureRecoveryText, "hello world")
+        XCTAssertFalse(state.failureRecoveryCopied)
+    }
+
+    func testCopyFailureRecoveryWritesPasteboardAndMarksCopied() {
+        // This test writes to the REAL general pasteboard — snapshot the
+        // user's clipboard string and put it back, or every test run silently
+        // replaces whatever they had copied.
+        let saved = NSPasteboard.general.string(forType: .string)
+        defer {
+            NSPasteboard.general.clearContents()
+            if let saved { NSPasteboard.general.setString(saved, forType: .string) }
+        }
+
+        state.showFailure("Couldn't insert — click to copy", recoveryText: "paste me")
+
+        state.copyFailureRecovery()
+
+        XCTAssertEqual(state.failureMessage, "Copied")
+        XCTAssertNil(state.failureRecoveryText, "recovery text clears after copy so a second tap is a no-op")
+        XCTAssertTrue(state.failureRecoveryCopied)
+        XCTAssertEqual(NSPasteboard.general.string(forType: .string), "paste me")
+    }
+
+    func testCopyFailureRecoveryNoopsWithoutRecoveryText() {
+        state.showFailure("Didn't catch that")
+        state.copyFailureRecovery()
+        XCTAssertEqual(state.failureMessage, "Didn't catch that")
+        XCTAssertFalse(state.failureRecoveryCopied)
     }
 
     func testResetClearsFailureMessage() {
-        state.showFailure("No audio from the mic")
+        state.showFailure("No audio from the mic", recoveryText: "stale")
         state.reset()
         XCTAssertNil(state.failureMessage)
+        XCTAssertNil(state.failureRecoveryText)
+        XCTAssertFalse(state.failureRecoveryCopied)
     }
 
     func testStartRecordingClearsFailureMessage() {
-        state.showFailure("No audio from the mic")
+        state.showFailure("No audio from the mic", recoveryText: "stale")
         state.startRecording()
         XCTAssertNil(state.failureMessage, "a new session must never carry the previous failure line")
+        XCTAssertNil(state.failureRecoveryText, "a new session must never carry prior recovery text")
+        XCTAssertFalse(state.failureRecoveryCopied)
+    }
+
+    // MARK: - Dictation failure captions
+
+    func testDictationFailureCaptionAccessibilityDenied() {
+        let caption = AppDelegate.dictationFailureCaption(
+            for: TextInserter.InsertionError.accessibilityPermissionDenied
+        )
+        XCTAssertEqual(caption, "Enable Accessibility to insert")
+        XCTAssertFalse(AppDelegate.isRecoverableInsertionFailure(
+            TextInserter.InsertionError.accessibilityPermissionDenied
+        ))
+    }
+
+    func testDictationFailureCaptionGenericInsert() {
+        let caption = AppDelegate.dictationFailureCaption(
+            for: TextInserter.InsertionError.eventCreationFailed
+        )
+        XCTAssertEqual(caption, "Couldn't insert — saved to History")
+        XCTAssertTrue(AppDelegate.isRecoverableInsertionFailure(
+            TextInserter.InsertionError.eventCreationFailed
+        ))
+    }
+
+    func testDictationFailureCaptionTranscription() {
+        enum FakeTranscriptionError: Error { case boom }
+        let caption = AppDelegate.dictationFailureCaption(for: FakeTranscriptionError.boom)
+        XCTAssertEqual(caption, "Transcription failed — try again")
+        XCTAssertFalse(AppDelegate.isRecoverableInsertionFailure(FakeTranscriptionError.boom))
+    }
+
+    func testEmptyTranscriptCaptionConstant() {
+        XCTAssertEqual(AppDelegate.emptyTranscriptCaption, "Didn't catch that")
+    }
+
+    // MARK: - UpdateChecker quiet "up to date" feedback
+
+    @MainActor
+    func testUpdateCheckerDidNotFindUpdatePublishesUpToDateForManualCheck() {
+        let checker = UpdateChecker()
+        checker.prepareUserInitiatedCheck()
+        checker.didNotFindUpdate()
+        guard case .upToDate = checker.lastCheckResult else {
+            return XCTFail("expected .upToDate after a user-initiated didNotFindUpdate")
+        }
+        XCTAssertNil(checker.available)
+    }
+
+    @MainActor
+    func testUpdateCheckerBackgroundNoUpdateStaysQuiet() {
+        // A scheduled/background cycle finding nothing must NOT publish the
+        // "You're up to date" line — that answer belongs only to a question
+        // the user asked via Check Now.
+        let checker = UpdateChecker()
+        checker.didNotFindUpdate()
+        XCTAssertNil(checker.lastCheckResult)
+    }
+
+    @MainActor
+    func testUpdateCheckerManualFlagResetsWhenCycleFinishes() {
+        let checker = UpdateChecker()
+
+        // Manual cycle: publishes, then a new Check Now clears the quiet line.
+        checker.prepareUserInitiatedCheck()
+        checker.didNotFindUpdate()
+        checker.cycleFinished()
+        checker.prepareUserInitiatedCheck()
+        XCTAssertNil(checker.lastCheckResult, "a new Check Now must clear the prior quiet line")
+        XCTAssertTrue(checker.isChecking)
+        checker.cycleFinished()
+
+        // The manual flag died with the cycle: a later background no-update
+        // result must stay quiet.
+        checker.didNotFindUpdate()
+        XCTAssertNil(checker.lastCheckResult)
+    }
+}
+
+// MARK: - MainWindowState
+
+/// `MainWindowState` is the hoisted sidebar-selection object shared by
+/// `MainWindowView`, the Home getting-started checklist, the Commands tab,
+/// Settings' "See every phrase" link, and the menu bar's "Commands…" item.
+final class MainWindowStateTests: XCTestCase {
+
+    func testDefaultSelectionIsHome() {
+        XCTAssertEqual(MainWindowState().selection, .home)
+    }
+
+    func testSelectNavigatesToTheGivenItem() {
+        let state = MainWindowState()
+        state.select(.commands)
+        XCTAssertEqual(state.selection, .commands)
+    }
+
+    func testSelectCanNavigateRepeatedly() {
+        let state = MainWindowState()
+        state.select(.modes)
+        XCTAssertEqual(state.selection, .modes)
+        state.select(.dictionary)
+        XCTAssertEqual(state.selection, .dictionary)
+        state.select(.home)
+        XCTAssertEqual(state.selection, .home)
     }
 }

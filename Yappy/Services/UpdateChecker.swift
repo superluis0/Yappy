@@ -29,6 +29,13 @@ final class UpdateChecker: ObservableObject {
     /// A newer release Sparkle has found and offered.
     struct Release: Equatable { let version: String }
 
+    /// Outcome of the most recent *manual* check (Settings "Check now"). Used
+    /// only for quiet secondary feedback — never drives install UI.
+    enum CheckResult: Equatable {
+        case upToDate(Date)
+        case found
+    }
+
     /// Non-nil once Sparkle finds a newer release. Drives the menu-bar "Update to
     /// Yappy X.Y" item, the icon badge dot, and the main-window banner.
     @Published private(set) var available: Release?
@@ -36,6 +43,10 @@ final class UpdateChecker: ObservableObject {
     /// True while a user-initiated check is in flight (drives the Settings
     /// "Checking…" label).
     @Published private(set) var isChecking = false
+
+    /// Set by Sparkle delegate callbacks; cleared when a manual check starts so
+    /// a previous "You're on the latest version" line doesn't linger mid-check.
+    @Published private(set) var lastCheckResult: CheckResult?
 
     private var controller: SPUStandardUpdaterController?
     private var bridge: SparkleBridge?
@@ -84,9 +95,22 @@ final class UpdateChecker: ObservableObject {
     /// call this.
     func checkForUpdates() {
         startUpdater()
-        isChecking = true
+        prepareUserInitiatedCheck()
         controller?.updater.checkForUpdates()
     }
+
+    /// Clears quiet "up to date" feedback and flips the Checking spinner. Split
+    /// out so unit tests can exercise the state machine without booting Sparkle.
+    func prepareUserInitiatedCheck() {
+        isChecking = true
+        lastCheckResult = nil
+        currentCheckIsUserInitiated = true
+    }
+
+    /// True while the in-flight check cycle was started by the user (Check Now /
+    /// menu). Background/scheduled cycles must NOT publish "You're up to date" —
+    /// that line answers a question the user asked, not one Sparkle asked itself.
+    private var currentCheckIsUserInitiated = false
 
     /// Silent background check. If it finds an update it lights up `available`
     /// (and, via gentle reminders, does *not* pop Sparkle's modal). Called once at
@@ -98,12 +122,26 @@ final class UpdateChecker: ObservableObject {
     }
 
     // MARK: - Sparkle callbacks (forwarded from the NSObject bridge, main thread)
+    // Internal (not fileprivate) so unit tests can exercise the state machine
+    // without standing up a real Sparkle controller.
 
-    fileprivate func didFind(_ item: SUAppcastItem) {
+    func didFind(_ item: SUAppcastItem) {
         available = Release(version: item.displayVersionString)
+        lastCheckResult = .found
     }
-    fileprivate func didNotFindUpdate() { available = nil }
-    fileprivate func cycleFinished() { isChecking = false }
+
+    /// Test/seam entry for "no update available" without an SUAppcastItem.
+    func didNotFindUpdate() {
+        available = nil
+        if currentCheckIsUserInitiated {
+            lastCheckResult = .upToDate(Date())
+        }
+    }
+
+    func cycleFinished() {
+        isChecking = false
+        currentCheckIsUserInitiated = false
+    }
 }
 
 /// Bridges Sparkle's `@objc` delegate callbacks to the `@MainActor`

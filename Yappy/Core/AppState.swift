@@ -5,6 +5,7 @@
 
 import Foundation
 import Combine
+import AppKit
 
 /// Central state management for the Yappy application.
 /// Manages recording state, audio visualization, transcription results, and errors.
@@ -48,6 +49,15 @@ final class AppState: ObservableObject {
     /// a new session begins.
     @Published private(set) var failureMessage: String?
 
+    /// When set, the pill failure is recoverable: click copies this exact string
+    /// (the text that failed to insert) to the clipboard. Nil for informational
+    /// failures (dead mic, empty transcript, accessibility prompt).
+    @Published private(set) var failureRecoveryText: String?
+
+    /// True after the user clicked the pill to copy `failureRecoveryText`.
+    /// AppDelegate watches this to end the recovery hold early.
+    @Published private(set) var failureRecoveryCopied: Bool = false
+
     /// Timestamp of the most recent real *voice* dictation that landed (text
     /// transcribed and inserted via the hotkey path). Set by `AppDelegate` on
     /// each successful insertion; nil until the user has dictated at least once.
@@ -66,6 +76,8 @@ final class AppState: ObservableObject {
         isRecording = true
         error = nil
         failureMessage = nil
+        failureRecoveryText = nil
+        failureRecoveryCopied = false
         currentTranscription = ""
         audioLevels = Array(repeating: 0.0, count: Constants.pillBarCount)
     }
@@ -113,6 +125,8 @@ final class AppState: ObservableObject {
         currentTranscription = ""
         error = nil
         failureMessage = nil
+        failureRecoveryText = nil
+        failureRecoveryCopied = false
     }
 
     /// Appends a new audio level sample, dropping the oldest.
@@ -129,19 +143,48 @@ final class AppState: ObservableObject {
         isProcessing = false
     }
 
-    /// Sets an error state.
     /// Shows a short failure line in the pill (with `isProcessing` cleared so
     /// the pill stops reading as "working"). The caller keeps the pill visible
     /// briefly and then calls `reset()`.
-    func showFailure(_ message: String) {
+    /// - Parameter recoveryText: when non-nil, the pill is clickable to copy
+    ///   this text (the string that failed to insert).
+    func showFailure(_ message: String, recoveryText: String? = nil) {
         isProcessing = false
         isPolishing = false
         failureMessage = message
+        failureRecoveryText = recoveryText
+        failureRecoveryCopied = false
+        Self.announceForAccessibility(message)
+    }
+
+    /// Copies `failureRecoveryText` to the general pasteboard and swaps the
+    /// caption to "Copied". No-op when there is nothing to recover.
+    func copyFailureRecovery() {
+        guard let text = failureRecoveryText else { return }
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(text, forType: .string)
+        failureMessage = "Copied"
+        failureRecoveryText = nil
+        failureRecoveryCopied = true
     }
 
     func setError(_ error: Error) {
         self.error = error
         isProcessing = false
         isRecording = false
+    }
+
+    /// Posts a VoiceOver announcement so pill failures are audible, not only visual.
+    private static func announceForAccessibility(_ message: String) {
+        guard NSApp != nil else { return }
+        NSAccessibility.post(
+            element: NSApp as Any,
+            notification: .announcementRequested,
+            userInfo: [
+                .announcement: message,
+                .priority: NSAccessibilityPriorityLevel.high.rawValue
+            ]
+        )
     }
 }
