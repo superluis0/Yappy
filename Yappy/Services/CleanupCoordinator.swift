@@ -17,14 +17,15 @@ protocol CleanupProvider: AnyObject {
 
     /// Cleans a dictation transcript. The caller has already decided cleanup should
     /// run (enabled, non-verbatim tone). Returns the original text on any failure.
-    func cleanup(_ text: String, tone: ToneStyle, backtrack: Bool) async -> String
+    /// `intensity` selects the instruction variant (standard vs conservative).
+    func cleanup(_ text: String, tone: ToneStyle, backtrack: Bool, intensity: CleanupIntensity) async -> String
 
     /// Cleans several dictated lines in a SINGLE call and returns one cleaned string
     /// per input line (same order and count), or `nil` if the result can't be trusted
     /// to map 1:1 back onto the input lines. Lets the coordinator clean a multi-line
     /// dictation in one model round-trip instead of one call per line, falling back to
     /// the per-line path when this returns `nil`. Default: `nil` (no batching).
-    func cleanupBatched(lines: [String], tone: ToneStyle, backtrack: Bool) async -> [String]?
+    func cleanupBatched(lines: [String], tone: ToneStyle, backtrack: Bool, intensity: CleanupIntensity) async -> [String]?
 
     /// Asks the provider to load its model into memory ahead of use, so the first
     /// real request doesn't pay a cold-start. Best-effort and idempotent.
@@ -38,7 +39,7 @@ protocol CleanupProvider: AnyObject {
 
 extension CleanupProvider {
     /// Default: no batching — the coordinator falls back to the per-line path.
-    func cleanupBatched(lines: [String], tone: ToneStyle, backtrack: Bool) async -> [String]? { nil }
+    func cleanupBatched(lines: [String], tone: ToneStyle, backtrack: Bool, intensity: CleanupIntensity) async -> [String]? { nil }
 
     /// Default: nothing to warm up.
     func prewarm() async {}
@@ -67,12 +68,32 @@ final class CleanupCoordinator {
     /// Cleans a transcript with the on-device provider, applying the same
     /// enable/tone gates the provider would apply internally. Returns the input
     /// unchanged when cleanup is off, the tone is verbatim, or no provider exists.
-    func cleanup(_ text: String, tone: ToneStyle, backtrack: Bool, cleanupEnabled: Bool?) async -> String {
+    /// Intensity comes from `settings.cleanupIntensity` unless overridden.
+    func cleanup(
+        _ text: String,
+        tone: ToneStyle,
+        backtrack: Bool,
+        cleanupEnabled: Bool?,
+        intensity: CleanupIntensity? = nil
+    ) async -> String {
         guard (cleanupEnabled ?? settings.cleanupEnabled), !text.isEmpty else { return text }
         guard tone != .verbatim else { return text }
+
+        // Tiny, structurally simple utterances have nothing useful for the model
+        // to repair. Keep every deterministic transform, including tone shaping,
+        // while skipping only the dominant provider round-trip. Sentence-case
+        // deterministically first — the model's one real contribution on these
+        // inputs is capitalization + a terminal period (eval cases short-01/02,
+        // num-03), and skipping must not regress the rubric's gold outputs.
+        if Self.shouldSkipModelCleanup(text: text, tone: tone, backtrack: backtrack) {
+            return tone.apply(to: Self.sentenceCased(text))
+        }
         guard let provider else { return text }
 
-        let cleaned = await cleanWithProvider(text, provider: provider, tone: tone, backtrack: backtrack)
+        let resolvedIntensity = intensity ?? settings.cleanupIntensity
+        let cleaned = await cleanWithProvider(
+            text, provider: provider, tone: tone, backtrack: backtrack, intensity: resolvedIntensity
+        )
 
         // Apply the DETERMINISTIC tone transform to the final cleaned string. The
         // model's cleanup instructions stay register-neutral (prompt-level tone hints
@@ -84,11 +105,87 @@ final class CleanupCoordinator {
         return tone.apply(to: cleaned)
     }
 
+    /// Deterministic stand-in for what the model does to trivial utterances:
+    /// capitalize the first letter and close with a period. Existing terminal
+    /// punctuation (!, ?, …) is respected; interior text is never touched.
+    nonisolated static func sentenceCased(_ text: String) -> String {
+        var trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return trimmed }
+        if let first = trimmed.first, first.isLowercase {
+            trimmed = trimmed.prefix(1).uppercased() + trimmed.dropFirst()
+        }
+        if let last = trimmed.last, !".!?…".contains(last) {
+            trimmed += "."
+        }
+        return trimmed
+    }
+
+    /// Conservative fast-path gate for trivial utterances. A self-correction is
+    /// considered only when backtracking is enabled, matching the provider's own
+    /// routing; list-shaped and question-shaped text always keeps model cleanup.
+    nonisolated static func shouldSkipModelCleanup(
+        text: String, tone: ToneStyle, backtrack: Bool
+    ) -> Bool {
+        guard tone != .verbatim else { return false }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !trimmed.contains("?") else { return false }
+        guard !trimmed.contains("\n") && !trimmed.contains("\r") else { return false }
+        guard trimmed.split(whereSeparator: { $0.isWhitespace }).count <= 3 else { return false }
+        if backtrack {
+            let lower = trimmed.lowercased()
+            let hasDeleteSignal = lower == "delete that" || lower.hasPrefix("delete that ")
+            if hasDeleteSignal || FoundationModelsCleanupProvider.hasCorrectionSignal(trimmed) {
+                return false
+            }
+        }
+
+        // Markers at the start of any line: bullets, dashes, or common ordered
+        // list forms ("1." / "1)"). Avoid treating an ordinary interior hyphen
+        // as list structure.
+        for line in trimmed.components(separatedBy: .newlines) {
+            let start = line.trimmingCharacters(in: .whitespaces)
+            if start.hasPrefix("- ") || start.hasPrefix("* ") || start.hasPrefix("• ") {
+                return false
+            }
+            if let markerEnd = start.firstIndex(where: { !$0.isNumber }),
+               markerEnd != start.startIndex,
+               start[markerEnd] == "." || start[markerEnd] == ")" {
+                let after = start.index(after: markerEnd)
+                if after == start.endIndex || start[after].isWhitespace { return false }
+            }
+        }
+        return true
+    }
+
+    /// Whether a post-insert "Polished — click to use your exact words" caption
+    /// should show. Pure / unit-tested.
+    ///
+    /// - Cleanup must have actually run (not skipped / not verbatim tone / not
+    ///   secure-input bypass).
+    /// - After trim, raw and final must differ. Punctuation-only and casing-only
+    ///   changes still count (simple inequality) — the caption is honest about
+    ///   any polish the model applied.
+    static func shouldShowDiffCaption(
+        raw: String,
+        final: String,
+        cleanupRan: Bool,
+        captionEnabled: Bool
+    ) -> Bool {
+        guard captionEnabled, cleanupRan else { return false }
+        let a = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        let b = final.trimmingCharacters(in: .whitespacesAndNewlines)
+        return a != b
+    }
+
     /// Runs the provider's model cleanup over `text`, preserving its exact "\n"
     /// structure, and returns the cleaned string. No tone transform is applied here —
     /// that is layered on by `cleanup` over the whole final result.
     private func cleanWithProvider(
-        _ text: String, provider: CleanupProvider, tone: ToneStyle, backtrack: Bool
+        _ text: String,
+        provider: CleanupProvider,
+        tone: ToneStyle,
+        backtrack: Bool,
+        intensity: CleanupIntensity
     ) async -> String {
         // Clean each line independently so spoken "new line" / "next line" breaks
         // survive. Given the whole block, the on-device model reflows them — turning a
@@ -97,7 +194,7 @@ final class CleanupCoordinator {
         // structure (blank lines and a trailing break included) is preserved because the
         // model never sees the breaks. Single-line dictations keep the fast one-call path.
         guard text.contains("\n") else {
-            return await provider.cleanup(text, tone: tone, backtrack: backtrack)
+            return await provider.cleanup(text, tone: tone, backtrack: backtrack, intensity: intensity)
         }
 
         let rawLines = text.components(separatedBy: "\n")
@@ -113,8 +210,9 @@ final class CleanupCoordinator {
         // content lines back into their original slots.
         if contentIndices.count >= 2 {
             let contentLines = contentIndices.map { rawLines[$0] }
-            if let batched = await provider.cleanupBatched(lines: contentLines, tone: tone, backtrack: backtrack),
-               batched.count == contentIndices.count {
+            if let batched = await provider.cleanupBatched(
+                lines: contentLines, tone: tone, backtrack: backtrack, intensity: intensity
+            ), batched.count == contentIndices.count {
                 var merged = rawLines
                 for (slot, cleaned) in zip(contentIndices, batched) {
                     merged[slot] = cleaned
@@ -129,7 +227,9 @@ final class CleanupCoordinator {
             if line.trimmingCharacters(in: .whitespaces).isEmpty {
                 cleanedLines.append(line)
             } else {
-                cleanedLines.append(await provider.cleanup(line, tone: tone, backtrack: backtrack))
+                cleanedLines.append(
+                    await provider.cleanup(line, tone: tone, backtrack: backtrack, intensity: intensity)
+                )
             }
         }
         return cleanedLines.joined(separator: "\n")

@@ -10,6 +10,11 @@ import AppKit
 /// Central state management for the Yappy application.
 /// Manages recording state, audio visualization, transcription results, and errors.
 final class AppState: ObservableObject {
+    enum FailureRecoveryMode: Equatable {
+        case retry
+        case copy
+    }
+
     // MARK: - Published Properties
 
     /// Indicates whether audio recording is currently active.
@@ -58,6 +63,23 @@ final class AppState: ObservableObject {
     /// AppDelegate watches this to end the recovery hold early.
     @Published private(set) var failureRecoveryCopied: Bool = false
 
+    /// The pill's current one-click recovery action. Retry is consumed at most
+    /// once; a failed retry transitions to copy mode.
+    @Published private(set) var failureRecoveryMode: FailureRecoveryMode?
+    @Published private(set) var failureRecoveryRetryRequested: Bool = false
+
+    /// Neutral (non-failure) pill caption — e.g. "Learned … — click to undo" or
+    /// "Polished — click to use your exact words". Never uses failure styling.
+    @Published private(set) var infoMessage: String?
+
+    /// What a click on the info caption should do. AppDelegate handles the
+    /// action when `infoActionTriggered` flips true.
+    @Published private(set) var infoAction: InfoCaptionAction?
+
+    /// True after the user clicked the info caption. AppDelegate watches this
+    /// to perform the action and end the hold early.
+    @Published private(set) var infoActionTriggered: Bool = false
+
     /// Timestamp of the most recent real *voice* dictation that landed (text
     /// transcribed and inserted via the hotkey path). Set by `AppDelegate` on
     /// each successful insertion; nil until the user has dictated at least once.
@@ -78,8 +100,12 @@ final class AppState: ObservableObject {
         failureMessage = nil
         failureRecoveryText = nil
         failureRecoveryCopied = false
+        failureRecoveryMode = nil
+        failureRecoveryRetryRequested = false
+        clearInfoCaption()
         currentTranscription = ""
         audioLevels = Array(repeating: 0.0, count: Constants.pillBarCount)
+        Self.announceForAccessibility("Recording")
     }
 
     /// Marks a dictation as queued while the speech model finishes loading. The
@@ -100,6 +126,7 @@ final class AppState: ObservableObject {
 
         isRecording = false
         isProcessing = true
+        Self.announceForAccessibility("Processing")
     }
 
     /// Enters the "polishing" sub-phase (AI cleanup is running). Only meaningful
@@ -127,6 +154,9 @@ final class AppState: ObservableObject {
         failureMessage = nil
         failureRecoveryText = nil
         failureRecoveryCopied = false
+        failureRecoveryMode = nil
+        failureRecoveryRetryRequested = false
+        clearInfoCaption()
     }
 
     /// Appends a new audio level sample, dropping the oldest.
@@ -148,13 +178,47 @@ final class AppState: ObservableObject {
     /// briefly and then calls `reset()`.
     /// - Parameter recoveryText: when non-nil, the pill is clickable to copy
     ///   this text (the string that failed to insert).
-    func showFailure(_ message: String, recoveryText: String? = nil) {
+    func showFailure(_ message: String, recoveryText: String? = nil,
+                     recoveryMode: FailureRecoveryMode = .copy) {
         isProcessing = false
         isPolishing = false
+        clearInfoCaption()
         failureMessage = message
         failureRecoveryText = recoveryText
         failureRecoveryCopied = false
+        failureRecoveryMode = recoveryText == nil ? nil : recoveryMode
+        failureRecoveryRetryRequested = false
         Self.announceForAccessibility(message)
+    }
+
+    /// Activates the pill's current recovery affordance. Retry is represented as
+    /// a request for AppDelegate (which owns insertion); copy remains local.
+    func activateFailureRecovery() {
+        guard failureRecoveryText != nil else { return }
+        switch failureRecoveryMode {
+        case .retry where !failureRecoveryRetryRequested:
+            failureRecoveryRetryRequested = true
+        case .copy:
+            copyFailureRecovery()
+        case .retry, .none:
+            break
+        }
+    }
+
+    /// A failed retry gets one safe fallback: copy the preserved text. Keeping
+    /// this as an explicit transition makes the one-retry rule testable.
+    func transitionRetryFailureToCopy() {
+        guard failureRecoveryRetryRequested, failureRecoveryText != nil else { return }
+        failureMessage = "Couldn't insert — click to copy"
+        failureRecoveryMode = .copy
+        // The retry→copy handoff must be audible too, like every failure state.
+        Self.announceForAccessibility(failureMessage ?? "")
+    }
+
+    /// Completes the retry-success transition and clears the recovery pill.
+    func completeFailureRecoveryRetry() {
+        guard failureRecoveryRetryRequested else { return }
+        reset()
     }
 
     /// Copies `failureRecoveryText` to the general pasteboard and swaps the
@@ -167,12 +231,66 @@ final class AppState: ObservableObject {
         failureMessage = "Copied"
         failureRecoveryText = nil
         failureRecoveryCopied = true
+        failureRecoveryMode = nil
+    }
+
+    /// Runs when the info caption is clicked. Executed AT CLICK TIME (not
+    /// after the display hold) so a click can never be discarded because a
+    /// new session cleared the caption state mid-hold. One-shot.
+    private var infoActionHandler: (() -> Void)?
+
+    /// Neutral info caption (not failure-styled). Clears any failure state so
+    /// the pill never mixes the two modes. Click runs `handler` immediately
+    /// and flips `infoActionTriggered` (which the display hold observes).
+    func showInfo(
+        _ message: String,
+        action: InfoCaptionAction,
+        handler: (() -> Void)? = nil
+    ) {
+        isProcessing = false
+        isPolishing = false
+        failureMessage = nil
+        failureRecoveryText = nil
+        failureRecoveryCopied = false
+        infoMessage = message
+        infoAction = action
+        infoActionTriggered = false
+        infoActionHandler = handler
+        Self.announceForAccessibility(message)
+    }
+
+    /// Click entry point: performs the caption's action NOW and marks it
+    /// triggered so the display hold can end early.
+    func triggerInfoAction() {
+        guard infoAction != nil else { return }
+        infoActionTriggered = true
+        let handler = infoActionHandler
+        infoActionHandler = nil
+        handler?()
+    }
+
+    /// Clears neutral info caption state.
+    func clearInfoCaption() {
+        infoMessage = nil
+        infoAction = nil
+        infoActionTriggered = false
+        infoActionHandler = nil
     }
 
     func setError(_ error: Error) {
         self.error = error
         isProcessing = false
         isRecording = false
+    }
+
+    /// Terse label for the pill's single accessibility element.
+    var pillAccessibilityLabel: String {
+        if let failureMessage { return failureMessage }
+        if isRecording { return "Recording" }
+        if isPolishing { return "Processing, polishing" }
+        if isProcessing { return "Processing" }
+        if isPreparing { return "Preparing" }
+        return "Yappy"
     }
 
     /// Posts a VoiceOver announcement so pill failures are audible, not only visual.
@@ -187,4 +305,16 @@ final class AppState: ObservableObject {
             ]
         )
     }
+}
+
+/// Click action for a neutral pill info caption. Handled by AppDelegate when
+/// the user taps the pill during the hold window.
+enum InfoCaptionAction: Equatable {
+    /// Undo an auto-learned dictionary alias (exact reverse of what was added).
+    case undoLearnedAlias(AppliedAlias)
+    /// Revert the last insertion to the pre-cleanup raw transcript.
+    case useRawTranscript
+    /// Fallback: copy the raw pre-cleanup text to the pasteboard when revert
+    /// can't run (e.g. caret focus assumptions fail).
+    case copyRaw(String)
 }

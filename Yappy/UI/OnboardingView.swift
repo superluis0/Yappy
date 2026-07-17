@@ -60,9 +60,13 @@ final class OnboardingLevelModel: ObservableObject {
 }
 
 /// Guided first-run flow: welcome → microphone (live waveform) →
-/// accessibility → model status → try it. Each step springs in from the
-/// trailing edge; the mic step shows Yappy actually hearing you, and the
-/// final step lets you dictate into a practice field before finishing.
+/// accessibility → model download (permissions come first, so the download
+/// wait shows a rotating "what you can say" deck instead of a bare progress
+/// bar) → try it → what you'll use it for. Each step springs in from the
+/// trailing edge; the mic step shows Yappy actually hearing you, the model
+/// step teaches a few commands while the one-time download runs, and the
+/// try-it step lets you dictate into a practice field before the final
+/// use-case pick, which seeds a starter Mode + dictionary and finishes.
 struct OnboardingView: View {
     @ObservedObject var transcriptionService: ParakeetTranscriptionService
     @ObservedObject var levelModel: OnboardingLevelModel
@@ -91,7 +95,7 @@ struct OnboardingView: View {
     private let permissionPoll = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     /// Total onboarding steps, surfaced as the progress-dot count.
-    private static let stepCount = 7
+    private static let stepCount = 6
 
     var body: some View {
         ZStack {
@@ -149,9 +153,8 @@ struct OnboardingView: View {
         case 1: microphone
         case 2: accessibility
         case 3: model
-        case 4: useCase
-        case 5: discovery
-        default: tryIt
+        case 4: tryIt
+        default: useCase
         }
     }
 
@@ -282,6 +285,11 @@ struct OnboardingView: View {
         }
     }
 
+    /// The final step — moved here from before try-it so the very first thing
+    /// onboarding asks for is a hands-on win, not a preference. `applyUseCase`
+    /// only presets Modes/seeds dictionary terms and mirrors picks into
+    /// `Settings.useCases` (purely informational afterward); nothing about it
+    /// depends on running before try-it, so the reorder is safe.
     private var useCase: some View {
         stepCard {
             StepIcon(systemName: "square.grid.2x2")
@@ -296,35 +304,20 @@ struct OnboardingView: View {
                 .padding(.top, 2)
 
             Spacer(minLength: 8)
-            Button("Continue") {
-                applyUseCase(pickedUseCases)
-                step = 5
-            }
-            .keyboardShortcut(.defaultAction)
-            .controlSize(.large)
-        }
-    }
-
-    private var discovery: some View {
-        stepCard {
-            StepIcon(systemName: "sparkle.magnifyingglass")
-            Text("A few things you can do")
-                .font(.title.bold())
-                .foregroundStyle(Brand.ink)
-            Text("Beyond plain dictation — here's what's inside.")
-                .multilineTextAlignment(.center)
-                .foregroundStyle(Brand.ink3)
-
-            DiscoveryGrid()
-                .padding(.top, 2)
-            Text("Find all of this later in the main window.")
-                .font(.caption)
-                .foregroundStyle(Brand.ink4)
-
-            Spacer(minLength: 8)
-            Button("Continue") { step = 6 }
+            VStack(spacing: 8) {
+                Button("Finish") {
+                    applyUseCase(pickedUseCases)
+                    onFinish()
+                }
                 .keyboardShortcut(.defaultAction)
                 .controlSize(.large)
+                Button("Browse the commands") {
+                    applyUseCase(pickedUseCases)
+                    onBrowseCommands()
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.large)
+            }
         }
     }
 
@@ -373,9 +366,19 @@ struct OnboardingView: View {
 
             Spacer(minLength: 8)
             VStack(spacing: 8) {
-                Button(tryItSucceeded ? "Finish" : "Skip and finish", action: onFinish)
-                    .keyboardShortcut(.defaultAction)
-                    .controlSize(.large)
+                // Succeeded: one more step (what you'll use it for) before
+                // finishing. Not yet succeeded: "Skip and finish" is a full
+                // bypass straight out of onboarding, same as before this step
+                // existed after try-it.
+                Button(tryItSucceeded ? "Continue" : "Skip and finish") {
+                    if tryItSucceeded {
+                        step = 5
+                    } else {
+                        onFinish()
+                    }
+                }
+                .keyboardShortcut(.defaultAction)
+                .controlSize(.large)
                 Button("Browse the commands", action: onBrowseCommands)
                     .buttonStyle(.bordered)
                     .controlSize(.large)
@@ -481,10 +484,17 @@ struct OnboardingView: View {
                 .font(.callout)
                 .foregroundStyle(Brand.ready)
         case .downloading(let progress):
-            VStack(spacing: 6) {
-                ProgressView(value: progress).frame(width: 240)
-                Text("Downloading speech model (443 MB, one time)…")
-                    .font(.caption).foregroundStyle(Brand.ink4)
+            VStack(spacing: 10) {
+                VStack(spacing: 6) {
+                    ProgressView(value: progress).frame(width: 240)
+                    Text("Downloading speech model (443 MB, one time)…")
+                        .font(.caption).foregroundStyle(Brand.ink4)
+                }
+                // The one-time download is the natural moment to teach a few
+                // commands instead of leaving the wait as dead air — this
+                // replaces the old separate "discovery" step that used to run
+                // right before try-it.
+                CommandMiniDeck()
             }
         case .loading, .notLoaded:
             HStack(spacing: 8) {
@@ -653,83 +663,85 @@ private struct UseCaseChip: View {
     }
 }
 
-/// A single feature surfaced on the discovery tour: an SF Symbol, a bold title,
-/// and a one-line subtitle. Informational only — these mirror the mockup `.feat`
-/// cards and intentionally do not open the surfaces they describe.
-private struct DiscoveryFeature: Identifiable {
-    let symbolName: String
-    let title: String
-    let subtitle: String
-
-    var id: String { title }
-}
-
-/// The mockup's `.feats` grid: a 2×2 set of non-interactive feature cards that
-/// hint at what Yappy can do beyond plain dictation.
-private struct DiscoveryGrid: View {
-    private static let features: [DiscoveryFeature] = [
-        DiscoveryFeature(symbolName: "slider.horizontal.3",
-                         title: "Modes",
-                         subtitle: "Per-app tone & formatting"),
-        DiscoveryFeature(symbolName: "character.book.closed",
-                         title: "Dictionary",
-                         subtitle: "Teach it your jargon"),
-        DiscoveryFeature(symbolName: "note.text",
-                         title: "Scratchpad",
-                         subtitle: "Floating notepad · ⌥⇧S"),
-        DiscoveryFeature(symbolName: "text.quote",
-                         title: "Say the marks",
-                         subtitle: "“comma”, “new line”…")
-    ]
-
-    private let columns = [GridItem(.flexible(), spacing: 9),
-                           GridItem(.flexible(), spacing: 9)]
-
-    var body: some View {
-        LazyVGrid(columns: columns, spacing: 9) {
-            ForEach(Self.features) { feature in
-                DiscoveryCard(feature: feature)
-            }
-        }
+/// A hand-picked set of "here's what you can say" commands for the
+/// model-download mini-deck. Looked up BY PHRASE from `CommandCatalog.sections`
+/// — never copied — so this copy can't drift from what the app actually
+/// understands (`CommandCatalogTests.testKnownParserPhrasesArePresent` already
+/// guards these exact phrases staying in the catalog).
+private enum CommandDeck {
+    struct Card: Identifiable {
+        let icon: String
+        let phrase: String
+        let effect: String
+        var id: String { phrase }
     }
+
+    /// Phrases to feature, in display order.
+    private static let featuredPhrases = ["comma", "scratch that", "new paragraph", "press enter"]
+
+    static let cards: [Card] = {
+        let indexedEntries = CommandCatalog.sections.flatMap { section in
+            section.entries.map { (icon: section.icon, entry: $0) }
+        }
+        return featuredPhrases.compactMap { phrase in
+            guard let match = indexedEntries.first(where: { $0.entry.phrase == phrase }) else { return nil }
+            return Card(icon: match.icon, phrase: match.entry.phrase, effect: match.entry.effect)
+        }
+    }()
 }
 
-/// A single discovery-tour card (mockup `.feat`): a small orange-tinted icon tile
-/// alongside a bold title and a dim subtitle, on a faint glass fill.
-private struct DiscoveryCard: View {
-    let feature: DiscoveryFeature
+/// Rotates through `CommandDeck.cards` every ~5s, cross-fading between them.
+/// Shown alongside the model-download progress bar so the one-time wait
+/// teaches a few phrases instead of just sitting on a bare spinner — replaces
+/// the old separate "discovery" step that used to run right before try-it.
+private struct CommandMiniDeck: View {
+    @State private var index = 0
+    private let timer = Timer.publish(every: 5, on: .main, in: .common).autoconnect()
+
+    private var card: CommandDeck.Card? {
+        CommandDeck.cards.indices.contains(index) ? CommandDeck.cards[index] : nil
+    }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            iconTile
-            VStack(alignment: .leading, spacing: 1) {
-                Text(feature.title)
-                    .font(.system(size: 12.5, weight: .semibold))
-                    .foregroundStyle(Brand.ink)
-                Text(feature.subtitle)
-                    .font(.system(size: 10.5))
-                    .foregroundStyle(Brand.ink4)
-                    .fixedSize(horizontal: false, vertical: true)
+        Group {
+            if let card {
+                HStack(alignment: .top, spacing: 10) {
+                    iconTile(card.icon)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("“\(card.phrase)”")
+                            .font(.system(size: 12.5, weight: .semibold))
+                            .foregroundStyle(Brand.ink)
+                        Text(card.effect)
+                            .font(.system(size: 10.5))
+                            .foregroundStyle(Brand.ink4)
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .id(card.id)
+                .transition(.opacity)
             }
-            Spacer(minLength: 0)
         }
-        .padding(11)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        // Fill only — no stroke border. A bordered rounded rect is this
-        // screen's language for a tappable control (see `UseCaseChip`); these
-        // cards are informational only, so they deliberately read as plain
-        // grouped content instead of buttons.
+        .padding(9)
+        .frame(width: 260, alignment: .leading)
+        // Fill only — no stroke border, matching this screen's convention that
+        // a border reads as tappable; this card is informational only.
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(Color.white.opacity(0.05))
         )
+        .animation(.easeInOut(duration: 0.4), value: index)
+        .onReceive(timer) { _ in
+            guard !CommandDeck.cards.isEmpty else { return }
+            index = (index + 1) % CommandDeck.cards.count
+        }
         .accessibilityElement(children: .combine)
     }
 
-    /// The small `.feat .fi` tile: orange-tinted, distinct from the larger
-    /// gradient-filled `StepIcon`.
-    private var iconTile: some View {
-        Image(systemName: feature.symbolName)
+    /// The small icon tile, matching the rest of this screen's card language.
+    private func iconTile(_ symbolName: String) -> some View {
+        Image(systemName: symbolName)
             .font(.system(size: 14, weight: .semibold))
             .foregroundStyle(Color.accentColor)
             .frame(width: 30, height: 30)

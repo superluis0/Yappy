@@ -126,6 +126,15 @@ struct SettingsView: View {
         }
     }
 
+    /// One-line explainer for the Activation picker, plus the shared
+    /// max-duration safety note — a locked (double-tap) recording still
+    /// force-stops after the same cap as a held one (`armMaxDurationTimer`
+    /// deactivates the hotkey on a fixed wall-clock timer regardless of mode).
+    private var activationSubtitle: String {
+        let minutes = Int(Constants.maxRecordingDuration / 60)
+        return "\(settings.hotkeyActivation.explainer) Auto-stops after \(minutes) minutes either way."
+    }
+
     private var header: some View {
         VStack(alignment: .leading, spacing: 3) {
             Text("Settings").font(.system(size: 24, weight: .bold)).foregroundStyle(Brand.ink)
@@ -139,9 +148,19 @@ struct SettingsView: View {
     private var dictationSection: some View {
         SettingsSection(icon: "mic.fill", title: "Dictation") {
             SettingRow(icon: "keyboard", title: "Activation hotkey",
-                       subtitle: "Hold to record, release to insert.") {
+                       subtitle: settings.hotkeyActivation == .doubleTapLock
+                           ? "Double-tap to start, tap again to stop."
+                           : "Hold to record, release to insert.") {
                 Picker("", selection: $settings.hotkeyOption) {
                     ForEach(HotkeyOption.allCases, id: \.self) { Text($0.displayName).tag($0) }
+                }
+                .labelsHidden().fixedSize()
+            }
+            RowDivider()
+            SettingRow(icon: "hand.tap", title: "Activation",
+                       subtitle: activationSubtitle) {
+                Picker("", selection: $settings.hotkeyActivation) {
+                    ForEach(HotkeyActivation.allCases, id: \.self) { Text($0.displayName).tag($0) }
                 }
                 .labelsHidden().fixedSize()
             }
@@ -217,6 +236,12 @@ struct SettingsView: View {
             }
             .padding(.horizontal, 16).padding(.vertical, 12)
             .tint(Brand.ink3)
+            RowDivider()
+            SettingToggle(icon: "wand.and.stars", title: "Voice Edit (experimental)",
+                          subtitle: settings.hotkeyOption == .rightOptionHold
+                              ? "Right Option is your dictation key — pick a different activation hotkey above to free it for Voice Edit."
+                              : "Select text in any app, hold Right Option, and speak an edit (“make this bullets”, “make it more formal”). A preview card shows the change before you Replace.",
+                          isOn: $settings.voiceEditAnywhereEnabled)
         }
     }
 
@@ -226,6 +251,18 @@ struct SettingsView: View {
                           subtitle: "On-device polish for punctuation, casing, and phrasing. Runs with Apple Intelligence (macOS 26+); inserts the raw transcript if it isn’t available.",
                           isOn: $settings.cleanupEnabled)
             if settings.cleanupEnabled {
+                RowDivider()
+                SettingRow(icon: "slider.horizontal.3", title: "How much cleanup",
+                           subtitle: "Standard polishes lightly. Conservative only fixes punctuation, capitalization, and standalone fillers — no rewording.") {
+                    Picker("", selection: $settings.cleanupIntensity) {
+                        ForEach(CleanupIntensity.allCases) { Text($0.displayName).tag($0) }
+                    }
+                    .labelsHidden().fixedSize()
+                }
+                RowDivider()
+                SettingToggle(icon: "text.magnifyingglass", title: "Show polish caption",
+                              subtitle: "After insert, briefly offer “use your exact words” when cleanup changed the text.",
+                              isOn: $settings.cleanupDiffCaptionEnabled)
                 RowDivider()
                 SettingToggle(icon: "arrow.triangle.2.circlepath", title: "Adapt tone to the app",
                               subtitle: "Match register to where you’re typing. Formal expands contractions and ends sentences with punctuation; Casual drops the trailing period on short messages; Verbatim skips cleanup.",
@@ -247,6 +284,10 @@ struct SettingsView: View {
                               subtitle: "“meet at 2, actually 3” becomes “Let’s meet at 3.”",
                               isOn: $settings.backtrackEnabled)
             }
+            RowDivider()
+            SettingToggle(icon: "character.book.closed", title: "Auto-learn dictionary corrections",
+                          subtitle: "High-confidence “scratch that” fixes become aliases immediately (click the pill to undo). Low-confidence ones stay as Dictionary suggestions.",
+                          isOn: $settings.dictionaryAutoLearnEnabled)
         }
     }
 
@@ -288,12 +329,20 @@ struct SettingsView: View {
             RowDivider()
             // Locked until a backend is connected — but never locks the OFF
             // direction (a vanished codex must not trap the toggle on).
-            SettingToggle(icon: "mic", title: "Hold Fn to ask",
+            SettingToggle(icon: "mic", title: "Hold \(settings.askHotkeyOption.shortName) to ask",
                           subtitle: askToggleSubtitle,
                           isOn: $settings.askEnabled)
                 .disabled(!askAnyBackendReady && !settings.askEnabled)
                 .opacity(askAnyBackendReady || settings.askEnabled ? 1 : 0.55)
             if settings.askEnabled {
+                RowDivider()
+                SettingRow(icon: "keyboard", title: "Ask key",
+                           subtitle: askKeySubtitle) {
+                    Picker("", selection: $settings.askHotkeyOption) {
+                        ForEach(AskHotkeyOption.allCases) { Text($0.displayName).tag($0) }
+                    }
+                    .labelsHidden().fixedSize()
+                }
                 // Offer the model choice only when there IS a choice.
                 if askCodexReadiness == .ready && askGrokReadiness == .ready {
                     RowDivider()
@@ -361,15 +410,17 @@ struct SettingsView: View {
                         }
                     }
                 }
-                RowDivider()
-                SettingRow(icon: "globe", title: "Set the Globe key free",
-                           subtitle: "For reliable Fn capture, set System Settings → Keyboard → “Press 🌐 to” = Do Nothing.") {
-                    Button("Open Keyboard Settings") {
-                        if let url = URL(string: "x-apple.systempreferences:com.apple.Keyboard-Settings.extension") {
-                            NSWorkspace.shared.open(url)
+                if settings.askHotkeyOption == .fnGlobe {
+                    RowDivider()
+                    SettingRow(icon: "globe", title: "Set the Globe key free",
+                               subtitle: "For reliable Fn capture, set System Settings → Keyboard → “Press 🌐 to” = Do Nothing.") {
+                        Button("Open Keyboard Settings") {
+                            if let url = URL(string: "x-apple.systempreferences:com.apple.Keyboard-Settings.extension") {
+                                NSWorkspace.shared.open(url)
+                            }
                         }
+                        .buttonStyle(.bordered)
                     }
-                    .buttonStyle(.bordered)
                 }
             }
         }
@@ -409,9 +460,24 @@ struct SettingsView: View {
     }
 
     private var askToggleSubtitle: String {
-        askAnyBackendReady
-            ? "Hold the Globe/Fn key, ask out loud, and the answer appears in a pill — with web search and sources. Your spoken question goes to your own model account, not Yappy."
-            : "Turns on once Codex (or Grok) is connected above."
+        guard askAnyBackendReady else {
+            return "Turns on once Codex (or Grok) is connected above."
+        }
+        let key = settings.askHotkeyOption == .fnGlobe
+            ? "the Globe/Fn key" : settings.askHotkeyOption.shortName
+        return "Hold \(key), ask out loud, and the answer appears in a pill — with web search and sources. Your spoken question goes to your own model account, not Yappy."
+    }
+
+    /// Conflict warning when the chosen Ask key is taken; otherwise explains
+    /// why anyone would change it (firmware-local Fn on many external boards).
+    private var askKeySubtitle: String {
+        if let reason = settings.askHotkeyOption.conflict(
+            dictation: settings.hotkeyOption,
+            voiceEditEnabled: settings.voiceEditAnywhereEnabled
+        ) {
+            return reason + " Answers stays off this key until the clash is resolved."
+        }
+        return "No Fn key on your keyboard? Many external boards handle Fn in firmware, so macOS never sees it — pick a right-side modifier instead."
     }
 
     /// The "green light" row: silent check of the user's Codex install, with

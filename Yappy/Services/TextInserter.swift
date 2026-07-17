@@ -140,6 +140,92 @@ final class TextInserter {
     /// Pasteboard contents snapshot for restore after pasting.
     private struct ClipboardSnapshot {
         let items: [[NSPasteboard.PasteboardType: Data]]
+
+        var byteCount: Int {
+            items.reduce(0) { total, item in
+                total + item.values.reduce(0) { $0 + $1.count }
+            }
+        }
+    }
+
+    /// One accessibility capture shared by field classification and insert-time
+    /// spacing/casing. `nil` remains reserved for callers that intentionally use
+    /// the legacy self-capturing path (shortcuts and voice edits).
+    struct InsertContext {
+        let fieldKind: FocusedFieldKind
+        fileprivate let precedingWindow: PrecedingWindow
+    }
+
+    /// Privacy-safe timing values supplied by the dictation pipeline. Paste and
+    /// restore stages are filled in by `TextInserter` before the line is emitted.
+    struct TimingSeed {
+        let cleanupMs: Int
+        let classifyMs: Int
+        let words: Int
+        let field: FocusedFieldKind
+    }
+
+    struct InsertTiming: Equatable {
+        let cleanupMs: Int
+        let classifyMs: Int
+        let spaceMs: Int
+        let snapMs: Int
+        let snapBytes: Int
+        let confirmMs: Int
+        let restoreMs: Int
+        let opaque: Bool
+        let polls: Int
+        let field: FocusedFieldKind
+        let words: Int
+
+        var formattedLine: String {
+            "insert-timing cleanup_ms=\(cleanupMs) classify_ms=\(classifyMs) "
+                + "space_ms=\(spaceMs) snap_ms=\(snapMs) snap_bytes=\(snapBytes) "
+                + "confirm_ms=\(confirmMs) restore_ms=\(restoreMs) "
+                + "opaque=\(opaque ? 1 : 0) polls=\(polls) "
+                + "field=\(field.rawValue) words=\(words)"
+        }
+    }
+
+    private final class ClipboardSnapshotBox: @unchecked Sendable {
+        var snapshot = ClipboardSnapshot(items: [])
+    }
+
+    private final class TimingTracker {
+        let seed: TimingSeed
+        let spaceMs: Int
+        let snapMs: Int
+        let snapBytes: Int
+        let confirmStartedAt: CFTimeInterval
+        private var emitted = false
+
+        init(seed: TimingSeed, spaceMs: Int, snapMs: Int, snapBytes: Int,
+             confirmStartedAt: CFTimeInterval) {
+            self.seed = seed
+            self.spaceMs = spaceMs
+            self.snapMs = snapMs
+            self.snapBytes = snapBytes
+            self.confirmStartedAt = confirmStartedAt
+        }
+
+        func emit(opaque: Bool, polls: Int, restoreMs: Int) {
+            guard !emitted else { return }
+            emitted = true
+            let timing = InsertTiming(
+                cleanupMs: seed.cleanupMs,
+                classifyMs: seed.classifyMs,
+                spaceMs: spaceMs,
+                snapMs: snapMs,
+                snapBytes: snapBytes,
+                confirmMs: Int((CACurrentMediaTime() - confirmStartedAt) * 1000),
+                restoreMs: restoreMs,
+                opaque: opaque,
+                polls: polls,
+                field: seed.field,
+                words: seed.words
+            )
+            VLog.store(timing.formattedLine)
+        }
     }
 
     /// Marker stamped on every keyboard event this class synthesizes (the paste,
@@ -216,6 +302,7 @@ final class TextInserter {
     /// restore could fire mid-way through and stamp Yappy's own payload (or a
     /// stale snapshot) over the user's real clipboard.
     private var pendingClipboardRestore: DispatchWorkItem?
+    private var pendingTimingTracker: TimingTracker?
 
     /// Opaque apps (Electron, many web views) don't expose their text to the
     /// accessibility API, so we can't confirm the paste landed. Give a slow
@@ -261,7 +348,9 @@ final class TextInserter {
     ///   trailed off) — remembered for the NEXT dictation's continuation
     ///   decision. Irrelevant to (and unused by) this insertion itself.
     func insert(text: String, allowLeadingSpace: Bool = true,
-                joinContinuation: Bool = false, rawEndedMidThought: Bool = false) throws {
+                context: InsertContext? = nil,
+                joinContinuation: Bool = false, rawEndedMidThought: Bool = false,
+                timing: TimingSeed? = nil) throws {
         _ = Self.axTimeoutConfigured
         guard !text.isEmpty else { return }
         guard AXIsProcessTrusted() else {
@@ -270,7 +359,8 @@ final class TextInserter {
 
         // One AX read of the text just before the caret feeds both decisions
         // below (spacing and casing) — no second round-trip.
-        var window = precedingWindow()
+        let spaceStartedAt = CACurrentMediaTime()
+        var window = context?.precedingWindow ?? precedingWindow()
 
         // Continuation repair: when OUR previous insertion ended with a period
         // appended to a mid-sentence fragment ("tomorrow at.") and the user
@@ -311,10 +401,59 @@ final class TextInserter {
         // when the cursor sits right after a word.
         let payload = (allowLeadingSpace && needsLeadingSpace(before: adjusted, window: window))
             ? " " + adjusted : adjusted
+        let spaceMs = Int((CACurrentMediaTime() - spaceStartedAt) * 1000)
         let frontmost = NSWorkspace.shared.frontmostApplication?.localizedName ?? "unknown"
         Self.logger.notice("Insert: \(payload.count, privacy: .public) chars -> frontmost '\(frontmost, privacy: .public)'; secureInput=\(IsSecureEventInputEnabled(), privacy: .public)")
+        try pasteText(payload, timing: timing, spaceMs: spaceMs)
+        // Only trust this memory after Cmd+V was successfully created and posted.
+        // A failed retry must not poison opaque-field spacing for the next dictation.
         recordInsertion(of: payload, rawEndedMidThought: rawEndedMidThought)
-        try pasteText(payload)
+    }
+
+    /// Captures the focused element once, then role/subrole/selection in one AX
+    /// batch and (only for a non-zero caret) one short string-for-range read.
+    /// Every failure remains advisory: field and preceding text independently
+    /// fall back to `.unknown`, matching the former two-reader behavior.
+    func captureInsertContext() -> InsertContext {
+        _ = Self.axTimeoutConfigured
+        let system = AXUIElementCreateSystemWide()
+        var focusedObj: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(
+            system, kAXFocusedUIElementAttribute as CFString, &focusedObj
+        ) == .success, let focusedObj else {
+            return InsertContext(fieldKind: .unknown, precedingWindow: .unknown)
+        }
+        let element = focusedObj as! AXUIElement
+
+        let attributes = [kAXRoleAttribute, kAXSubroleAttribute,
+                          kAXSelectedTextRangeAttribute] as CFArray
+        var valuesObj: CFArray?
+        guard AXUIElementCopyMultipleAttributeValues(
+            element, attributes, AXCopyMultipleAttributeOptions(rawValue: 0), &valuesObj
+        ) == .success, let values = valuesObj as? [AnyObject], values.count == 3 else {
+            return InsertContext(fieldKind: .unknown, precedingWindow: .unknown)
+        }
+
+        let fieldKind = FocusedFieldClassifier.kind(
+            role: values[0] as? String,
+            subrole: values[1] as? String
+        )
+        guard CFGetTypeID(values[2]) == AXValueGetTypeID() else {
+            return InsertContext(fieldKind: fieldKind, precedingWindow: .unknown)
+        }
+        var caret = CFRange()
+        guard AXValueGetValue(values[2] as! AXValue, .cfRange, &caret) else {
+            return InsertContext(fieldKind: fieldKind, precedingWindow: .unknown)
+        }
+        guard caret.location > 0 else {
+            return InsertContext(fieldKind: fieldKind, precedingWindow: .startOfField)
+        }
+        let length = min(caret.location, Self.precedingWindowLength)
+        let range = CFRange(location: caret.location - length, length: length)
+        let window = string(in: range, of: element).flatMap { value in
+            value.isEmpty ? nil : PrecedingWindow.text(value)
+        } ?? .unknown
+        return InsertContext(fieldKind: fieldKind, precedingWindow: window)
     }
 
     /// Sends a Return keystroke — used by the "press enter" voice command to submit
@@ -342,7 +481,8 @@ final class TextInserter {
 
     /// Puts `payload` on the pasteboard, pastes it, and restores the user's
     /// clipboard afterward (only if nothing else wrote to it in the meantime).
-    private func pasteText(_ payload: String) throws {
+    private func pasteText(_ payload: String, timing: TimingSeed? = nil,
+                           spaceMs: Int = 0) throws {
         let pasteboard = NSPasteboard.general
 
         // Cancel any restore still pending from a previous paste before we
@@ -350,24 +490,55 @@ final class TextInserter {
         // paste's payload and stamp a stale snapshot over the user's clipboard.
         cancelPendingClipboardRestore()
 
-        let snapshot = snapshotClipboard(pasteboard)
+        // Snapshot work is size-proportional. Start it off-main, then JOIN before
+        // clearContents() — the join is the hard clipboard-preservation invariant.
+        let snapshotStartedAt = CACurrentMediaTime()
+        let snapshotBox = ClipboardSnapshotBox()
+        let snapshotGroup = DispatchGroup()
+        snapshotGroup.enter()
+        DispatchQueue.global(qos: .utility).async { [snapshotBox] in
+            snapshotBox.snapshot = Self.snapshotClipboard(pasteboard)
+            snapshotGroup.leave()
+        }
+        snapshotGroup.wait()
+        let snapshot = snapshotBox.snapshot
+        let snapMs = Int((CACurrentMediaTime() - snapshotStartedAt) * 1000)
 
+        // NEVER move this clear above the snapshot join.
         pasteboard.clearContents()
         pasteboard.setString(payload, forType: .string)
         let ourChangeCount = pasteboard.changeCount
 
-        try postCommandV()
+        do {
+            try postCommandV()
+        } catch {
+            // Event creation failed after we staged the payload. Restore the
+            // snapshot synchronously while our changeCount still owns the board.
+            if pasteboard.changeCount == ourChangeCount {
+                restoreClipboard(snapshot, to: pasteboard)
+            }
+            throw error
+        }
         Self.logger.notice("Cmd+V posted (pasteboard changeCount \(ourChangeCount, privacy: .public))")
 
+        let tracker = timing.map {
+            TimingTracker(seed: $0, spaceMs: spaceMs, snapMs: snapMs,
+                          snapBytes: snapshot.byteCount,
+                          confirmStartedAt: CACurrentMediaTime())
+        }
+        pendingTimingTracker = tracker
         scheduleClipboardRestore(snapshot,
                                  to: pasteboard,
                                  payload: payload,
-                                 ourChangeCount: ourChangeCount)
+                                 ourChangeCount: ourChangeCount,
+                                 tracker: tracker)
     }
 
     private func cancelPendingClipboardRestore() {
         pendingClipboardRestore?.cancel()
         pendingClipboardRestore = nil
+        pendingTimingTracker?.emit(opaque: false, polls: 0, restoreMs: 0)
+        pendingTimingTracker = nil
     }
 
     // MARK: - Voice Editing (act on the last insertion)
@@ -508,7 +679,7 @@ final class TextInserter {
     /// A short stretch of text immediately before the caret — one AX read shared
     /// by the leading-space decision (its last character) and the continuation-
     /// casing decision (its last non-space character).
-    private enum PrecedingWindow {
+    fileprivate enum PrecedingWindow {
         case startOfField
         case text(String)          // 1...windowLength chars ending at the caret
         case unknown
@@ -709,7 +880,7 @@ final class TextInserter {
 
     // MARK: - Clipboard Preservation
 
-    private func snapshotClipboard(_ pasteboard: NSPasteboard) -> ClipboardSnapshot {
+    private static func snapshotClipboard(_ pasteboard: NSPasteboard) -> ClipboardSnapshot {
         let items = (pasteboard.pasteboardItems ?? []).map { item in
             var types: [NSPasteboard.PasteboardType: Data] = [:]
             for type in item.types {
@@ -739,52 +910,75 @@ final class TextInserter {
     private func scheduleClipboardRestore(_ snapshot: ClipboardSnapshot,
                                           to pasteboard: NSPasteboard,
                                           payload: String,
-                                          ourChangeCount: Int) {
+                                          ourChangeCount: Int,
+                                          tracker: TimingTracker?) {
         scheduleRestoreTick(snapshot,
                             to: pasteboard,
                             payload: payload,
                             ourChangeCount: ourChangeCount,
-                            attempt: 0)
+                            attempt: 0,
+                            tracker: tracker)
     }
 
     private func scheduleRestoreTick(_ snapshot: ClipboardSnapshot,
                                      to pasteboard: NSPasteboard,
                                      payload: String,
                                      ourChangeCount: Int,
-                                     attempt: Int) {
+                                     attempt: Int,
+                                     tracker: TimingTracker?) {
         let work = DispatchWorkItem { [weak self] in
             guard let self else { return }
             // The user (or a newer paste's restore) put something else on the
             // clipboard — leave it alone.
             guard pasteboard.changeCount == ourChangeCount else {
                 self.pendingClipboardRestore = nil
+                tracker?.emit(opaque: false, polls: attempt + 1, restoreMs: 0)
+                if self.pendingTimingTracker === tracker { self.pendingTimingTracker = nil }
                 return
             }
 
             switch self.pasteLanded(payload) {
             case .confirmed:
                 Self.logger.notice("Paste CONFIRMED landed (poll \(attempt, privacy: .public)); restoring clipboard")
+                let restoreStartedAt = CACurrentMediaTime()
                 self.restoreClipboard(snapshot, to: pasteboard)
                 self.pendingClipboardRestore = nil
+                tracker?.emit(
+                    opaque: false,
+                    polls: attempt + 1,
+                    restoreMs: Int((CACurrentMediaTime() - restoreStartedAt) * 1000)
+                )
+                if self.pendingTimingTracker === tracker { self.pendingTimingTracker = nil }
             case .notYet where attempt + 1 < self.maxRestorePolls:
                 self.scheduleRestoreTick(snapshot,
                                          to: pasteboard,
                                          payload: payload,
                                          ourChangeCount: ourChangeCount,
-                                         attempt: attempt + 1)
+                                         attempt: attempt + 1,
+                                         tracker: tracker)
             case .notYet:
                 // Polled to the ceiling without confirmation — restore anyway so
                 // we don't strand the user's clipboard. This is the smoking-gun
                 // line for a swallowed paste: the target IS AX-readable, we
                 // watched for ~1.2 s, and the pasted text never appeared.
                 Self.logger.notice("Paste NEVER CONFIRMED after \(attempt + 1, privacy: .public) polls; restoring clipboard anyway")
+                let restoreStartedAt = CACurrentMediaTime()
                 self.restoreClipboard(snapshot, to: pasteboard)
                 self.pendingClipboardRestore = nil
+                tracker?.emit(
+                    opaque: false,
+                    polls: attempt + 1,
+                    restoreMs: Int((CACurrentMediaTime() - restoreStartedAt) * 1000)
+                )
+                if self.pendingTimingTracker === tracker { self.pendingTimingTracker = nil }
             case .opaque:
                 // Can't verify; give the app a generous fixed window (measured
                 // from now) before restoring, rather than re-polling forever.
                 Self.logger.notice("Paste target opaque to AX (poll \(attempt, privacy: .public)); restoring clipboard in \(self.opaqueRestoreDelay, format: .fixed(precision: 1), privacy: .public)s")
-                self.scheduleOpaqueRestore(snapshot, to: pasteboard, ourChangeCount: ourChangeCount)
+                self.scheduleOpaqueRestore(snapshot, to: pasteboard,
+                                           ourChangeCount: ourChangeCount,
+                                           polls: attempt + 1,
+                                           tracker: tracker)
             }
         }
         pendingClipboardRestore = work
@@ -796,12 +990,25 @@ final class TextInserter {
 
     private func scheduleOpaqueRestore(_ snapshot: ClipboardSnapshot,
                                        to pasteboard: NSPasteboard,
-                                       ourChangeCount: Int) {
+                                       ourChangeCount: Int,
+                                       polls: Int,
+                                       tracker: TimingTracker?) {
         let work = DispatchWorkItem { [weak self] in
             guard let self else { return }
             self.pendingClipboardRestore = nil
-            guard pasteboard.changeCount == ourChangeCount else { return }
+            guard pasteboard.changeCount == ourChangeCount else {
+                tracker?.emit(opaque: true, polls: polls, restoreMs: 0)
+                if self.pendingTimingTracker === tracker { self.pendingTimingTracker = nil }
+                return
+            }
+            let restoreStartedAt = CACurrentMediaTime()
             self.restoreClipboard(snapshot, to: pasteboard)
+            tracker?.emit(
+                opaque: true,
+                polls: polls,
+                restoreMs: Int((CACurrentMediaTime() - restoreStartedAt) * 1000)
+            )
+            if self.pendingTimingTracker === tracker { self.pendingTimingTracker = nil }
         }
         pendingClipboardRestore = work
         DispatchQueue.main.asyncAfter(deadline: .now() + opaqueRestoreDelay, execute: work)

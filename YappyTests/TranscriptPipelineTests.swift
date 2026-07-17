@@ -89,6 +89,63 @@ final class TranscriptPipelineTests: XCTestCase {
         )
     }
 
+    // MARK: - Verbatim escape ("type literally" / "type exactly")
+
+    func testVerbatimPrefixTypeLiterallyStripsAndBypassesFormatters() {
+        // Fillers/numbers/punctuation must NOT run on the remainder.
+        let result = pipeline().processDetailed("type literally um twenty dollars period")
+        XCTAssertTrue(result.isVerbatim)
+        XCTAssertEqual(result.text, "um twenty dollars period")
+    }
+
+    func testVerbatimPrefixTypeExactly() {
+        let result = pipeline().processDetailed("type exactly scratch that")
+        XCTAssertTrue(result.isVerbatim)
+        XCTAssertEqual(result.text, "scratch that")
+    }
+
+    func testVerbatimPrefixWithColon() {
+        let result = pipeline().processDetailed("type literally: hello comma world")
+        XCTAssertTrue(result.isVerbatim)
+        // Prefix parse happens BEFORE spoken-punctuation formatting, so "comma"
+        // stays the spoken word, not ",".
+        XCTAssertEqual(result.text, "hello comma world")
+    }
+
+    func testVerbatimPrefixWithCommaSeparator() {
+        let result = pipeline().processDetailed("type exactly, keep this um raw")
+        XCTAssertTrue(result.isVerbatim)
+        XCTAssertEqual(result.text, "keep this um raw")
+    }
+
+    func testVerbatimPrefixCaseInsensitive() {
+        let result = pipeline().processDetailed("Type Literally Hello")
+        XCTAssertTrue(result.isVerbatim)
+        XCTAssertEqual(result.text, "Hello")
+    }
+
+    func testVerbatimPrefixWholeWordOnly() {
+        // "type literallyish" must NOT match — not a whole-prefix escape.
+        let result = pipeline().processDetailed("type literallyish hello")
+        XCTAssertFalse(result.isVerbatim)
+    }
+
+    func testStripVerbatimPrefixStandalone() {
+        XCTAssertEqual(
+            TranscriptPipeline.stripVerbatimPrefix("type literally scratch that"),
+            "scratch that"
+        )
+        XCTAssertNil(TranscriptPipeline.stripVerbatimPrefix("please type literally nothing"))
+        XCTAssertNil(TranscriptPipeline.stripVerbatimPrefix("hello world"))
+    }
+
+    func testProcessConvenienceReturnsTextOnly() {
+        XCTAssertEqual(
+            pipeline().process("type literally raw text"),
+            "raw text"
+        )
+    }
+
     // MARK: - Cross-stage interactions (F27)
     //
     // These exercise how the stages compose on a full, realistic dictation —

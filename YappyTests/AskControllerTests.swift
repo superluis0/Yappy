@@ -1860,6 +1860,144 @@ final class AskControllerTests: XCTestCase {
         XCTAssertEqual(completedStops, 1)
     }
 
+    // MARK: - q. Non-English read-aloud skip
+
+    func testAnswerAppearsNonEnglishIsFalseForEnglish() {
+        XCTAssertFalse(AskController.answerAppearsNonEnglish(
+            "The weather in San Francisco is mild today, with a light breeze off the bay."))
+    }
+
+    func testAnswerAppearsNonEnglishIsTrueForSpanish() {
+        XCTAssertTrue(AskController.answerAppearsNonEnglish(
+            "El clima en Madrid es soleado hoy, con una temperatura agradable durante toda la tarde."))
+    }
+
+    func testAnswerAppearsNonEnglishIsFalseForMostlyEnglishWithAForeignAside() {
+        // "Mixed" but unambiguously English overall — must not trip the gate.
+        XCTAssertFalse(AskController.answerAppearsNonEnglish(
+            "The answer is: Hola, ¿cómo estás? This is mostly English text with a little Spanish mixed in for flavor."))
+    }
+
+    func testAnswerAppearsNonEnglishSamplesOnlyFirstFourHundredCharacters() {
+        // The first 400 characters are unambiguous English; a Spanish tail past
+        // that boundary must never flip the verdict.
+        let englishOpening = String(repeating: "This is a perfectly ordinary English sentence. ", count: 9)
+        let spanishTail = "Todo lo que sigue está en español y no debería importar en absoluto para esta decisión."
+        XCTAssertFalse(AskController.answerAppearsNonEnglish(englishOpening + spanishTail))
+        // Sanity check: the tail ALONE is confidently Spanish, proving the
+        // truncation above is actually doing something rather than the fixture
+        // just being ambiguous.
+        XCTAssertTrue(AskController.answerAppearsNonEnglish(spanishTail))
+    }
+
+    func testAnswerAppearsNonEnglishIsFalseForEmptyOrBlankText() {
+        XCTAssertFalse(AskController.answerAppearsNonEnglish(""))
+        XCTAssertFalse(AskController.answerAppearsNonEnglish("   "))
+    }
+
+    func testAnswerAppearsNonEnglishIgnoresShortOrSingleTokenSamples() {
+        // Short/single-token samples give NLLanguageRecognizer too little
+        // signal to trust: this exact gibberish single "word" reads as
+        // Italian at 0.83 confidence, well over the bar, and once regressed
+        // `testGrokStreamingSpeechThrottleRequiresSentenceTerminator` before
+        // the length/token floor was added.
+        XCTAssertFalse(AskController.answerAppearsNonEnglish("abcdefghi."))
+        XCTAssertFalse(AskController.answerAppearsNonEnglish("Answer."))
+    }
+
+    func testSpeakButtonSkipsSynthesisAndShowsCaptionForNonEnglishAnswer() async {
+        let codex = FakeCodexClient()
+        let (controller, _, _) = makeController(codex: codex)
+        controller.saveHistory = false
+        controller.speakAvailable = true
+        var spoken: [String] = []
+        controller.speakAnswer = { spoken.append($0) }
+
+        await completeCodexRun(
+            controller: controller,
+            codex: codex,
+            question: "¿Cómo está el clima?",
+            answer: "El clima en Madrid es soleado hoy, con una temperatura agradable durante toda la tarde."
+        )
+
+        controller.speakCurrentAnswer()
+
+        XCTAssertTrue(spoken.isEmpty, "a non-English answer must not be synthesized")
+        XCTAssertEqual(controller.transientCaption, "Answer isn't in English — reading skipped")
+    }
+
+    func testAutoSpeakFullAnswerPathSkipsNonEnglishAnswerAndShowsCaption() async {
+        // Codex's full-blob-then-turnCompleted shape (like
+        // `testCodexAutoSpeakUsesFullAnswerPathUnchanged`) never engages
+        // streaming speech, so this exercises the language gate on the
+        // non-streaming auto-speak fallback specifically.
+        let codex = FakeCodexClient()
+        let (controller, _, _) = makeController(codex: codex)
+        controller.saveHistory = false
+        controller.autoSpeak = true
+        controller.speakAvailable = true
+        var streamed = 0
+        var spoken: [String] = []
+        controller.speakStreamingText = { _, _ in streamed += 1 }
+        controller.speakAnswer = { spoken.append($0) }
+
+        await completeCodexRun(
+            controller: controller,
+            codex: codex,
+            question: "¿Cómo está el clima?",
+            answer: "El clima en Madrid es soleado hoy, con una temperatura agradable durante toda la tarde."
+        )
+
+        XCTAssertEqual(streamed, 0)
+        XCTAssertTrue(spoken.isEmpty, "a non-English answer must not auto-speak")
+        XCTAssertEqual(controller.transientCaption, "Answer isn't in English — reading skipped")
+    }
+
+    func testGrokAutoSpeakSkipsStreamingForNonEnglishAnswerAndShowsCaption() async {
+        let grok = FakeGrokClient()
+        let (controller, _, _) = makeController(grok: grok)
+        controller.backend = .grok
+        controller.saveHistory = false
+        controller.autoSpeak = true
+        controller.speakAvailable = true
+        var streamed = 0
+        var fullSpoken: [String] = []
+        controller.speakStreamingText = { _, _ in streamed += 1 }
+        controller.speakAnswer = { fullSpoken.append($0) }
+
+        controller.beginListening()
+        controller.submit("¿Dónde está Madrid?")
+        await yieldUntil { grok.askCalls.count == 1 }
+        await pushGrok(grok, event: .text(delta: "Madrid es la capital de España. "))
+        await pushGrok(grok, event: .text(delta: "Está en el centro del país. "))
+        await pushGrok(grok, event: .end(stopReason: "EndTurn", sessionId: nil))
+        await yieldUntil { controller.run?.status == .completed }
+
+        XCTAssertEqual(streamed, 0, "a non-English run must never start streaming speech")
+        XCTAssertTrue(fullSpoken.isEmpty)
+        XCTAssertEqual(controller.transientCaption, "Answer isn't in English — reading skipped")
+    }
+
+    func testAutoSpeakStillFiresForEnglishAnswerWithLanguageGateInPlace() async {
+        let codex = FakeCodexClient()
+        let (controller, _, _) = makeController(codex: codex)
+        controller.saveHistory = false
+        controller.autoSpeak = true
+        controller.speakAvailable = true
+        var spoken: [String] = []
+        controller.speakAnswer = { spoken.append($0) }
+
+        await completeCodexRun(
+            controller: controller,
+            codex: codex,
+            question: "What's the weather?",
+            answer: "It's sunny and mild today."
+        )
+
+        XCTAssertEqual(spoken, ["It's sunny and mild today."])
+        XCTAssertNil(controller.transientCaption)
+    }
+
 }
 
 // MARK: - TTS first-chunk pad

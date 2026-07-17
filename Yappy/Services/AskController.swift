@@ -12,6 +12,7 @@
 import Foundation
 import Combine
 import QuartzCore
+import NaturalLanguage
 
 /// Which CLI answers an Ask question.
 enum AskBackend: String, CaseIterable, Identifiable, Sendable {
@@ -331,6 +332,12 @@ final class AskController: ObservableObject {
     /// A terminator at the end of the accumulated answer needs the next delta's
     /// lookahead even when that delta contains no punctuation of its own.
     private var pendingSpeechBoundary = false
+    /// Set once the FIRST stable streaming sample for the in-flight run reads
+    /// as confidently non-English — blocks all further streaming speech for
+    /// this run (see `feedStreamingSpeech`). `finish()` then takes the
+    /// non-streaming path, which re-checks the full answer and shows the skip
+    /// caption via `speakCurrentAnswer`.
+    private var streamingSpeechLanguageBlocked = false
     /// True when the current capture started from a completed card, so a whole
     /// utterance can target that visible answer instead of becoming a follow-up.
     private var capturedOverCompletedCard = false
@@ -497,6 +504,34 @@ final class AskController: ObservableObject {
         return chunks
     }
 
+    /// True when `text`'s dominant detected language is confidently NOT
+    /// English — the read-aloud gate shared by auto-speak
+    /// (`feedStreamingSpeech`) and the Speak button (`speakCurrentAnswer`).
+    /// Pure and synchronous: `NLLanguageRecognizer` is deterministic enough on
+    /// fixed text to unit-test without mocking Natural Language. Samples only
+    /// the first ~400 characters — plenty to identify the language, and keeps
+    /// the check cheap on long answers. Errs toward NOT skipping: a low- or
+    /// ambiguous-confidence read (English still dominant, or no dominant
+    /// language at all) never blocks speech, only a confident non-English
+    /// verdict does.
+    ///
+    /// Short or single-token samples are excluded up front: with too little
+    /// text, `NLLanguageRecognizer` can confidently mis-detect plain English
+    /// (measured: the single "word" "abcdefghi." reads as Italian at 0.83
+    /// confidence — comfortably over the bar below). Requiring some length
+    /// AND more than one whitespace-separated token before ever trusting a
+    /// non-English verdict avoids that failure mode without weakening the
+    /// check on real prose, which clears both easily.
+    nonisolated static func answerAppearsNonEnglish(_ text: String) -> Bool {
+        let sample = String(text.prefix(400)).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard sample.count >= 20, sample.contains(where: { $0.isWhitespace }) else { return false }
+        let recognizer = NLLanguageRecognizer()
+        recognizer.processString(sample)
+        guard let dominant = recognizer.dominantLanguage, dominant != .english else { return false }
+        let confidence = recognizer.languageHypotheses(withMaximum: 1)[dominant] ?? 0
+        return confidence >= 0.6
+    }
+
     init(
         codexClient: any CodexAsking = CodexAskClient(),
         grokClient: any GrokAsking = GrokAskClient(),
@@ -542,6 +577,19 @@ final class AskController: ObservableObject {
     func showSpeakFailureCaption(duration: TimeInterval = 3) {
         transientCaptionTask?.cancel()
         transientCaption = "Couldn't speak — check voice setup in Settings"
+        transientCaptionTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(duration * 1_000_000_000))
+            guard !Task.isCancelled else { return }
+            self?.transientCaption = nil
+        }
+    }
+
+    /// Read-aloud (auto-speak or the Speak button) decided the answer isn't in
+    /// English and withheld synthesis — insertion, copy, and display are all
+    /// unaffected, only the read-aloud is skipped. See `answerAppearsNonEnglish`.
+    func showNonEnglishSkipCaption(duration: TimeInterval = 4) {
+        transientCaptionTask?.cancel()
+        transientCaption = "Answer isn't in English — reading skipped"
         transientCaptionTask = Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(duration * 1_000_000_000))
             guard !Task.isCancelled else { return }
@@ -777,6 +825,10 @@ final class AskController: ObservableObject {
         guard let r = run, r.status == .completed else { return }
         let answer = r.result ?? r.answerText ?? ""
         guard speakAvailable, !answer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        guard !Self.answerAppearsNonEnglish(AskAnswerBlock.speakableText(from: answer)) else {
+            showNonEnglishSkipCaption()
+            return
+        }
         speakAnswer(answer)
     }
 
@@ -1480,7 +1532,7 @@ final class AskController: ObservableObject {
     /// Feeds newly stable answer text into the streaming TTS handoff shared by
     /// grok and non-narration codex answer deltas.
     private func feedStreamingSpeech(delta: String, run r: inout AskRun) {
-        guard autoSpeak, speakAvailable else { return }
+        guard autoSpeak, speakAvailable, !streamingSpeechLanguageBlocked else { return }
         let shouldEvaluate = delta.contains(where: { ".!?\n".contains($0) })
             || pendingSpeechBoundary
             || (streamedSpeechConsumed == 0 && delta.contains(where: { ",;:".contains($0) }))
@@ -1495,6 +1547,14 @@ final class AskController: ObservableObject {
             allowLeadingClause: streamedSpeechConsumed == 0
         )
         if stable.count > streamedSpeechConsumed {
+            // Decide the run's language once, from the first stable sample,
+            // before any audio is queued for it. A non-English verdict blocks
+            // streaming for the rest of this run; `finish()` then takes the
+            // non-streaming path, which shows the skip caption.
+            if streamedSpeechConsumed == 0, Self.answerAppearsNonEnglish(stable) {
+                streamingSpeechLanguageBlocked = true
+                return
+            }
             let newText = String(stable.dropFirst(streamedSpeechConsumed))
             speakStreamingText(newText, streamedSpeechConsumed == 0)
             streamedSpeechConsumed = stable.count
@@ -1695,6 +1755,7 @@ final class AskController: ObservableObject {
         streamedSpeechText = ""
         streamingSpeechActive = false
         pendingSpeechBoundary = false
+        streamingSpeechLanguageBlocked = false
     }
 
     /// Returns the pill to idle after long enough to actually READ the answer:

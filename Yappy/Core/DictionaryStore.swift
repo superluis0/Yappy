@@ -24,6 +24,16 @@ struct AliasSuggestion: Codable, Identifiable, Equatable {
     }
 }
 
+/// Record of an auto-learned (or accepted) alias so undo can reverse exactly
+/// what was added — the learned alias, and the term itself when it was created
+/// solely for this apply.
+struct AppliedAlias: Equatable {
+    let heard: String
+    let corrected: String
+    /// True when apply created a brand-new term for `corrected`.
+    let createdTerm: Bool
+}
+
 /// Local store of custom-dictionary terms (names, jargon, acronyms) used to
 /// correct transcription. Persists as JSON in Application Support. Each term may
 /// carry alternative spellings (see `DictionaryTerm`) so a mishearing is
@@ -195,16 +205,68 @@ final class DictionaryStore: ObservableObject {
     /// `corrected` (created if it doesn't exist yet), then the suggestion is
     /// removed. This is the only path from a suggestion into the alias machinery.
     func acceptSuggestion(_ suggestion: AliasSuggestion) {
-        if let existing = terms.first(where: { $0.text.caseInsensitiveCompare(suggestion.corrected) == .orderedSame }) {
-            addLearnedAliases([suggestion.heard], to: existing)
-        } else {
-            var term = DictionaryTerm(text: suggestion.corrected)
-            term.learnedAliases = [suggestion.heard]
-            terms.append(term)
-            persist()
-        }
+        _ = applyLearnedAlias(heard: suggestion.heard, corrected: suggestion.corrected)
         suggestions.removeAll { $0.id == suggestion.id }
         persistSuggestions()
+    }
+
+    /// Immediately installs `heard` as a learned alias of `corrected` (creating
+    /// the term if needed). Returns an `AppliedAlias` describing exactly what
+    /// changed so `undoLearnedAlias` can reverse it; nil when nothing was added
+    /// (empty, identical, or already known).
+    @discardableResult
+    func applyLearnedAlias(heard: String, corrected: String) -> AppliedAlias? {
+        let heardTrimmed = heard.trimmingCharacters(in: .whitespacesAndNewlines)
+        let correctedTrimmed = corrected.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !heardTrimmed.isEmpty, !correctedTrimmed.isEmpty,
+              heardTrimmed.caseInsensitiveCompare(correctedTrimmed) != .orderedSame else {
+            return nil
+        }
+
+        if let existing = terms.first(where: { $0.text.caseInsensitiveCompare(correctedTrimmed) == .orderedSame }) {
+            // Already known as an alias of this term — no-op.
+            if existing.allAliases.contains(where: { $0.caseInsensitiveCompare(heardTrimmed) == .orderedSame }) {
+                return nil
+            }
+            addLearnedAliases([heardTrimmed], to: existing)
+            return AppliedAlias(heard: heardTrimmed, corrected: existing.text, createdTerm: false)
+        }
+
+        var term = DictionaryTerm(text: correctedTrimmed)
+        term.learnedAliases = [heardTrimmed]
+        terms.append(term)
+        persist()
+        return AppliedAlias(heard: heardTrimmed, corrected: correctedTrimmed, createdTerm: true)
+    }
+
+    /// Reverses a prior `applyLearnedAlias` exactly: removes the learned alias,
+    /// and deletes the term when this apply created it (and no other aliases
+    /// remain). No-op if the alias/term is already gone.
+    func undoLearnedAlias(_ applied: AppliedAlias) {
+        guard let idx = terms.firstIndex(where: {
+            $0.text.caseInsensitiveCompare(applied.corrected) == .orderedSame
+        }) else { return }
+
+        if applied.createdTerm {
+            // Only remove the whole term when it still looks like "just this
+            // alias" — don't destroy a term the user later edited.
+            let term = terms[idx]
+            let onlyThisAlias = term.learnedAliases.count == 1
+                && term.learnedAliases[0].caseInsensitiveCompare(applied.heard) == .orderedSame
+                && term.aliases.isEmpty
+            if onlyThisAlias {
+                terms.remove(at: idx)
+                persist()
+                return
+            }
+        }
+
+        var updated = terms[idx]
+        updated.learnedAliases.removeAll {
+            $0.caseInsensitiveCompare(applied.heard) == .orderedSame
+        }
+        terms[idx] = updated
+        persist()
     }
 
     /// Dismisses a suggestion and remembers the pair so the same mishearing isn't

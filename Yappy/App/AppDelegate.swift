@@ -35,7 +35,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let ttsClient = TTSSpeakClient()
     private lazy var cleanupCoordinator = CleanupCoordinator(
         settings: settings, provider: FoundationModelsCleanupProvider())
-    private lazy var hotkeyManager = HotkeyManager(mode: settings.hotkeyOption)
+    private lazy var hotkeyManager = HotkeyManager(mode: settings.hotkeyOption, activation: settings.hotkeyActivation)
     private lazy var escapeInterceptor = EscapeInterceptor()
     private lazy var pillController = RecordingPillController(appState: appState, settings: settings)
     private lazy var scratchpadController = ScratchpadController(store: notesStore)
@@ -50,6 +50,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     )
     private let askHotkey = AskHotkey()
     private lazy var askPillController = AskPillController(controller: askController, settings: settings)
+
+    // Voice Edit Anywhere (selection transform) — experimental, OFF by default.
+    // Its OWN Right Option hotkey + floating preview panel; the recorder,
+    // transcriber, and inserter are the shared instances, injected so the state
+    // machine is unit-testable with fakes (see SelectionTransformControllerTests).
+    private(set) lazy var voiceEditController = SelectionTransformController(
+        recorder: audioRecorder,
+        transcriber: transcriptionService,
+        inserter: VoiceEditInserter(textInserter: textInserter),
+        selection: VoiceEditSelectionReader(),
+        generative: FoundationModelsTransformProvider()
+    )
+    private let voiceEditHotkey = HotkeyManager(mode: .rightOptionHold)
+    private lazy var voiceEditPanelController = SelectionTransformPanelController(
+        controller: voiceEditController, settings: settings)
+
     /// True while an Ask capture is recording audio (distinct from dictation's
     /// appState.isRecording — Ask drives its own pill via askController).
     private var askRecording = false
@@ -236,6 +252,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         wireHotkeyCallbacks()
         wireAskCallbacks()
+        wireVoiceEdit()
 
         // Load the speech model in the background; show first-run UI if downloading.
         Task { @MainActor [weak self] in
@@ -387,6 +404,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // A real key while Ask is listening means the Fn press was a keyboard
             // chord (fn+arrow, etc.), not a spoken question — cancel the capture.
             if self.askController.isListening { self.abortAsk() }
+            // Same for a Voice Edit instruction: a real keystroke means the Right
+            // Option hold was a chord, not a spoken edit — discard the capture.
+            if self.voiceEditController.isListening { self.voiceEditController.cancel() }
         }
 
         // Mouse clicks move the caret too. A global monitor is listen-only
@@ -407,6 +427,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func escapeCancel() {
         if askController.speakingPhase != .idle {
             stopAnswerSpeech()
+            return
+        }
+        // Voice Edit owns the session — cancel it at any stage (capture, listen,
+        // transform, or a lingering preview). Deactivate the hold first so the
+        // eventual Right Option key-up can't fire a spurious stop.
+        if voiceEditController.isActive {
+            voiceEditHotkey.deactivate()
+            voiceEditController.cancel()
             return
         }
         // Ask owns the session — abort its capture / turn (Stop-button equivalent).
@@ -468,6 +496,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let dictationStarted = hotkeyManager.start()
         scratchpadHotkey.start() // idempotent; summons the floating notepad (⌥⇧S)
         updateAskHotkeyArming()  // arms the Fn tap only when unlocked && enabled
+        updateVoiceEditHotkeyArming()  // arms the Right Option tap only when enabled
         return dictationStarted
     }
 
@@ -482,11 +511,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // on the shared speech model at once. An ignored press+release is a clean
         // no-op — `finishDictation`'s `guard appState.isRecording` returns early.
         guard !appState.isRecording, !appState.isPreparing, !appState.isProcessing,
-              !askController.isBusy else { return }
+              !askController.isBusy, !voiceEditController.isCapturingAudio else { return }
 
         // A finished Ask answer may still be lingering (pinned or counting
         // down) at bottom-center — clear it so the two pills never overlap.
         if askController.run != nil { askController.dismiss() }
+        // A lingering Voice Edit preview references a now-stale selection — clear
+        // it before dictation takes bottom-center (mutual exclusion both ways).
+        if voiceEditController.isActive { voiceEditController.cancel() }
 
         switch transcriptionService.modelState {
         case .ready:
@@ -636,8 +668,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 return
             }
 
-            // Hoisted so the catch can offer click-to-copy for insertion failures.
-            var attemptedInsertText: String?
+            // Hoisted so the catch can offer retry/copy for insertion failures
+            // with the ORIGINAL flags — a retry that falls back to defaults
+            // could prepend a leading space to a canned insert or drop the
+            // join/prosody semantics of the first attempt (review P1).
+            var attemptedInsert: AttemptedInsert?
             do {
                 // Warm the cleanup session now — the audio engine has already stopped,
                 // so this is audio-idle — so its system-prompt prefill overlaps
@@ -667,6 +702,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     }
                     try? await Task.sleep(nanoseconds: 1_800_000_000)
                     self.ifCurrent(generation) {
+                        self.appState.reset()
+                        self.pillController.hide()
+                    }
+                    return
+                }
+
+                // Verbatim escape ("type literally" / "type exactly") runs BEFORE
+                // voice-edit / voice-control parsing so "type literally scratch
+                // that" inserts the words rather than deleting the last insertion.
+                // Remainder bypasses formatters, cleanup, and command parsing.
+                if let verbatimRemainder = TranscriptPipeline.stripVerbatimPrefix(raw) {
+                    self.escapeInterceptor.stop()
+                    if !verbatimRemainder.isEmpty {
+                        if self.settings.saveHistoryEnabled, !IsSecureEventInputEnabled() {
+                            self.history.add(DictationEntry(
+                                text: verbatimRemainder, durationSeconds: duration,
+                                appName: targetAppName, bundleID: bundleID))
+                        }
+                        attemptedInsert = AttemptedInsert(
+                            text: verbatimRemainder,
+                            allowLeadingSpace: false,
+                            joinContinuation: false,
+                            rawEndedMidThought: false,
+                            timing: TextInserter.TimingSeed(
+                                cleanupMs: 0,
+                                classifyMs: 0,
+                                words: verbatimRemainder.split(whereSeparator: { $0.isWhitespace }).count,
+                                field: .unknown
+                            )
+                        )
+                        try self.textInserter.insert(text: verbatimRemainder, allowLeadingSpace: false)
+                        self.ifCurrent(generation) {
+                            self.appState.lastDictationAt = Date()
+                            self.playSuccessFeedback()
+                        }
+                    }
+                    self.ifCurrent(generation) {
+                        self.appState.setTranscription(verbatimRemainder)
                         self.appState.reset()
                         self.pillController.hide()
                     }
@@ -740,16 +813,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // The session mode dictates cleanup/formatting; Auto defers to the
                 // global settings + per-app tone (byte-identical to no modes).
                 let mode = self.sessionMode
-                let cleaned = TranscriptPipeline(
+                let pipelineResult = TranscriptPipeline(
                     removeFillers: mode.isAuto ? self.settings.fillerRemovalEnabled : mode.fillerRemoval,
                     formatNumbers: mode.isAuto ? self.settings.numberFormattingEnabled : mode.numberFormatting,
                     formatLists: mode.isAuto ? self.settings.numberedListsEnabled : mode.numberedLists,
                     applyCommands: mode.isAuto ? self.settings.spokenCommandsEnabled : mode.spokenCommands,
                     applyPunctuation: mode.isAuto ? self.settings.spokenPunctuationEnabled : mode.spokenPunctuation
-                ).process(dictation)
+                ).processDetailed(dictation)
+                let cleaned = pipelineResult.text
+                // Defense in depth: stripVerbatimPrefix already returned above on
+                // the full raw utterance; processDetailed is a no-op for that path.
 
                 // Custom-dictionary corrections: rewrite known mishearings
                 // (manual + voice-trained aliases) back to the canonical spelling.
+                // Skipped for verbatim escapes (handled above).
                 let corrected = self.settings.customDictionaryEnabled
                     ? self.dictionaryReplacer.apply(cleaned)
                     : cleaned
@@ -776,8 +853,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         // Arm click-to-copy recovery for THIS insert too — a
                         // failed canned-shortcut paste is as recoverable as a
                         // failed dictation paste.
-                        attemptedInsertText = canned
-                        try self.textInserter.insert(text: canned, allowLeadingSpace: false)
+                        let cannedTiming = TextInserter.TimingSeed(
+                            cleanupMs: 0,
+                            classifyMs: 0,
+                            words: canned.split(whereSeparator: { $0.isWhitespace }).count,
+                            field: .unknown
+                        )
+                        attemptedInsert = AttemptedInsert(
+                            text: canned,
+                            allowLeadingSpace: false,
+                            joinContinuation: false,
+                            rawEndedMidThought: false,
+                            timing: cannedTiming
+                        )
+                        try self.textInserter.insert(
+                            text: canned,
+                            allowLeadingSpace: false,
+                            timing: cannedTiming
+                        )
                         self.ifCurrent(generation) {
                             self.appState.lastDictationAt = Date()
                             self.playSuccessFeedback()
@@ -863,25 +956,56 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 let listsEnabled = mode.isAuto ? self.settings.numberedListsEnabled : mode.numberedLists
                 let relisted = listsEnabled ? SpokenListFormatter.format(text) : text
 
-                // Refine to the destination field: a single-line or search field
-                // (Spotlight, a URL bar, a one-line form input) can't hold line
-                // breaks or paragraphs, so flatten dictated structure to one clean
-                // line before it lands. Advisory and off the model's path — one
-                // cheap AX read of the still-focused field at insert time — and
-                // gated behind the existing context-aware toggle. Multi-line and
-                // unknown fields keep the text unchanged.
+                // Resolve the continuation decision before the final Escape gate.
+                // The judge task has overlapped cleanup, so this normally returns
+                // immediately; keeping the await here ensures no suspension exists
+                // between context capture and the synchronous paste commit.
+                var joinContinuation = false
+                var joinReason = "none"
+                // Base the decision on the trimmed text (what actually lands):
+                // leading whitespace from list formatting must not mask the
+                // lowercase/standalone-reply signals (review warning).
+                let joinBasis = relisted.trimmingCharacters(in: .whitespacesAndNewlines)
+                if let tail = continuationTail, let firstChar = joinBasis.first {
+                    if firstChar.isLowercase {
+                        joinContinuation = true
+                        joinReason = "lowercase"
+                    } else if self.textInserter.lastInsertionRawEndedMidThought,
+                              tail.split(whereSeparator: { $0.isWhitespace }).count >= 3,
+                              !ContinuationCasing.startsAsStandaloneReply(joinBasis) {
+                        joinContinuation = true
+                        joinReason = "prosody"
+                    } else if let task = judgeTask,
+                              let gap = resumeGapSeconds, gap < 1.8 {
+                        let judgeWaitStartedAt = CACurrentMediaTime()
+                        let verdict = await self.awaitContinuationVerdict(task)
+                        joinContinuation = verdict ?? false
+                        joinReason = verdict.map { $0 ? "judge-join" : "judge-new" } ?? "judge-abstain"
+                        VLog.store("continuation-judge verdict=\(joinReason) wait_ms=\(Int((CACurrentMediaTime() - judgeWaitStartedAt) * 1000))")
+                    }
+                    VLog.store("continuation-decide reason=\(joinReason) gap_ms=\(resumeGapSeconds.map { Int($0 * 1000) } ?? -1)")
+                }
+
+                // LAST ESCAPE GATE. From this check through context capture,
+                // interceptor stop, and paste there are no suspension points.
+                if Task.isCancelled {
+                    self.abortProcessing(generation)
+                    return
+                }
+
+                // One AX capture supplies role/subrole to field formatting and
+                // selected-range/preceding text to insert spacing and casing.
                 let classifyStartedAt = CACurrentMediaTime()
-                let fieldKind = self.settings.contextAwareToneEnabled
-                    ? FocusedFieldClassifier.classifyFocusedField()
-                    : .unknown
+                let insertContext = self.textInserter.captureInsertContext()
                 let classifyMs = Int((CACurrentMediaTime() - classifyStartedAt) * 1000)
+                let fieldKind = self.settings.contextAwareToneEnabled
+                    ? insertContext.fieldKind
+                    : .unknown
                 let finalText = (fieldKind == .singleLine || fieldKind == .search || fieldKind == .secure)
                     ? FocusedFieldClassifier.collapseToSingleLine(relisted)
                     : relisted
 
-                // Privacy-safe classification metric — app identity + enum outcomes ONLY
-                // (never the transcript, a URL, or a field label), so the .other/.unknown
-                // miss rate is measurable. Analyze: grep dictation-context ~/Library/Logs/Yappy/ask.log
+                // Privacy-safe classification metric — app identity + enum outcomes ONLY.
                 VLog.store("dictation-context bundle=\(bundleID ?? "?") category=\(AppContextClassifier.category(forBundleID: bundleID)) field=\(fieldKind) contextAware=\(self.settings.contextAwareToneEnabled ? "on" : "off")")
 
                 // The pre-cleanup words, kept only when cleanup actually changed
@@ -889,15 +1013,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // by voice ("use what I said"). Nil otherwise, so we never claim a
                 // safety net that would just re-insert the identical text.
                 let rawTranscript = (expanded != finalText) ? expanded : nil
-
-                // Last gate before the words land: Escape pressed anytime up to
-                // here rejects the dictation outright — no history.add, no insert.
-                // This is the point the abort MUST catch to honor "before text
-                // lands"; the earlier checks just avoid doing needless work.
-                if Task.isCancelled {
-                    self.abortProcessing(generation)
-                    return
-                }
 
                 // COMMIT POINT — stop the Escape interceptor BEFORE the paste.
                 // Its consuming tap's callback runs on THIS main thread; the
@@ -909,44 +1024,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // Esc-abort has covered transcription + cleanup up to this line;
                 // past it we're committed. Idempotent; the defer is the backstop.
                 self.escapeInterceptor.stop()
-
-                // Resolve the continuation decision, strongest signal first:
-                // 1. Lowercase start — the ASR/cleanup itself declined to
-                //    sentence-case the resume, which only happens mid-sentence.
-                // 2. Prosody — the PREVIOUS dictation's raw transcript had no
-                //    terminal punctuation (the speaker audibly trailed off; the
-                //    period at the caret was appended by the cleanup model).
-                //    Guarded against short standalone replies on either side:
-                //    the previous text must be ≥3 words ("Yep" doesn't trail
-                //    off) and the resume must not open as a reply/pivot
-                //    ("Nope, …" answers; it doesn't continue).
-                // 3. The on-device judge — semantic tie-breaker, trusted only
-                //    on a tight press-to-resume gap (the finger came straight
-                //    back down) and bounded by a hard timeout.
-                // Anything else → today's deterministic behavior (the
-                // function-word repair still applies at insert time).
-                var joinContinuation = false
-                var joinReason = "none"
-                if let tail = continuationTail, let firstChar = finalText.first {
-                    if firstChar.isLowercase {
-                        joinContinuation = true
-                        joinReason = "lowercase"
-                    } else if self.textInserter.lastInsertionRawEndedMidThought,
-                              tail.split(whereSeparator: { $0.isWhitespace }).count >= 3,
-                              !ContinuationCasing.startsAsStandaloneReply(finalText) {
-                        joinContinuation = true
-                        joinReason = "prosody"
-                    } else if let task = judgeTask,
-                              let gap = resumeGapSeconds, gap < 1.8 {
-                        let judgeWaitStartedAt = CACurrentMediaTime()
-                        let verdict = await self.awaitContinuationVerdict(task)
-                        joinContinuation = verdict ?? false
-                        joinReason = verdict.map { $0 ? "judge-join" : "judge-new" } ?? "judge-abstain"
-                        // Privacy-safe: verdict + timing only, never the text.
-                        VLog.store("continuation-judge verdict=\(joinReason) wait_ms=\(Int((CACurrentMediaTime() - judgeWaitStartedAt) * 1000))")
-                    }
-                    VLog.store("continuation-decide reason=\(joinReason) gap_ms=\(resumeGapSeconds.map { Int($0 * 1000) } ?? -1)")
-                }
 
                 // `attemptedInsertText` is set just before insert so a failed
                 // paste can surface click-to-copy recovery (text is already in history).
@@ -976,25 +1053,89 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     // counts as terminal even before the cleanup model runs.
                     let trimmedExpanded = expanded.trimmingCharacters(in: .whitespacesAndNewlines)
                     let rawEndedMidThought = trimmedExpanded.last.map { !".!?…".contains($0) } ?? false
-                    let insertStartedAt = CACurrentMediaTime()
-                    attemptedInsertText = finalText
+                    let insertTiming = TextInserter.TimingSeed(
+                        cleanupMs: cleanupMs,
+                        classifyMs: classifyMs,
+                        words: expanded.split(whereSeparator: { $0.isWhitespace }).count,
+                        field: fieldKind
+                    )
+                    attemptedInsert = AttemptedInsert(
+                        text: finalText,
+                        allowLeadingSpace: true,
+                        joinContinuation: joinContinuation,
+                        rawEndedMidThought: rawEndedMidThought,
+                        timing: insertTiming
+                    )
                     try self.textInserter.insert(text: finalText,
+                                                 context: insertContext,
                                                  joinContinuation: joinContinuation,
-                                                 rawEndedMidThought: rawEndedMidThought)
-                    let insertMs = Int((CACurrentMediaTime() - insertStartedAt) * 1000)
-                    // Phase-A latency telemetry: stage timings + input size, ints/enums ONLY
-                    // (never the transcript). Analyze: grep insert-timing ~/Library/Logs/Yappy/ask.log
-                    VLog.store("insert-timing cleanup_ms=\(cleanupMs) classify_ms=\(classifyMs) insert_ms=\(insertMs) words=\(expanded.split(whereSeparator: { $0.isWhitespace }).count) field=\(fieldKind) secure=\(secureInput ? 1 : 0)")
+                                                 rawEndedMidThought: rawEndedMidThought,
+                                                 timing: insertTiming)
                     self.ifCurrent(generation) {
                         self.appState.lastDictationAt = Date()
                         self.playSuccessFeedback()
                     }
-                    // Learn from a "scratch that" + re-dictation: if the just-
-                    // rejected text is fresh, mine the diff and file each pair as
-                    // a *suggested* alias (never auto-applied).
-                    self.captureCorrectionIfPending(redictated: finalText)
+                    // Submit FIRST: a trailing "press enter" is a real-time
+                    // user action and must never wait on a caption hold —
+                    // a Return delayed 2.5–4 s can land in the wrong app
+                    // (review P1). Ungated, like every other submit site.
+                    if submit.submit { self.textInserter.sendReturn() }
+
+                    // Learn from a "scratch that" + re-dictation: high-confidence
+                    // pairs auto-apply (with undo caption); low-confidence stay
+                    // as Dictionary suggestions.
+                    let learned = self.captureCorrectionIfPending(redictated: finalText)
+                    // Neutral post-insert captions (auto-learn undo or polish
+                    // revert). Prefer auto-learn when both would apply. The
+                    // polish caption is suppressed after a submit — a sent
+                    // message can't be meaningfully reverted in place.
+                    let showDiff = !submit.submit && CleanupCoordinator.shouldShowDiffCaption(
+                        raw: expanded,
+                        final: finalText,
+                        cleanupRan: willPolish,
+                        captionEnabled: self.settings.cleanupDiffCaptionEnabled
+                    )
+                    if let learned {
+                        let term = learned.corrected
+                        let msg = "Learned \u{201c}\(term)\u{201d} — click to undo"
+                        self.ifCurrent(generation) {
+                            // Handler runs AT CLICK TIME — a click must never be
+                            // discarded because a new session cleared the shared
+                            // caption state during the display hold (review P2).
+                            self.appState.showInfo(msg, action: .undoLearnedAlias(learned)) { [weak self] in
+                                self?.dictionaryStore.undoLearnedAlias(learned)
+                            }
+                            self.pillController.setInteractive(true)
+                        }
+                        await self.waitForInfoActionOrTimeout(
+                            generation: generation,
+                            timeoutNanoseconds: 4_000_000_000
+                        )
+                    } else if showDiff {
+                        self.ifCurrent(generation) {
+                            self.appState.showInfo(
+                                "Polished — click to use your exact words",
+                                action: .useRawTranscript
+                            ) { [weak self] in
+                                // Same path as the "use what I said" voice
+                                // command (it carries its own moved-caret
+                                // guards). If replace can't run, fall back to
+                                // copying the raw transcript.
+                                guard let self else { return }
+                                if !self.applyVoiceEdit(.useRawTranscript) {
+                                    let pb = NSPasteboard.general
+                                    pb.clearContents()
+                                    pb.setString(expanded, forType: .string)
+                                }
+                            }
+                            self.pillController.setInteractive(true)
+                        }
+                        await self.waitForInfoActionOrTimeout(
+                            generation: generation,
+                            timeoutNanoseconds: 2_500_000_000
+                        )
+                    }
                 }
-                if submit.submit { self.textInserter.sendReturn() }
                 self.ifCurrent(generation) { self.appState.setTranscription(finalText) }
             } catch {
                 // Transcription or insertion failed. The transcript (if any) is
@@ -1002,12 +1143,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // recoverable insertion failures offer one-click copy.
                 Self.logger.error("Dictation failed: \(error.localizedDescription, privacy: .public)")
                 let baseCaption = Self.dictationFailureCaption(for: error)
-                let recoveryText = Self.isRecoverableInsertionFailure(error)
-                    ? attemptedInsertText
+                let recovery = Self.isRecoverableInsertionFailure(error)
+                    ? attemptedInsert
                     : nil
-                // Click-to-copy only when we actually have the failed text.
+                let recoveryText = recovery?.text
+                // A recoverable insert gets one retry into the user's CURRENT
+                // focus. A second failure transitions the same pill to copy.
                 let displayCaption = recoveryText != nil
-                    ? Self.insertFailureClickToCopyCaption
+                    ? Self.insertFailureRetryCaption
                     : baseCaption
                 let holdNs: UInt64 = recoveryText != nil
                     ? 6_000_000_000
@@ -1019,14 +1162,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     self.escapeInterceptor.stop()
                     self.playFailureFeedback()
                     self.appState.setError(error)
-                    self.appState.showFailure(displayCaption, recoveryText: recoveryText)
+                    self.appState.showFailure(
+                        displayCaption,
+                        recoveryText: recoveryText,
+                        recoveryMode: .retry
+                    )
                     if recoveryText != nil {
                         self.pillController.setInteractive(true)
                     }
                 }
-                if recoveryText != nil {
+                if let recovery {
                     await self.waitForFailureRecoveryOrTimeout(
                         generation: generation,
+                        attempt: recovery,
                         timeoutNanoseconds: holdNs
                     )
                 } else {
@@ -1047,6 +1195,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Caption for recoverable insertion failures (click-to-copy affordance).
     nonisolated static let insertFailureClickToCopyCaption = "Couldn't insert — click to copy"
+
+    /// First recovery action: retry once after the user fixes destination focus.
+    nonisolated static let insertFailureRetryCaption = "Couldn't insert — click to retry"
 
     /// Maps a dictation-path error to a short pill caption. Pure / unit-testable.
     /// `nonisolated` so unit tests can call it without hopping to MainActor.
@@ -1070,18 +1221,81 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return true
     }
 
+    /// One failed insert's full parameters, kept so a user-clicked retry
+    /// replays the attempt EXACTLY (flags included) — only the AX context is
+    /// re-captured at the user's fixed focus.
+    private struct AttemptedInsert {
+        let text: String
+        let allowLeadingSpace: Bool
+        let joinContinuation: Bool
+        let rawEndedMidThought: Bool
+        let timing: TextInserter.TimingSeed?
+    }
+
     /// Holds the recovery-class failure pill until the user clicks to copy, or
     /// `timeoutNanoseconds` elapses. After a successful copy, shows "Copied"
     /// for 0.8s before returning so the caller can tear down.
     private func waitForFailureRecoveryOrTimeout(
+        generation: Int,
+        attempt: AttemptedInsert,
+        timeoutNanoseconds: UInt64
+    ) async {
+        var deadline = Date().addingTimeInterval(Double(timeoutNanoseconds) / 1_000_000_000)
+        var handledRetry = false
+        while Date() < deadline {
+            if generation != dictationGeneration { return }
+            if appState.failureRecoveryCopied {
+                try? await Task.sleep(nanoseconds: 800_000_000)
+                return
+            }
+            if appState.failureRecoveryRetryRequested, !handledRetry {
+                handledRetry = true
+                // The click is consumed once in AppState. The retry replays the
+                // ORIGINAL flags (leading space, join, prosody) and passes nil
+                // context so the AX window is re-captured at the user's fixed
+                // focus (review P1: defaulted flags added a leading space to
+                // canned inserts and dropped join semantics).
+                do {
+                    try textInserter.insert(
+                        text: attempt.text,
+                        allowLeadingSpace: attempt.allowLeadingSpace,
+                        context: nil,
+                        joinContinuation: attempt.joinContinuation,
+                        rawEndedMidThought: attempt.rawEndedMidThought,
+                        timing: attempt.timing
+                    )
+                    ifCurrent(generation) {
+                        playSuccessFeedback()
+                        appState.lastDictationAt = Date()
+                        appState.completeFailureRecoveryRetry()
+                        pillController.setInteractive(false)
+                        pillController.hide()
+                    }
+                    return
+                } catch {
+                    Self.logger.error("Insert retry failed: \(error.localizedDescription, privacy: .public)")
+                    ifCurrent(generation) {
+                        appState.transitionRetryFailureToCopy()
+                    }
+                    deadline = Date().addingTimeInterval(
+                        Double(timeoutNanoseconds) / 1_000_000_000
+                    )
+                }
+            }
+            try? await Task.sleep(nanoseconds: 50_000_000)
+        }
+    }
+
+    /// Holds a neutral info caption until the user clicks or the timeout elapses.
+    private func waitForInfoActionOrTimeout(
         generation: Int,
         timeoutNanoseconds: UInt64
     ) async {
         let deadline = Date().addingTimeInterval(Double(timeoutNanoseconds) / 1_000_000_000)
         while Date() < deadline {
             if generation != dictationGeneration { return }
-            if appState.failureRecoveryCopied {
-                try? await Task.sleep(nanoseconds: 800_000_000)
+            if appState.infoActionTriggered {
+                try? await Task.sleep(nanoseconds: 400_000_000)
                 return
             }
             try? await Task.sleep(nanoseconds: 50_000_000)
@@ -1179,18 +1393,46 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// If a "scratch that" left a fresh rejected phrase, diff it against the text
-    /// just re-dictated and file any tight substitution as a suggested dictionary
-    /// alias. Consumed one-shot: `pendingCorrection` is cleared whether or not a
-    /// pair was found, so a single scratch never seeds more than one re-dictation.
-    private func captureCorrectionIfPending(redictated: String) {
+    /// just re-dictated and either auto-apply a high-confidence alias or file a
+    /// suggestion card. Consumed one-shot: `pendingCorrection` is cleared whether
+    /// or not a pair was found. Returns the auto-applied alias (for undo caption)
+    /// when auto-learn installed one; nil otherwise.
+    @discardableResult
+    private func captureCorrectionIfPending(redictated: String) -> AppliedAlias? {
         defer { pendingCorrection = nil }
         guard let pending = pendingCorrection,
               Date().timeIntervalSince(pending.at) <= Self.correctionPairingWindow else {
-            return
+            return nil
         }
+        let known = Set(dictionaryStore.terms.map { $0.text })
+        // Conservative sentence-position check: when the corrected token is the
+        // re-dictation's FIRST word, its capitalization is sentence casing, not
+        // proper-noun evidence (review P1: "Cat sat…"→"Cats sat…" must not
+        // auto-learn). Prefix comparison over-matches occasionally — that only
+        // demotes an auto-apply to a suggestion, the safe direction.
+        let firstWord = redictated
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .split(separator: " ").first.map(String.init) ?? ""
+        var autoApplied: AppliedAlias?
         for pair in AliasMiner.correctionPairs(rejected: pending.rejected, redictated: redictated) {
-            dictionaryStore.addSuggestion(heard: pair.heard, corrected: pair.corrected)
+            let high = AliasMiner.isHighConfidence(
+                original: pair.heard,
+                corrected: pair.corrected,
+                knownTerms: known,
+                correctedIsSentenceInitial: firstWord.caseInsensitiveCompare(pair.corrected) == .orderedSame
+            )
+            if high, settings.dictionaryAutoLearnEnabled,
+               let applied = dictionaryStore.applyLearnedAlias(
+                heard: pair.heard, corrected: pair.corrected
+               ) {
+                // First high-confidence pair wins the undo caption; further
+                // pairs (rare) still apply without stacking captions.
+                if autoApplied == nil { autoApplied = applied }
+            } else {
+                dictionaryStore.addSuggestion(heard: pair.heard, corrected: pair.corrected)
+            }
         }
+        return autoApplied
     }
 
     /// Executes a spoken app-control command (runs on the main actor — the
@@ -1748,14 +1990,86 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         askHotkey.onCancel = { [weak self] in self?.cancelAsk() }
     }
 
-    /// Arms the Fn tap only when Ask is enabled and Accessibility is trusted;
-    /// disarms it otherwise. Called from startTaps and the askEnabled sink.
+    /// Arms the Ask tap only when Ask is enabled, Accessibility is trusted, and
+    /// the chosen key doesn't collide with dictation or Voice Edit; disarms it
+    /// otherwise. Called from startTaps and the askEnabled / askHotkeyOption /
+    /// hotkeyOption / voiceEditAnywhereEnabled sinks (any of which can create
+    /// or clear a collision).
     private func updateAskHotkeyArming() {
+        let option = settings.askHotkeyOption
+        if let reason = option.conflict(
+            dictation: settings.hotkeyOption,
+            voiceEditEnabled: settings.voiceEditAnywhereEnabled
+        ) {
+            VLog.hotkey("Ask hotkey NOT armed — \(option.rawValue) conflicts: \(reason)")
+            askHotkey.stop()
+            return
+        }
         guard settings.askEnabled, AXIsProcessTrusted() else {
             askHotkey.stop()
             return
         }
+        askHotkey.updateOption(option)
         askHotkey.start()
+    }
+
+    // MARK: - Voice Edit Anywhere (selection transform)
+
+    /// Injects the shared audio/insert handles and hotkey callbacks. The state
+    /// machine lives in `SelectionTransformController`; AppDelegate only supplies
+    /// the busy predicate (mutual exclusion with dictation/Ask + speech-model
+    /// readiness), the recording sounds, and the Escape-interceptor lifecycle.
+    private func wireVoiceEdit() {
+        voiceEditController.isBusy = { [weak self] in
+            guard let self else { return true }
+            return self.appState.isRecording || self.appState.isPreparing || self.appState.isProcessing
+                || self.askController.isBusy || self.transcriptionService.modelState != .ready
+        }
+        voiceEditController.hasSpeech = { AudioRecorder.containsSpeech($0) }
+        voiceEditController.onFeedback = { [weak self] cue in
+            guard let self else { return }
+            switch cue {
+            case .listeningStarted: self.playFeedback(start: true)
+            case .listeningStopped: self.playFeedback(start: false)
+            case .replaced: self.playSuccessFeedback()
+            }
+        }
+        voiceEditController.onActiveChanged = { [weak self] active in
+            guard let self else { return }
+            if active {
+                self.escapeInterceptor.start()   // Esc cancels at every stage
+            } else if !self.askRecording, !self.askController.isBusy,
+                      !self.appState.isRecording, !self.appState.isProcessing {
+                self.escapeInterceptor.stop()
+            }
+        }
+        voiceEditHotkey.onStart = { [weak self] in self?.beginVoiceEdit() }
+        voiceEditHotkey.onStop = { [weak self] in self?.voiceEditController.endListening() }
+        voiceEditHotkey.onCancel = { [weak self] in self?.voiceEditController.cancel() }
+    }
+
+    /// Arms the Right Option tap only when Voice Edit is enabled, Accessibility is
+    /// trusted, AND dictation isn't already bound to Right Option (a collision the
+    /// Settings row explains). Called from startTaps and the setting/hotkey sinks.
+    /// The preview panel is only built once armed, so a disabled feature leaves
+    /// nothing behind.
+    private func updateVoiceEditHotkeyArming() {
+        guard settings.voiceEditAnywhereEnabled, AXIsProcessTrusted(),
+              settings.hotkeyOption != .rightOptionHold else {
+            voiceEditHotkey.stop()
+            return
+        }
+        voiceEditPanelController.prewarm()  // builds the panel + subscribes to the card state
+        voiceEditHotkey.start()
+    }
+
+    /// Right Option pressed — clear any lingering Ask card and stop any answer
+    /// speech FIRST (mirrors startDictation), so two bottom-center cards never
+    /// overlap and the mic can't record the TTS as the instruction, then capture.
+    private func beginVoiceEdit() {
+        stopAnswerSpeech()
+        if askController.run != nil { askController.dismiss() }
+        voiceEditController.begin()
     }
 
     /// Fn pressed — begin capturing a question. Mutually exclusive with dictation
@@ -1766,10 +2080,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let fnDownAt = CACurrentMediaTime()
         stopAnswerSpeech()
         guard settings.askEnabled else { return }
-        guard !appState.isRecording, !appState.isPreparing, !appState.isProcessing else { return }
+        guard !appState.isRecording, !appState.isPreparing, !appState.isProcessing,
+              !voiceEditController.isCapturingAudio else { return }
         let askStatus = askController.status
         guard askStatus != .listening, askStatus != .transcribing, askStatus != .preparing
         else { return }
+        // A lingering Voice Edit preview references a now-stale selection — clear
+        // it before Ask takes bottom-center (mutual exclusion both ways).
+        if voiceEditController.isActive { voiceEditController.cancel() }
         askFnDownAt = fnDownAt
 
         // Warm for auto-speak and manual Speak; the helper's 120s idle timer
@@ -1812,7 +2130,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         askGeneration += 1
         askRecordingStartTime = Date()
         if let down = askFnDownAt {
-            VLog.store("Fn→listening \(Int((CACurrentMediaTime() - down) * 1000))ms")
+            VLog.store("askKey→listening \(Int((CACurrentMediaTime() - down) * 1000))ms")
             askFnDownAt = nil
         }
         playFeedback(start: true)
@@ -1968,6 +2286,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let window = NSWindow(contentViewController: hosting)
             window.title = "Yappy"
             window.styleMask = [.titled, .closable]
+            window.adoptYappyDarkAppearance()
             window.setContentSize(NSSize(width: 380, height: 320))
             window.isReleasedWhenClosed = false
             window.center()
@@ -2330,6 +2649,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .removeDuplicates()
             .sink { [weak self] option in
                 self?.hotkeyManager.updateMode(option)
+                // Voice Edit and Ask can share keys with dictation — re-evaluate
+                // both collisions: disarm when dictation takes the key, re-arm
+                // when it frees up.
+                self?.updateVoiceEditHotkeyArming()
+                self?.updateAskHotkeyArming()
+            }
+            .store(in: &cancellables)
+
+        settings.$hotkeyActivation
+            .removeDuplicates()
+            .sink { [weak self] activation in
+                self?.hotkeyManager.updateActivation(activation)
             }
             .store(in: &cancellables)
 
@@ -2355,6 +2686,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     self.askController.shutdown()
                 }
             }
+            .store(in: &cancellables)
+
+        // Voice Edit: arm/disarm the Right Option tap when the experimental
+        // toggle flips (mirrors the askEnabled arming above). Ask re-evaluates
+        // too — its Right Option choice defers to Voice Edit.
+        settings.$voiceEditAnywhereEnabled
+            .removeDuplicates()
+            .sink { [weak self] _ in
+                self?.updateVoiceEditHotkeyArming()
+                self?.updateAskHotkeyArming()
+            }
+            .store(in: &cancellables)
+
+        // Ask hotkey choice: retarget the tap (or disarm on a collision).
+        settings.$askHotkeyOption
+            .removeDuplicates()
+            .sink { [weak self] _ in self?.updateAskHotkeyArming() }
             .store(in: &cancellables)
 
         settings.$askBackend
@@ -2555,6 +2903,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let window = NSWindow(contentViewController: hosting)
             window.title = "Welcome to Yappy"
             window.styleMask = [.titled, .closable]
+            window.adoptYappyDarkAppearance()
             window.setContentSize(NSSize(width: 460, height: 500))
             window.isReleasedWhenClosed = false
             window.center()

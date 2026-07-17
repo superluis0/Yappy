@@ -100,10 +100,16 @@ enum AliasMiner {
     ///   plausibly related (reuses `plausibleLength`).
     ///
     /// Returns at most one pair (the single middle diff) — deliberately narrow.
+    /// `corrected` preserves the re-dictation's casing so high-confidence checks
+    /// can detect proper-noun shape; alignment still uses lowercased tokens.
     static func correctionPairs(rejected: String, redictated: String) -> [(heard: String, corrected: String)] {
         let heardWords = words(rejected)
         let correctedWords = words(redictated)
-        guard !heardWords.isEmpty, !correctedWords.isEmpty else { return [] }
+        let heardCased = casedWords(rejected)
+        let correctedCased = casedWords(redictated)
+        guard !heardWords.isEmpty, !correctedWords.isEmpty,
+              heardWords.count == heardCased.count,
+              correctedWords.count == correctedCased.count else { return [] }
         // Identical utterances carry no correction.
         guard heardWords != correctedWords else { return [] }
 
@@ -126,8 +132,8 @@ enum AliasMiner {
         // re-dictation shares little or nothing.
         guard prefixLength + suffixLength >= 2 else { return [] }
 
-        let heardRun = Array(heardWords[prefixLength ..< (heardWords.count - suffixLength)])
-        let correctedRun = Array(correctedWords[prefixLength ..< (correctedWords.count - suffixLength)])
+        let heardRun = Array(heardCased[prefixLength ..< (heardCased.count - suffixLength)])
+        let correctedRun = Array(correctedCased[prefixLength ..< (correctedCased.count - suffixLength)])
 
         // Both sides must be a tight substitution: non-empty (not a pure
         // insertion/deletion) and short (a name mishearing, not a new clause).
@@ -147,6 +153,71 @@ enum AliasMiner {
         return [(heard: heard, corrected: corrected)]
     }
 
+    // MARK: - High-confidence auto-learn
+
+    /// Maximum relative Levenshtein distance (vs the longer token) for a
+    /// single-token substitution to count as high-confidence.
+    private static let highConfidenceMaxEditRatio: Double = 0.40
+
+    /// Whether a mined (heard → corrected) pair is safe to apply immediately
+    /// rather than surface as a suggestion card. Conservative on purpose:
+    /// only single-token substitutions with short edit distance, corrected
+    /// length ≥ 3, and either an existing dictionary term or a proper-noun
+    /// shape. Multi-word diffs stay on the suggestion path.
+    ///
+    /// - Parameter knownTerms: lowercased (or case-insensitive) dictionary
+    ///   spellings; when the corrected form matches one, confidence is higher
+    ///   even without capitalization.
+    static func isHighConfidence(
+        original: String,
+        corrected: String,
+        knownTerms: Set<String> = [],
+        correctedIsSentenceInitial: Bool = false
+    ) -> Bool {
+        let heard = normalize(original)
+        let fixed = normalize(corrected)
+        guard !heard.isEmpty, !fixed.isEmpty, heard != fixed else { return false }
+        // Single-token substitution only — multi-word stays suggested.
+        guard wordCount(heard) == 1, wordCount(fixed) == 1 else { return false }
+        guard fixed.count >= 3 else { return false }
+
+        // Never auto-alias a token that is ITSELF a canonical dictionary term
+        // ("Lewis" → "Luis" when both are real entries): the alias would make
+        // the replacer rewrite every legitimate use of the existing term.
+        // Ambiguous collisions stay on the suggestion path.
+        let heardTrimmed = original.trimmingCharacters(in: .whitespacesAndNewlines)
+        if knownTerms.contains(where: {
+            $0.caseInsensitiveCompare(heardTrimmed) == .orderedSame
+                || $0.caseInsensitiveCompare(heard) == .orderedSame
+        }) { return false }
+
+        let distance = levenshtein(heard, fixed)
+        let longer = max(heard.count, fixed.count)
+        guard longer > 0 else { return false }
+        let ratio = Double(distance) / Double(longer)
+        guard ratio <= highConfidenceMaxEditRatio else { return false }
+
+        let known = knownTerms.contains { $0.caseInsensitiveCompare(corrected.trimmingCharacters(in: .whitespacesAndNewlines)) == .orderedSame
+            || $0.caseInsensitiveCompare(fixed) == .orderedSame }
+        if known { return true }
+        // Sentence-initial capitalization is punctuation, not proper-noun
+        // evidence ("Cat sat…" → "Cats sat…" must not auto-learn Cat→Cats):
+        // a first-word correction needs a dictionary-term match above.
+        if correctedIsSentenceInitial { return false }
+        return isProperNounShaped(corrected)
+    }
+
+    /// Capitalized single-token shape (e.g. "Harkonnen", "Kubernetes") — first
+    /// character uppercase letter, remainder letters. Multi-word / all-lowercase
+    /// / mixed junk fails.
+    static func isProperNounShaped(_ text: String) -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !trimmed.contains(where: { $0.isWhitespace }) else { return false }
+        guard let first = trimmed.first, first.isLetter, first.isUppercase else { return false }
+        let rest = trimmed.dropFirst()
+        return rest.allSatisfy { $0.isLetter }
+    }
+
     // MARK: - Helpers
 
     private static func normalize(_ text: String) -> String {
@@ -163,6 +234,12 @@ enum AliasMiner {
             .filter { !$0.isEmpty }
     }
 
+    /// Tokenize preserving original casing (alphanumeric runs only).
+    private static func casedWords(_ text: String) -> [String] {
+        text.components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { !$0.isEmpty }
+    }
+
     private static func wordCount(_ text: String) -> Int { words(text).count }
 
     /// The candidate's length must be in [0.5×, 2×] the term's, so wildly
@@ -172,5 +249,30 @@ enum AliasMiner {
         let t = canonical.replacingOccurrences(of: " ", with: "").count
         guard t > 0 else { return false }
         return c * 2 >= t && c <= t * 2 + 2
+    }
+
+    /// Classic Levenshtein distance between two strings (unit characters).
+    static func levenshtein(_ a: String, _ b: String) -> Int {
+        let aChars = Array(a)
+        let bChars = Array(b)
+        let m = aChars.count
+        let n = bChars.count
+        if m == 0 { return n }
+        if n == 0 { return m }
+        var prev = Array(0...n)
+        var curr = Array(repeating: 0, count: n + 1)
+        for i in 1...m {
+            curr[0] = i
+            for j in 1...n {
+                let cost = aChars[i - 1] == bChars[j - 1] ? 0 : 1
+                curr[j] = min(
+                    prev[j] + 1,
+                    curr[j - 1] + 1,
+                    prev[j - 1] + cost
+                )
+            }
+            prev = curr
+        }
+        return prev[n]
     }
 }

@@ -45,6 +45,29 @@ enum WhatsNew {
     /// announcing; upgraders from any earlier version see the entry for the
     /// version they land on.
     static let entries: [String: Entry] = [
+        "3.0.0": Entry(
+            version: "3.0.0",
+            headline: "Edit anything, anywhere, with your voice.",
+            highlights: [
+                Highlight(icon: "wand.and.stars",
+                          title: "Voice Edit (experimental)",
+                          detail: "Select text in any app, hold Right Option, and say the change — “make this bullets”, “make it more formal”, “fix the spelling”. A preview card shows exactly what will change before you Replace. On-device, off by default."),
+                Highlight(icon: "bolt.fill",
+                          title: "Short dictations land instantly",
+                          detail: "Quick replies skip the heavy polish pass they never needed, and the insert path sheds redundant work — text appears the moment you release the key. A new “How much cleanup” setting also lets you keep every word exactly as you said it."),
+                Highlight(icon: "character.book.closed",
+                          title: "It learns your words",
+                          detail: "Say “scratch that”, fix a word, and Yappy quietly learns the correction as a dictionary alias — undo it with one click on the pill. Low-confidence guesses become suggestions instead, never silent changes."),
+                Highlight(icon: "list.bullet.rectangle",
+                          title: "Every command, one page",
+                          detail: "A new Commands tab lists everything you can say — punctuation, line breaks, lists, “press enter”, edits — mined straight from the code that parses them, so it’s never out of date."),
+                Highlight(icon: "exclamationmark.bubble",
+                          title: "Failures show their face",
+                          detail: "If text can’t insert, the mic goes quiet, or a backend signs out, Yappy says so on the pill — with a tap-to-recover action — instead of failing silently."),
+                Highlight(icon: "keyboard",
+                          title: "Pick your Ask key",
+                          detail: "Answers can now live on Right Control, Right Shift, or Right Option — for keyboards where the Fn/Globe key never reaches macOS. Fn stays the default."),
+            ]),
         "2.8.0": Entry(
             version: "2.8.0",
             headline: "It picks up right where you left off.",

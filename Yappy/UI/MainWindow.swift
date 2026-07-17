@@ -151,6 +151,7 @@ struct MainWindowView: View {
         switch windowState.selection {
         case .home:
             HomeView(history: history, settings: settings, shortcutStore: shortcutStore,
+                     dictionaryStore: dictionaryStore,
                      transcriptionService: transcriptionService, windowState: windowState,
                      openScratchpad: openScratchpad)
         case .shortcuts:
@@ -170,6 +171,21 @@ struct MainWindowView: View {
                          onShowReleaseNotes: { whatsNewPresenter.entry = WhatsNew.current ?? WhatsNew.latest },
                          windowState: windowState)
         }
+    }
+}
+
+// MARK: - Appearance
+
+extension NSWindow {
+    /// Yappy's UI is a dark-first "molten glass" design: its colors are hand
+    /// tuned against dark backdrops and wash out badly on light ones. Pin
+    /// every Yappy window to dark so light-mode users get the designed look
+    /// (the way dark-branded apps like Spotify do), instead of a broken
+    /// half-light hybrid. Deliberately per-window rather than
+    /// `NSApp.appearance`: the menu-bar icon is a template image that must
+    /// keep adapting to the MENU BAR's appearance, not the app's.
+    func adoptYappyDarkAppearance() {
+        appearance = NSAppearance(named: .darkAqua)
     }
 }
 
@@ -220,6 +236,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             defer: false
         )
         window.titlebarAppearsTransparent = true
+        window.adoptYappyDarkAppearance()
         window.minSize = NSSize(width: 780, height: 480)
         // Don't let the hosting controller shrink the window to its content's
         // minimum; honor the size we set here.

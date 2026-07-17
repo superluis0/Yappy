@@ -76,6 +76,7 @@ final class AskPillController {
             defer: false
         )
         panel.level = .statusBar
+        panel.adoptYappyDarkAppearance()
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.hasShadow = false

@@ -64,7 +64,8 @@ final class AliasMinerTests: XCTestCase {
         )
         XCTAssertEqual(pairs.count, 1)
         XCTAssertEqual(pairs.first?.heard, "harkonen")
-        XCTAssertEqual(pairs.first?.corrected, "harkonnen")
+        // Casing preserved from re-dictation so high-confidence can see proper nouns.
+        XCTAssertEqual(pairs.first?.corrected, "Harkonnen")
     }
 
     func testCorrectionIdenticalTextsYieldNothing() {
@@ -109,14 +110,14 @@ final class AliasMinerTests: XCTestCase {
 
     func testCorrectionIsCaseAndPunctuationInsensitiveForContext() {
         // Surrounding context differs only in case/punctuation and still aligns;
-        // the substitution is still found.
+        // the substitution is still found. Corrected casing is preserved.
         let pairs = AliasMiner.correctionPairs(
             rejected: "Ping Luis, about it.",
             redictated: "ping Lewis about it"
         )
         XCTAssertEqual(pairs.count, 1)
-        XCTAssertEqual(pairs.first?.heard, "luis")
-        XCTAssertEqual(pairs.first?.corrected, "lewis")
+        XCTAssertEqual(pairs.first?.heard, "Luis")
+        XCTAssertEqual(pairs.first?.corrected, "Lewis")
     }
 
     func testCorrectionNormalizedEqualPairYieldsNothing() {
@@ -133,5 +134,110 @@ final class AliasMinerTests: XCTestCase {
             rejected: "the hi keyword",
             redictated: "the internationalization keyword"
         ).isEmpty)
+    }
+
+    // MARK: - High-confidence auto-learn
+
+    func testHighConfidenceAcceptsKnownTermSingleToken() {
+        // Single-token, short edit distance, corrected already in dictionary.
+        XCTAssertTrue(AliasMiner.isHighConfidence(
+            original: "harkonen",
+            corrected: "Harkonnen",
+            knownTerms: ["Harkonnen"]
+        ))
+    }
+
+    func testHighConfidenceAcceptsProperNounShape() {
+        // Not in dictionary, but capitalized proper-noun shape + close edit.
+        XCTAssertTrue(AliasMiner.isHighConfidence(
+            original: "lewis",
+            corrected: "Luis",
+            knownTerms: []
+        ))
+    }
+
+    func testHighConfidenceRejectsMultiWord() {
+        XCTAssertFalse(AliasMiner.isHighConfidence(
+            original: "cooper netties",
+            corrected: "Kubernetes",
+            knownTerms: ["Kubernetes"]
+        ))
+    }
+
+    func testHighConfidenceRejectsShortCorrected() {
+        // Corrected length < 3.
+        XCTAssertFalse(AliasMiner.isHighConfidence(
+            original: "ab",
+            corrected: "cd",
+            knownTerms: ["cd"]
+        ))
+    }
+
+    func testHighConfidenceRejectsLargeEditDistance() {
+        // Completely different tokens — edit ratio well above 40%.
+        XCTAssertFalse(AliasMiner.isHighConfidence(
+            original: "banana",
+            corrected: "Kitchen",
+            knownTerms: ["Kitchen"]
+        ))
+    }
+
+    func testHighConfidenceRejectsAllLowercaseUnknown() {
+        // No known term and not proper-noun-shaped (all lowercase).
+        XCTAssertFalse(AliasMiner.isHighConfidence(
+            original: "harkonen",
+            corrected: "harkonnen",
+            knownTerms: []
+        ))
+    }
+
+    func testHighConfidenceBoundaryEditRatio() {
+        // "kitten" → "sitting" is too far; "color" → "colour" is close (British).
+        // "recieve" → "Receive" (proper noun shape + 2 swaps on 7 chars ≈ 28%).
+        XCTAssertTrue(AliasMiner.isHighConfidence(
+            original: "recieve",
+            corrected: "Receive",
+            knownTerms: []
+        ))
+        // "abcdefgh" → "zyxwvuts" is total rewrite.
+        XCTAssertFalse(AliasMiner.isHighConfidence(
+            original: "abcdefgh",
+            corrected: "Zyxwvuts",
+            knownTerms: []
+        ))
+    }
+
+    func testSentenceInitialCapitalizationIsNotProperNounEvidence() {
+        // "Cat sat…" → "Cats sat…": the correction is the FIRST word, so its
+        // capital is sentence casing. Must NOT auto-learn (review P1).
+        XCTAssertFalse(AliasMiner.isHighConfidence(
+            original: "Cat",
+            corrected: "Cats",
+            knownTerms: [],
+            correctedIsSentenceInitial: true
+        ))
+        // A dictionary-term match still qualifies even sentence-initially.
+        XCTAssertTrue(AliasMiner.isHighConfidence(
+            original: "Cuberneties",
+            corrected: "Kubernetes",
+            knownTerms: ["Kubernetes"],
+            correctedIsSentenceInitial: true
+        ))
+    }
+
+    func testHeardTokenThatIsACanonicalTermNeverAutoApplies() {
+        // "Lewis" → "Luis" when BOTH are dictionary terms: aliasing would
+        // rewrite every legitimate "Lewis" (review P2). Suggestion path only.
+        XCTAssertFalse(AliasMiner.isHighConfidence(
+            original: "Lewis",
+            corrected: "Luis",
+            knownTerms: ["Lewis", "Luis"]
+        ))
+    }
+
+    func testLevenshteinBasics() {
+        XCTAssertEqual(AliasMiner.levenshtein("kitten", "sitting"), 3)
+        XCTAssertEqual(AliasMiner.levenshtein("same", "same"), 0)
+        XCTAssertEqual(AliasMiner.levenshtein("", "abc"), 3)
     }
 }

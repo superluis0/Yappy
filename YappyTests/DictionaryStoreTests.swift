@@ -273,6 +273,40 @@ final class DictionaryStoreTests: XCTestCase {
         XCTAssertTrue(store.suggestions.isEmpty)
     }
 
+    // MARK: - Auto-learn apply / undo
+
+    func testApplyLearnedAliasCreatesTermAndUndoRemovesIt() {
+        let applied = store.applyLearnedAlias(heard: "harkonen", corrected: "Harkonnen")
+        XCTAssertEqual(applied?.heard, "harkonen")
+        XCTAssertEqual(applied?.corrected, "Harkonnen")
+        XCTAssertEqual(applied?.createdTerm, true)
+        XCTAssertEqual(store.terms.count, 1)
+        XCTAssertEqual(store.terms[0].learnedAliases, ["harkonen"])
+
+        store.undoLearnedAlias(applied!)
+        XCTAssertTrue(store.terms.isEmpty, "Undo must remove the term it created")
+    }
+
+    func testApplyLearnedAliasOnExistingTermUndoOnlyRemovesAlias() {
+        store.add("Luis")
+        let applied = store.applyLearnedAlias(heard: "Lewis", corrected: "luis")
+        XCTAssertEqual(applied?.createdTerm, false)
+        XCTAssertEqual(store.terms[0].learnedAliases, ["Lewis"])
+
+        store.undoLearnedAlias(applied!)
+        XCTAssertEqual(store.terms.count, 1)
+        XCTAssertTrue(store.terms[0].learnedAliases.isEmpty)
+        XCTAssertEqual(store.terms[0].text, "Luis")
+    }
+
+    func testApplyLearnedAliasNoopWhenAlreadyKnown() {
+        store.add("Luis")
+        _ = store.applyLearnedAlias(heard: "Lewis", corrected: "Luis")
+        let second = store.applyLearnedAlias(heard: "Lewis", corrected: "Luis")
+        XCTAssertNil(second)
+        XCTAssertEqual(store.terms[0].learnedAliases, ["Lewis"])
+    }
+
     func testDismissSuggestionRemovesAndPreventsReAdd() {
         store.addSuggestion(heard: "cooper netties", corrected: "kubernetes")
         XCTAssertEqual(store.suggestions.count, 1)

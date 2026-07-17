@@ -16,6 +16,33 @@ final class FoundationModelsCleanupProviderTests: XCTestCase {
 
     private typealias Provider = FoundationModelsCleanupProvider
 
+    // MARK: - Intensity → instructions routing
+
+    func testConservativeInstructionsAreRestricted() {
+        let instructions = Provider.cleanupInstructions(for: .conservative, correcting: false)
+        XCTAssertTrue(instructions.contains("ONLY these edits") || instructions.contains("minimal transcription cleaner"))
+        XCTAssertTrue(instructions.contains("Do NOT reword") || instructions.localizedCaseInsensitiveContains("do not reword"))
+        // Must not be the correcting (self-correction) prompt.
+        XCTAssertFalse(instructions.contains("delete the abandoned version"))
+    }
+
+    func testConservativeIgnoresCorrectingFlag() {
+        let a = Provider.cleanupInstructions(for: .conservative, correcting: false)
+        let b = Provider.cleanupInstructions(for: .conservative, correcting: true)
+        XCTAssertEqual(a, b, "Conservative never switches to the correcting prompt")
+        XCTAssertEqual(a, Provider.cleanupInstructionsConservative)
+    }
+
+    func testStandardBaseUnchanged() {
+        let instructions = Provider.cleanupInstructions(for: .standard, correcting: false)
+        XCTAssertEqual(instructions, Provider.cleanupInstructionsBase)
+    }
+
+    func testStandardCorrectingSelectsCorrectingPrompt() {
+        let instructions = Provider.cleanupInstructions(for: .standard, correcting: true)
+        XCTAssertEqual(instructions, Provider.cleanupInstructionsCorrecting)
+    }
+
     // MARK: - acceptsCleanedOutput: the composite accept/reject decision
 
     func testAcceptsNormalCleanup() {

@@ -46,6 +46,7 @@ final class ScratchpadController {
             defer: false
         )
         panel.title = "Scratchpad"
+        panel.adoptYappyDarkAppearance()
         panel.isFloatingPanel = true
         panel.level = .floating
         // Stay put when another app takes focus (sticky-note behavior) and ride

@@ -19,6 +19,33 @@ enum HotkeyOption: String, CaseIterable, Codable {
     }
 }
 
+/// Whether the chosen dictation key (`HotkeyOption`) must be HELD for the
+/// whole recording, or a quick double-tap LOCKS a hands-free recording that a
+/// single tap then stops. Orthogonal to which key is picked — applies to all
+/// four `HotkeyOption` presets. See `HotkeyStateMachine` for the edge logic.
+enum HotkeyActivation: String, CaseIterable, Codable {
+    case holdToTalk
+    case doubleTapLock
+
+    /// Display name for UI presentation.
+    var displayName: String {
+        switch self {
+        case .holdToTalk: return "Hold to Talk"
+        case .doubleTapLock: return "Double-Tap Lock"
+        }
+    }
+
+    /// One-line explainer shown under the Activation picker in Settings.
+    var explainer: String {
+        switch self {
+        case .holdToTalk:
+            return "Hold the key down to record; release it to stop."
+        case .doubleTapLock:
+            return "Double-tap the key to start a hands-free recording; a single tap stops it."
+        }
+    }
+}
+
 /// Selectable on-device speech-to-text model. Both are FluidAudio CoreML models
 /// used in batch mode (transcribe the full recorded buffer on hotkey release).
 enum TranscriptionModel: String, CaseIterable, Codable {
@@ -54,6 +81,24 @@ enum ListeningGlowStyle: String, CaseIterable, Codable, Identifiable {
     }
 }
 
+/// How aggressively AI cleanup reshapes a transcript.
+/// - `standard`: punctuation, casing, fillers, and light polish (today's behavior).
+/// - `conservative`: punctuation, capitalization, and standalone fillers only —
+///   no rewording or restructuring.
+enum CleanupIntensity: String, CaseIterable, Codable, Identifiable {
+    case conservative
+    case standard
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .conservative: return "Conservative"
+        case .standard: return "Standard"
+        }
+    }
+}
+
 /// Application settings with UserDefaults persistence.
 /// Fully local — no API keys. AI cleanup runs on-device via Apple Intelligence
 /// (Foundation Models, macOS 26+); nothing leaves the Mac.
@@ -62,11 +107,13 @@ final class Settings: ObservableObject {
 
     private enum Keys {
         static let hotkeyOption = "com.yappy.hotkeyOption"
+        static let hotkeyActivation = "com.yappy.hotkeyActivation"
         static let transcriptionModel = "com.yappy.transcriptionModel"
         static let launchAtLogin = "com.yappy.launchAtLogin"
         static let cleanupEnabled = "com.yappy.cleanupEnabled"
         static let audioFeedbackEnabled = "com.yappy.audioFeedbackEnabled"
         static let listeningGlowStyle = "com.yappy.listeningGlowStyle"
+        static let askHotkeyOption = "com.yappy.askHotkeyOption"
         static let audioFeedbackVolume = "com.yappy.audioFeedbackVolume"
         static let dismissedSuggestions = "com.yappy.dismissedSuggestions"
         static let contextAwareToneEnabled = "com.yappy.contextAwareToneEnabled"
@@ -83,6 +130,7 @@ final class Settings: ObservableObject {
         static let spokenPunctuationEnabled = "com.yappy.spokenPunctuationEnabled"
         static let voiceEditingEnabled = "com.yappy.voiceEditingEnabled"
         static let voiceControlEnabled = "com.yappy.voiceControlEnabled"
+        static let voiceEditAnywhereEnabled = "com.yappy.voiceEditAnywhereEnabled"
         static let saveHistoryEnabled = "com.yappy.saveHistoryEnabled"
         static let historyRetentionDays = "com.yappy.historyRetentionDays"
         static let activeModeID = "com.yappy.activeModeID"
@@ -102,6 +150,9 @@ final class Settings: ObservableObject {
         static let answersAutoSpeak = "com.yappy.answersAutoSpeak"
         static let answersVoice = "com.yappy.answersVoice"
         static let answersVoiceSpeed = "com.yappy.answersVoiceSpeed"
+        static let dictionaryAutoLearnEnabled = "com.yappy.dictionaryAutoLearnEnabled"
+        static let cleanupIntensity = "com.yappy.cleanupIntensity"
+        static let cleanupDiffCaptionEnabled = "com.yappy.cleanupDiffCaptionEnabled"
 
         /// Keys from the cloud-based versions of Yappy; removed on first launch.
         static let staleKeys = [
@@ -117,6 +168,12 @@ final class Settings: ObservableObject {
 
     /// Selected hotkey activation method.
     @Published var hotkeyOption: HotkeyOption = .rightCommandHold {
+        didSet { if !isLoading { save() } }
+    }
+
+    /// Whether the chosen hotkey must be held, or double-tapped to lock a
+    /// hands-free recording. Orthogonal to `hotkeyOption`; applies to any key.
+    @Published var hotkeyActivation: HotkeyActivation = .holdToTalk {
         didSet { if !isLoading { save() } }
     }
 
@@ -137,6 +194,25 @@ final class Settings: ObservableObject {
         didSet { if !isLoading { save() } }
     }
 
+    /// How aggressively cleanup reshapes text. Default `.standard` (today's
+    /// full polish). `.conservative` only fixes punctuation/casing/fillers.
+    @Published var cleanupIntensity: CleanupIntensity = .standard {
+        didSet { if !isLoading { save() } }
+    }
+
+    /// After insert, briefly show a neutral pill caption when cleanup changed
+    /// the words — click reverts to the raw pre-cleanup transcript.
+    @Published var cleanupDiffCaptionEnabled: Bool = true {
+        didSet { if !isLoading { save() } }
+    }
+
+    /// When on, high-confidence "scratch that" corrections are applied as
+    /// learned aliases immediately (with a click-to-undo caption). Low-
+    /// confidence pairs still surface as Dictionary suggestion cards.
+    @Published var dictionaryAutoLearnEnabled: Bool = true {
+        didSet { if !isLoading { save() } }
+    }
+
     /// Whether audio feedback sounds are enabled.
     @Published var audioFeedbackEnabled: Bool = true {
         didSet { if !isLoading { save() } }
@@ -144,6 +220,13 @@ final class Settings: ObservableObject {
 
     /// The glowing rim style around the recording pill while listening.
     @Published var listeningGlowStyle: ListeningGlowStyle = .rainbow {
+        didSet { if !isLoading { save() } }
+    }
+
+    /// Which key summons Answers. Fn/Globe by default; the alternatives exist
+    /// for keyboards whose Fn never reaches macOS (firmware-local Fn on many
+    /// external boards).
+    @Published var askHotkeyOption: AskHotkeyOption = .fnGlobe {
         didSet { if !isLoading { save() } }
     }
 
@@ -235,6 +318,14 @@ final class Settings: ObservableObject {
     /// Whether spoken app-control commands ("switch to email mode", "open
     /// scratchpad", "new note") control Yappy instead of being dictated.
     @Published var voiceControlEnabled: Bool = true {
+        didSet { if !isLoading { save() } }
+    }
+
+    /// Whether "Voice Edit Anywhere" is armed: select text in any app, hold Right
+    /// Option, speak an instruction, and Replace from a preview card. Experimental
+    /// and OFF by default — a distinct feature from `voiceEditingEnabled` (which
+    /// edits the LAST dictation in place via "scratch that" / "all caps that").
+    @Published var voiceEditAnywhereEnabled: Bool = false {
         didSet { if !isLoading { save() } }
     }
 
@@ -365,11 +456,16 @@ final class Settings: ObservableObject {
     /// Saves all settings to UserDefaults.
     func save() {
         defaults.set(hotkeyOption.rawValue, forKey: Keys.hotkeyOption)
+        defaults.set(hotkeyActivation.rawValue, forKey: Keys.hotkeyActivation)
         defaults.set(transcriptionModel.rawValue, forKey: Keys.transcriptionModel)
         defaults.set(launchAtLogin, forKey: Keys.launchAtLogin)
         defaults.set(cleanupEnabled, forKey: Keys.cleanupEnabled)
+        defaults.set(cleanupIntensity.rawValue, forKey: Keys.cleanupIntensity)
+        defaults.set(cleanupDiffCaptionEnabled, forKey: Keys.cleanupDiffCaptionEnabled)
+        defaults.set(dictionaryAutoLearnEnabled, forKey: Keys.dictionaryAutoLearnEnabled)
         defaults.set(audioFeedbackEnabled, forKey: Keys.audioFeedbackEnabled)
         defaults.set(listeningGlowStyle.rawValue, forKey: Keys.listeningGlowStyle)
+        defaults.set(askHotkeyOption.rawValue, forKey: Keys.askHotkeyOption)
         defaults.set(audioFeedbackVolume, forKey: Keys.audioFeedbackVolume)
         defaults.set(Array(dismissedSuggestions), forKey: Keys.dismissedSuggestions)
         defaults.set(contextAwareToneEnabled, forKey: Keys.contextAwareToneEnabled)
@@ -385,6 +481,7 @@ final class Settings: ObservableObject {
         defaults.set(spokenPunctuationEnabled, forKey: Keys.spokenPunctuationEnabled)
         defaults.set(voiceEditingEnabled, forKey: Keys.voiceEditingEnabled)
         defaults.set(voiceControlEnabled, forKey: Keys.voiceControlEnabled)
+        defaults.set(voiceEditAnywhereEnabled, forKey: Keys.voiceEditAnywhereEnabled)
         defaults.set(saveHistoryEnabled, forKey: Keys.saveHistoryEnabled)
         defaults.set(historyRetentionDays, forKey: Keys.historyRetentionDays)
         defaults.set(activeModeID, forKey: Keys.activeModeID)
@@ -417,6 +514,25 @@ final class Settings: ObservableObject {
             hotkeyOption = loadedHotkey
         }
 
+        if let activationRawValue = defaults.string(forKey: Keys.hotkeyActivation),
+           let loadedActivation = HotkeyActivation(rawValue: activationRawValue) {
+            hotkeyActivation = loadedActivation
+        }
+
+        // Legacy migration: "Right Command (Double Tap)" used to bake double-tap
+        // timing into the hotkey CHOICE itself. Activation is now orthogonal to
+        // the key, so fold that preset onto the new pair — same physical key
+        // (Right ⌘), activation moved to its own setting — and persist the
+        // normalized pair immediately (`isLoading` suppresses the `didSet`
+        // auto-save above) so this only ever runs once and the choice survives
+        // the next launch even if this one crashes before another save.
+        if hotkeyOption == .rightCommandDoubleTap {
+            hotkeyOption = .rightCommandHold
+            hotkeyActivation = .doubleTapLock
+            defaults.set(hotkeyOption.rawValue, forKey: Keys.hotkeyOption)
+            defaults.set(hotkeyActivation.rawValue, forKey: Keys.hotkeyActivation)
+        }
+
         if let modelRawValue = defaults.string(forKey: Keys.transcriptionModel),
            let loadedModel = TranscriptionModel(rawValue: modelRawValue) {
             transcriptionModel = loadedModel
@@ -429,9 +545,33 @@ final class Settings: ObservableObject {
             cleanupEnabled = true
         }
 
+        if let intensityRaw = defaults.string(forKey: Keys.cleanupIntensity),
+           let loadedIntensity = CleanupIntensity(rawValue: intensityRaw) {
+            cleanupIntensity = loadedIntensity
+        } else {
+            cleanupIntensity = .standard
+        }
+
+        if defaults.object(forKey: Keys.cleanupDiffCaptionEnabled) != nil {
+            cleanupDiffCaptionEnabled = defaults.bool(forKey: Keys.cleanupDiffCaptionEnabled)
+        } else {
+            cleanupDiffCaptionEnabled = true
+        }
+
+        if defaults.object(forKey: Keys.dictionaryAutoLearnEnabled) != nil {
+            dictionaryAutoLearnEnabled = defaults.bool(forKey: Keys.dictionaryAutoLearnEnabled)
+        } else {
+            dictionaryAutoLearnEnabled = true
+        }
+
         if let glowRaw = defaults.string(forKey: Keys.listeningGlowStyle),
            let loadedGlow = ListeningGlowStyle(rawValue: glowRaw) {
             listeningGlowStyle = loadedGlow
+        }
+
+        if let askKeyRaw = defaults.string(forKey: Keys.askHotkeyOption),
+           let loadedAskKey = AskHotkeyOption(rawValue: askKeyRaw) {
+            askHotkeyOption = loadedAskKey
         }
 
         if defaults.object(forKey: Keys.audioFeedbackEnabled) != nil {
@@ -519,6 +659,9 @@ final class Settings: ObservableObject {
             voiceControlEnabled = true
         }
 
+        // Experimental — OFF by default (absent key → false).
+        voiceEditAnywhereEnabled = defaults.bool(forKey: Keys.voiceEditAnywhereEnabled)
+
         if defaults.object(forKey: Keys.saveHistoryEnabled) != nil {
             saveHistoryEnabled = defaults.bool(forKey: Keys.saveHistoryEnabled)
         } else {
@@ -590,9 +733,13 @@ final class Settings: ObservableObject {
     /// Resets all settings to default values.
     func reset() {
         hotkeyOption = .rightCommandHold
+        hotkeyActivation = .holdToTalk
         transcriptionModel = .parakeet
         launchAtLogin = false
         cleanupEnabled = true
+        cleanupIntensity = .standard
+        cleanupDiffCaptionEnabled = true
+        dictionaryAutoLearnEnabled = true
         audioFeedbackEnabled = true
         audioFeedbackVolume = 0.5
         dismissedSuggestions = []
@@ -610,6 +757,7 @@ final class Settings: ObservableObject {
         spokenPunctuationEnabled = true
         voiceEditingEnabled = true
         voiceControlEnabled = true
+        voiceEditAnywhereEnabled = false
         saveHistoryEnabled = true
         historyRetentionDays = 0
         activeModeID = nil
@@ -623,7 +771,8 @@ final class Settings: ObservableObject {
         // state, so a settings reset shouldn't resurrect the getting-started card.
 
         for key in [
-            Keys.hotkeyOption, Keys.transcriptionModel, Keys.launchAtLogin, Keys.cleanupEnabled,
+            Keys.hotkeyOption, Keys.hotkeyActivation, Keys.transcriptionModel, Keys.launchAtLogin, Keys.cleanupEnabled,
+            Keys.cleanupIntensity, Keys.cleanupDiffCaptionEnabled, Keys.dictionaryAutoLearnEnabled,
             Keys.audioFeedbackEnabled, Keys.audioFeedbackVolume,
             Keys.dismissedSuggestions,
             Keys.contextAwareToneEnabled, Keys.backtrackEnabled, Keys.adaptiveModeEnabled,
@@ -631,7 +780,7 @@ final class Settings: ObservableObject {
             Keys.vocabularyBoostingEnabled,
             Keys.numberFormattingEnabled, Keys.numberedListsEnabled, Keys.fillerRemovalEnabled,
             Keys.spokenCommandsEnabled, Keys.spokenPunctuationEnabled,
-            Keys.voiceEditingEnabled, Keys.voiceControlEnabled,
+            Keys.voiceEditingEnabled, Keys.voiceControlEnabled, Keys.voiceEditAnywhereEnabled,
             Keys.saveHistoryEnabled, Keys.historyRetentionDays, Keys.activeModeID,
             Keys.useCases, Keys.autoUpdateChecksEnabled,
             Keys.answersSpeakEnabled, Keys.answersAutoSpeak, Keys.answersVoice,

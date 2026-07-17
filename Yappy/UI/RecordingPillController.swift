@@ -88,11 +88,16 @@ final class RecordingPillController {
             defer: false
         )
         panel.level = .statusBar
+        panel.adoptYappyDarkAppearance()
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.hasShadow = false
         panel.ignoresMouseEvents = true
         panel.hidesOnDeactivate = false
+        // The pill's recovery click must never make this panel the key window:
+        // a key panel steals the retry's synthetic Cmd+V from the target app
+        // (same failure Voice Edit's card hit — "Paste NEVER CONFIRMED").
+        panel.becomesKeyOnlyIfNeeded = true
         // canJoinAllSpaces keeps the pill on every Space (and fullScreenAuxiliary
         // shows it over full-screen apps). `.stationary` is deliberately NOT
         // included — it's for desktop-pinned windows and conflicts with

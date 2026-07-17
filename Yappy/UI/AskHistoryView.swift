@@ -74,7 +74,7 @@ struct AskHistoryView: View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 3) {
                 Text("Answers").font(.system(size: 24, weight: .bold)).foregroundStyle(Brand.ink)
-                Text("Answers from hold-Fn questions. Stored on this Mac only.")
+                Text("Answers you asked by voice. Stored on this Mac only.")
                     .font(.system(size: 13.5)).foregroundStyle(Brand.ink3)
             }
             Spacer(minLength: 12)
@@ -136,7 +136,7 @@ struct AskHistoryView: View {
                         Text("No answers yet")
                             .font(.system(size: 14, weight: .semibold))
                             .foregroundStyle(Brand.ink2)
-                        Text("Hold Fn and ask out loud — completed answers land here.")
+                        Text("Hold your Ask key and ask out loud — completed answers land here.")
                             .font(.system(size: 12.5))
                             .foregroundStyle(Brand.ink3)
                     }

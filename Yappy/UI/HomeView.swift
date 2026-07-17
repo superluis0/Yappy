@@ -9,6 +9,7 @@ struct HomeView: View {
     @ObservedObject var history: HistoryStore
     @ObservedObject var settings: Settings
     @ObservedObject var shortcutStore: ShortcutStore
+    @ObservedObject var dictionaryStore: DictionaryStore
     @ObservedObject var transcriptionService: ParakeetTranscriptionService
     /// Shared sidebar-selection state — lets the getting-started checklist
     /// rows below navigate to the tab they describe.
@@ -706,6 +707,40 @@ struct HomeView: View {
         .animation(.easeOut(duration: 0.2), value: pendingDeleteEntry?.id == entry.id)
         .onHover { hovering in
             hoveredEntryID = hovering ? entry.id : nil
+        }
+        .contextMenu {
+            Button(historyAddToDictionaryTitle(for: entry)) {
+                addHistoryEntryToDictionary(entry)
+            }
+        }
+    }
+
+    /// Context-menu label for "Add … to Dictionary". Short rows name the term;
+    /// longer ones open the Dictionary tab instead of magically splitting tokens.
+    private func historyAddToDictionaryTitle(for entry: DictationEntry) -> String {
+        let trimmed = entry.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let words = trimmed.split(whereSeparator: { $0.isWhitespace })
+        if words.count >= 1, words.count <= 3 {
+            let term = words.joined(separator: " ")
+            let display = term.count > 28 ? String(term.prefix(27)) + "…" : term
+            return "Add \(display) to Dictionary"
+        }
+        return "Open Dictionary…"
+    }
+
+    /// ≤3 words → add the phrase as a dictionary term; longer rows only navigate
+    /// to the Dictionary tab (no silent token mining).
+    private func addHistoryEntryToDictionary(_ entry: DictationEntry) {
+        let trimmed = entry.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            windowState.select(.dictionary)
+            return
+        }
+        let words = trimmed.split(whereSeparator: { $0.isWhitespace })
+        if words.count <= 3 {
+            dictionaryStore.add(words.joined(separator: " "))
+        } else {
+            windowState.select(.dictionary)
         }
     }
 

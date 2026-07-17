@@ -143,6 +143,15 @@ struct RecordingPillView: View {
                     }
                     .foregroundStyle(Color(red: 1.0, green: 0.55, blue: 0.35))
                     .transition(.opacity)
+                } else if let info = appState.infoMessage {
+                    // Neutral info caption (learned alias, polished diff) —
+                    // deliberately NOT failure-styled (no warning triangle / orange).
+                    Text(info)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Color.white.opacity(0.88))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+                        .transition(.opacity)
                 } else if appState.isProcessing || appState.isPreparing {
                     processingIndicator
                         .transition(.opacity)
@@ -151,16 +160,24 @@ struct RecordingPillView: View {
             .padding(.horizontal, 14)
         }
         .frame(width: Constants.pillWidth, height: Constants.pillHeight)
-        // Click-to-copy recovery: the tap target is the ENTIRE visible capsule
-        // (the caption says "click to copy" — clicking anywhere on the pill
-        // must work, not just the text). The panel only receives mouse events
-        // during the recovery window, and the guard keeps every other state
+        // Insert recovery / neutral info action: the tap target is the ENTIRE
+        // visible capsule (the caption says "click" — clicking anywhere on the
+        // pill must work, not just the text). The panel only receives mouse
+        // events during those hold windows; the guards keep every other state
         // inert, so this gesture can live at capsule scope safely.
         .contentShape(Capsule())
         .onTapGesture {
-            guard appState.failureRecoveryText != nil else { return }
-            appState.copyFailureRecovery()
+            if appState.failureRecoveryText != nil {
+                appState.activateFailureRecovery()
+            } else if appState.infoAction != nil {
+                appState.triggerInfoAction()
+            }
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(appState.pillAccessibilityLabel)
+        .accessibilityAddTraits(
+            appState.failureRecoveryText == nil && appState.infoAction == nil ? [] : .isButton
+        )
         .scaleEffect(visible ? 1.0 : 0.8)
         .opacity(visible ? 1.0 : 0.0)
         .animation(.spring(response: 0.22, dampingFraction: 0.82), value: visible)
@@ -169,6 +186,7 @@ struct RecordingPillView: View {
         // AI cleanup starts, so the sub-phase reads without any layout jump.
         .animation(.easeInOut(duration: 0.2), value: appState.isPolishing)
         .animation(.easeInOut(duration: 0.2), value: appState.failureMessage)
+        .animation(.easeInOut(duration: 0.2), value: appState.infoMessage)
         // Fill the (larger) panel with a clear, non-interactive container so the
         // capsule is centered and its shadow fades into transparent margin
         // rather than being clipped at the panel's rectangular edge.

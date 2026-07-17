@@ -8,7 +8,11 @@ import CoreGraphics
 
 // MARK: - State Machine
 
-/// Pure, testable state machine that turns modifier-key edges into recording actions.
+/// Pure, testable state machine that turns modifier-key edges into recording
+/// actions. Which PHYSICAL key is being watched (`mode`'s underlying key) is
+/// irrelevant to this logic — the state machine only cares about `activation`
+/// (hold vs double-tap-lock), so any `HotkeyOption` key composes with either
+/// `HotkeyActivation`.
 struct HotkeyStateMachine {
     enum Edge {
         case down
@@ -23,6 +27,7 @@ struct HotkeyStateMachine {
     }
 
     let mode: HotkeyOption
+    let activation: HotkeyActivation
 
     private(set) var isActive = false
     private var lastDownTime: TimeInterval = -.infinity
@@ -30,8 +35,14 @@ struct HotkeyStateMachine {
     private var lastTapEndTime: TimeInterval = -.infinity
     private var keyIsDown = false
 
-    init(mode: HotkeyOption) {
+    /// - Parameter activation: Ignored for the legacy `.rightCommandDoubleTap`
+    ///   preset, which always behaves as `.doubleTapLock` regardless of what's
+    ///   passed — this keeps that raw persisted value (pre-migration, or
+    ///   re-selected directly from the unchanged hotkey picker) behaviorally
+    ///   identical to before this type learned about `HotkeyActivation`.
+    init(mode: HotkeyOption, activation: HotkeyActivation = .holdToTalk) {
         self.mode = mode
+        self.activation = (mode == .rightCommandDoubleTap) ? .doubleTapLock : activation
     }
 
     mutating func handle(_ edge: Edge, at time: TimeInterval) -> Action {
@@ -71,25 +82,25 @@ struct HotkeyStateMachine {
     }
 
     private mutating func handleDown() -> Action {
-        switch mode {
-        case .rightCommandHold, .rightOptionHold, .rightControlHold:
+        switch activation {
+        case .holdToTalk:
             guard !isActive else { return .none }
             isActive = true
             return .start
-        case .rightCommandDoubleTap:
+        case .doubleTapLock:
             return .none
         }
     }
 
     private mutating func handleUp(at time: TimeInterval) -> Action {
-        switch mode {
-        case .rightCommandHold, .rightOptionHold, .rightControlHold:
+        switch activation {
+        case .holdToTalk:
             guard isActive else { return .none }
             isActive = false
             // A press shorter than the minimum is an accidental tap.
             return (time - lastDownTime) < Constants.minRecordingDuration ? .cancel : .stop
 
-        case .rightCommandDoubleTap:
+        case .doubleTapLock:
             let holdDuration = time - lastDownTime
             guard holdDuration <= Constants.tapMaxDuration else { return .none }
 
@@ -125,6 +136,7 @@ final class HotkeyManager {
     private var runLoopSource: CFRunLoopSource?
     private var stateMachine: HotkeyStateMachine
     private var mode: HotkeyOption
+    private var activation: HotkeyActivation
 
     /// Device-dependent modifier flag bits (IOKit NX_DEVICE* masks).
     private enum DeviceFlag {
@@ -133,9 +145,12 @@ final class HotkeyManager {
         static let rightControl: UInt64 = 0x0000_2000
     }
 
-    init(mode: HotkeyOption) {
+    /// - Parameter activation: Defaults to `.holdToTalk` so existing call
+    ///   sites that only pass `mode:` keep their exact prior behavior.
+    init(mode: HotkeyOption, activation: HotkeyActivation = .holdToTalk) {
         self.mode = mode
-        self.stateMachine = HotkeyStateMachine(mode: mode)
+        self.activation = activation
+        self.stateMachine = HotkeyStateMachine(mode: mode, activation: activation)
     }
 
     deinit {
@@ -147,7 +162,13 @@ final class HotkeyManager {
     func updateMode(_ newMode: HotkeyOption) {
         guard newMode != mode else { return }
         mode = newMode
-        stateMachine = HotkeyStateMachine(mode: newMode)
+        stateMachine = HotkeyStateMachine(mode: newMode, activation: activation)
+    }
+
+    func updateActivation(_ newActivation: HotkeyActivation) {
+        guard newActivation != activation else { return }
+        activation = newActivation
+        stateMachine = HotkeyStateMachine(mode: mode, activation: newActivation)
     }
 
     /// Force-stops an active session in the state machine (caller handles the recorder).

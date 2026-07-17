@@ -290,7 +290,7 @@ enum AppContextClassifier {
 /// The kind of text field currently holding the caret. Used to refine
 /// formatting: a single-line or search field can't hold line breaks or
 /// paragraphs, so dictated structure is flattened before it's inserted.
-enum FocusedFieldKind {
+enum FocusedFieldKind: String {
     case singleLine   // AXTextField — a one-line input (URL bar, form field)
     case multiLine    // AXTextArea — a multi-line editor or composer
     case search       // AXSearchField subrole — Spotlight, a search box
@@ -314,32 +314,6 @@ enum FocusedFieldClassifier {
         if role == kAXTextAreaRole as String { return .multiLine }
         if role == kAXTextFieldRole as String { return .singleLine }
         return .unknown
-    }
-
-    /// Reads the system-wide focused element's role + subrole and maps them to a
-    /// `FocusedFieldKind`. A single cheap AX round-trip; resilient by design —
-    /// returns `.unknown` on any failure (no focus, missing attribute, not
-    /// trusted) rather than throwing or blocking. Mirrors the focused-element
-    /// read in `TextInserter.precedingContext()`.
-    static func classifyFocusedField() -> FocusedFieldKind {
-        let system = AXUIElementCreateSystemWide()
-        var focusedObj: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(
-                system, kAXFocusedUIElementAttribute as CFString, &focusedObj) == .success,
-              let focused = focusedObj else { return .unknown }
-        let element = focused as! AXUIElement
-
-        // One AX round-trip for role + subrole instead of two. A missing attribute comes
-        // back as a non-String entry (a wrapped error / null), which `as? String` maps to
-        // nil — exactly the "absent subrole" case the classifier already tolerates.
-        let attributes = [kAXRoleAttribute, kAXSubroleAttribute] as CFArray
-        var valuesObj: CFArray?
-        guard AXUIElementCopyMultipleAttributeValues(
-                element, attributes, AXCopyMultipleAttributeOptions(rawValue: 0), &valuesObj) == .success,
-              let values = valuesObj as? [AnyObject], values.count == 2 else {
-            return .unknown
-        }
-        return kind(role: values[0] as? String, subrole: values[1] as? String)
     }
 
     /// Collapses text to a single clean line for a single-line/search field:

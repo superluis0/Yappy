@@ -30,6 +30,9 @@
 		B10000A700000000000000A1 /* AskAnswerBlocks.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000A700000000000000A1 /* AskAnswerBlocks.swift */; };
 		B10000AL00000000000000A1 /* TTSTextNormalizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000AL00000000000000A1 /* TTSTextNormalizer.swift */; };
 		B10000AX00000000000000A1 /* CommandCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000AX00000000000000A1 /* CommandCatalog.swift */; };
+		B10000AZ00000000000000A1 /* TransformEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000AZ00000000000000A1 /* TransformEngine.swift */; };
+		B10000BA00000000000000A1 /* SelectionTransformController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000BA00000000000000A1 /* SelectionTransformController.swift */; };
+		B10000BB00000000000000A1 /* SelectionTransformView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000BB00000000000000A1 /* SelectionTransformView.swift */; };
 		B10000AY00000000000000A1 /* CommandsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000AY00000000000000A1 /* CommandsView.swift */; };
 		B100009800000000000000A1 /* AskRun.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200009800000000000000A1 /* AskRun.swift */; };
 		B100009900000000000000A1 /* CodexEvent.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200009900000000000000A1 /* CodexEvent.swift */; };
@@ -177,6 +180,9 @@
 		B20000A700000000000000A1 /* AskAnswerBlocks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AskAnswerBlocks.swift; sourceTree = "<group>"; };
 		B20000AL00000000000000A1 /* TTSTextNormalizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TTSTextNormalizer.swift; sourceTree = "<group>"; };
 		B20000AX00000000000000A1 /* CommandCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandCatalog.swift; sourceTree = "<group>"; };
+		B20000AZ00000000000000A1 /* TransformEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransformEngine.swift; sourceTree = "<group>"; };
+		B20000BA00000000000000A1 /* SelectionTransformController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SelectionTransformController.swift; sourceTree = "<group>"; };
+		B20000BB00000000000000A1 /* SelectionTransformView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SelectionTransformView.swift; sourceTree = "<group>"; };
 		B20000AY00000000000000A1 /* CommandsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandsView.swift; sourceTree = "<group>"; };
 		B200009800000000000000A1 /* AskRun.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AskRun.swift; sourceTree = "<group>"; };
 		B200009900000000000000A1 /* CodexEvent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexEvent.swift; sourceTree = "<group>"; };
@@ -370,6 +376,7 @@
 				B20000A700000000000000A1 /* AskAnswerBlocks.swift */,
 				B20000AL00000000000000A1 /* TTSTextNormalizer.swift */,
 				B20000AX00000000000000A1 /* CommandCatalog.swift */,
+				B20000AZ00000000000000A1 /* TransformEngine.swift */,
 				B200009800000000000000A1 /* AskRun.swift */,
 				B200009900000000000000A1 /* CodexEvent.swift */,
 				B200009A00000000000000A1 /* GrokEvent.swift */,
@@ -406,6 +413,7 @@
 				B200000A00000000000000A1 /* HotkeyManager.swift */,
 				B20000AG00000000000000A1 /* AskBackendClient.swift */,
 				B20000A400000000000000A1 /* AskController.swift */,
+				B20000BA00000000000000A1 /* SelectionTransformController.swift */,
 				B20000A000000000000000A1 /* VLog.swift */,
 				B20000A100000000000000A1 /* AskHotkey.swift */,
 				B20000A200000000000000A1 /* GrokAskClient.swift */,
@@ -440,6 +448,7 @@
 				B20000AA00000000000000A1 /* AskHistoryView.swift */,
 				B20000A500000000000000A1 /* AskPillView.swift */,
 				B20000AY00000000000000A1 /* CommandsView.swift */,
+				B20000BB00000000000000A1 /* SelectionTransformView.swift */,
 				B20000A600000000000000A1 /* AskPillController.swift */,
 				B200000E00000000000000A1 /* MainWindow.swift */,
 				B200000F00000000000000A1 /* HomeView.swift */,
@@ -639,6 +648,9 @@
 				B10000A700000000000000A1 /* AskAnswerBlocks.swift in Sources */,
 				B10000AL00000000000000A1 /* TTSTextNormalizer.swift in Sources */,
 				B10000AX00000000000000A1 /* CommandCatalog.swift in Sources */,
+				B10000AZ00000000000000A1 /* TransformEngine.swift in Sources */,
+				B10000BA00000000000000A1 /* SelectionTransformController.swift in Sources */,
+				B10000BB00000000000000A1 /* SelectionTransformView.swift in Sources */,
 				B10000AY00000000000000A1 /* CommandsView.swift in Sources */,
 				B100009800000000000000A1 /* AskRun.swift in Sources */,
 				B100009900000000000000A1 /* CodexEvent.swift in Sources */,
@@ -914,7 +926,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 2.9.1;
+				MARKETING_VERSION = 3.0.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.yappy.app.debug;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -946,7 +958,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 2.9.1;
+				MARKETING_VERSION = 3.0.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.yappy.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;

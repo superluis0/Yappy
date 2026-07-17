@@ -257,6 +257,61 @@ final class AppStateTests: XCTestCase {
         XCTAssertEqual(state.failureMessage, "Couldn't insert — click to copy")
         XCTAssertEqual(state.failureRecoveryText, "hello world")
         XCTAssertFalse(state.failureRecoveryCopied)
+        XCTAssertEqual(state.failureRecoveryMode, .copy)
+    }
+
+    func testInsertRetrySuccessStateClears() {
+        state.showFailure(
+            "Couldn't insert — click to retry",
+            recoveryText: "same text",
+            recoveryMode: .retry
+        )
+        state.activateFailureRecovery()
+
+        XCTAssertTrue(state.failureRecoveryRetryRequested)
+        XCTAssertEqual(state.failureRecoveryMode, .retry)
+
+        state.completeFailureRecoveryRetry()
+        XCTAssertNil(state.failureRecoveryText)
+        XCTAssertNil(state.failureRecoveryMode)
+        XCTAssertFalse(state.failureRecoveryRetryRequested)
+    }
+
+    func testInsertRetryFailureTransitionsToCopyAndAllowsNoSecondRetry() {
+        state.showFailure(
+            "Couldn't insert — click to retry",
+            recoveryText: "same text",
+            recoveryMode: .retry
+        )
+        state.activateFailureRecovery()
+        state.activateFailureRecovery()
+        XCTAssertTrue(state.failureRecoveryRetryRequested)
+
+        state.transitionRetryFailureToCopy()
+        XCTAssertEqual(state.failureMessage, "Couldn't insert — click to copy")
+        XCTAssertEqual(state.failureRecoveryMode, .copy)
+
+        // The next activation copies; it can never request another retry.
+        let saved = NSPasteboard.general.string(forType: .string)
+        defer {
+            NSPasteboard.general.clearContents()
+            if let saved { NSPasteboard.general.setString(saved, forType: .string) }
+        }
+        state.activateFailureRecovery()
+        XCTAssertTrue(state.failureRecoveryCopied)
+        XCTAssertNil(state.failureRecoveryMode)
+    }
+
+    func testPillAccessibilityLabelReflectsState() {
+        XCTAssertEqual(state.pillAccessibilityLabel, "Yappy")
+        state.startRecording()
+        XCTAssertEqual(state.pillAccessibilityLabel, "Recording")
+        state.stopRecording()
+        XCTAssertEqual(state.pillAccessibilityLabel, "Processing")
+        state.beginPolishing()
+        XCTAssertEqual(state.pillAccessibilityLabel, "Processing, polishing")
+        state.showFailure("Couldn't insert — click to retry")
+        XCTAssertEqual(state.pillAccessibilityLabel, "Couldn't insert — click to retry")
     }
 
     func testCopyFailureRecoveryWritesPasteboardAndMarksCopied() {
@@ -302,6 +357,57 @@ final class AppStateTests: XCTestCase {
         XCTAssertFalse(state.failureRecoveryCopied)
     }
 
+    // MARK: - Neutral info caption
+
+    func testShowInfoSetsMessageWithoutFailureStylingFields() {
+        state.startRecording()
+        state.stopRecording()
+
+        let applied = AppliedAlias(heard: "lewis", corrected: "Luis", createdTerm: false)
+        state.showInfo("Learned \u{201c}Luis\u{201d} — click to undo", action: .undoLearnedAlias(applied))
+
+        XCTAssertEqual(state.infoMessage, "Learned \u{201c}Luis\u{201d} — click to undo")
+        XCTAssertEqual(state.infoAction, .undoLearnedAlias(applied))
+        XCTAssertFalse(state.infoActionTriggered)
+        XCTAssertNil(state.failureMessage, "info must not set failure fields")
+        XCTAssertNil(state.failureRecoveryText)
+        XCTAssertFalse(state.isProcessing)
+    }
+
+    func testShowInfoClearsPriorFailure() {
+        state.showFailure("No audio from the mic", recoveryText: "x")
+        state.showInfo("Polished — click to use your exact words", action: .useRawTranscript)
+        XCTAssertNil(state.failureMessage)
+        XCTAssertNil(state.failureRecoveryText)
+        XCTAssertEqual(state.infoAction, .useRawTranscript)
+    }
+
+    func testTriggerInfoActionSetsFlag() {
+        state.showInfo("Polished — click to use your exact words", action: .useRawTranscript)
+        state.triggerInfoAction()
+        XCTAssertTrue(state.infoActionTriggered)
+    }
+
+    func testTriggerInfoActionNoopsWithoutAction() {
+        state.triggerInfoAction()
+        XCTAssertFalse(state.infoActionTriggered)
+    }
+
+    func testResetClearsInfoCaption() {
+        state.showInfo("Learned x", action: .copyRaw("x"))
+        state.reset()
+        XCTAssertNil(state.infoMessage)
+        XCTAssertNil(state.infoAction)
+        XCTAssertFalse(state.infoActionTriggered)
+    }
+
+    func testStartRecordingClearsInfoCaption() {
+        state.showInfo("Learned x", action: .useRawTranscript)
+        state.startRecording()
+        XCTAssertNil(state.infoMessage)
+        XCTAssertNil(state.infoAction)
+    }
+
     // MARK: - Dictation failure captions
 
     func testDictationFailureCaptionAccessibilityDenied() {
@@ -333,6 +439,7 @@ final class AppStateTests: XCTestCase {
 
     func testEmptyTranscriptCaptionConstant() {
         XCTAssertEqual(AppDelegate.emptyTranscriptCaption, "Didn't catch that")
+        XCTAssertEqual(AppDelegate.insertFailureRetryCaption, "Couldn't insert — click to retry")
     }
 
     // MARK: - UpdateChecker quiet "up to date" feedback

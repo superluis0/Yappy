@@ -8,6 +8,23 @@ import XCTest
 
 final class ContinuationCasingTests: XCTestCase {
 
+    func testInsertTimingFormatterContainsOnlyDeclaredMetrics() {
+        let timing = TextInserter.InsertTiming(
+            cleanupMs: 12, classifyMs: 3, spaceMs: 1,
+            snapMs: 4, snapBytes: 2048, confirmMs: 51,
+            restoreMs: 2, opaque: false, polls: 2,
+            field: FocusedFieldKind.singleLine, words: 3
+        )
+
+        XCTAssertEqual(
+            timing.formattedLine,
+            "insert-timing cleanup_ms=12 classify_ms=3 space_ms=1 snap_ms=4 "
+                + "snap_bytes=2048 confirm_ms=51 restore_ms=2 opaque=0 polls=2 "
+                + "field=singleLine words=3"
+        )
+        XCTAssertFalse(timing.formattedLine.contains("transcript"))
+    }
+
     // MARK: - continuesSentence(after:)
 
     func testContinuesAfterWord() {

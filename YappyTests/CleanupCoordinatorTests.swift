@@ -22,17 +22,23 @@ private final class FakeCleanupProvider: CleanupProvider {
     private(set) var cleanupCallCount = 0
     /// Count of batched cleanup calls.
     private(set) var batchedCallCount = 0
+    /// Intensities observed on single-line cleanup calls (order-preserving).
+    private(set) var lastIntensities: [CleanupIntensity] = []
+    /// Intensities observed on batched cleanup calls.
+    private(set) var lastBatchedIntensities: [CleanupIntensity] = []
 
     func isAvailable() async -> Bool { true }
 
-    func cleanup(_ text: String, tone: ToneStyle, backtrack: Bool) async -> String {
+    func cleanup(_ text: String, tone: ToneStyle, backtrack: Bool, intensity: CleanupIntensity) async -> String {
         cleanupCallCount += 1
+        lastIntensities.append(intensity)
         if let mapped = singleLineMap[text] { return mapped }
         return text + defaultCleanupSuffix
     }
 
-    func cleanupBatched(lines: [String], tone: ToneStyle, backtrack: Bool) async -> [String]? {
+    func cleanupBatched(lines: [String], tone: ToneStyle, backtrack: Bool, intensity: CleanupIntensity) async -> [String]? {
         batchedCallCount += 1
+        lastBatchedIntensities.append(intensity)
         if let explicit = batchedResult {
             return explicit
         }
@@ -161,15 +167,186 @@ final class CleanupCoordinatorTests: XCTestCase {
         let coordinator = CleanupCoordinator(settings: settings, provider: provider)
 
         let result = await coordinator.cleanup(
-            "hello world",
+            "hello wonderful wide world",
             tone: .casual,
             backtrack: false,
             cleanupEnabled: true
         )
 
         // Casualize may drop a trailing period but not " ok".
-        XCTAssertEqual(result, "hello world ok")
+        XCTAssertEqual(result, "hello wonderful wide world ok")
         XCTAssertEqual(provider.cleanupCallCount, 1)
         XCTAssertEqual(provider.batchedCallCount, 0)
+    }
+
+    // MARK: - Intensity routing
+
+    func testIntensityStandardPassedToProvider() async {
+        settings.cleanupIntensity = .standard
+        let provider = FakeCleanupProvider()
+        let coordinator = CleanupCoordinator(settings: settings, provider: provider)
+
+        // Long enough that the trivial-utterance skip gate never fires — the
+        // intensity assertion needs the provider round-trip to happen.
+        _ = await coordinator.cleanup(
+            "so i was thinking we should probably meet tomorrow afternoon",
+            tone: .casual, backtrack: false, cleanupEnabled: true
+        )
+
+        XCTAssertEqual(provider.lastIntensities, [.standard])
+    }
+
+    func testIntensityConservativePassedToProvider() async {
+        settings.cleanupIntensity = .conservative
+        let provider = FakeCleanupProvider()
+        let coordinator = CleanupCoordinator(settings: settings, provider: provider)
+
+        // Long enough that the trivial-utterance skip gate never fires — the
+        // intensity assertion needs the provider round-trip to happen.
+        _ = await coordinator.cleanup(
+            "so i was thinking we should probably meet tomorrow afternoon",
+            tone: .casual, backtrack: false, cleanupEnabled: true
+        )
+
+        XCTAssertEqual(provider.lastIntensities, [.conservative])
+    }
+
+    func testIntensityOverrideIgnoresSettings() async {
+        settings.cleanupIntensity = .standard
+        let provider = FakeCleanupProvider()
+        let coordinator = CleanupCoordinator(settings: settings, provider: provider)
+
+        _ = await coordinator.cleanup(
+            "so i was thinking we should probably meet tomorrow afternoon",
+            tone: .casual, backtrack: false, cleanupEnabled: true,
+            intensity: .conservative
+        )
+
+        XCTAssertEqual(provider.lastIntensities, [.conservative])
+    }
+
+    // MARK: - Skip-path sentence casing (rubric parity: short-01/02, num-03)
+
+    func testSkippedUtterancesMatchTheEvalGold() async {
+        let coordinator = CleanupCoordinator(settings: settings, provider: nil)
+        // The three <=3-word rubric cases the skip gate now owns: their gold
+        // outputs are exactly capitalize + terminal period.
+        for (input, gold) in [
+            ("sounds good", "Sounds good."),
+            ("no", "No."),
+            ("word count", "Word count."),
+        ] {
+            let out = await coordinator.cleanup(
+                input, tone: .formal, backtrack: false, cleanupEnabled: true
+            )
+            XCTAssertEqual(out, gold)
+        }
+    }
+
+    func testSentenceCasedRespectsExistingPunctuationAndCase() {
+        XCTAssertEqual(CleanupCoordinator.sentenceCased("Done!"), "Done!")
+        XCTAssertEqual(CleanupCoordinator.sentenceCased("OK"), "OK.")
+        XCTAssertEqual(CleanupCoordinator.sentenceCased("  yes  "), "Yes.")
+        XCTAssertEqual(CleanupCoordinator.sentenceCased(""), "")
+    }
+
+    // MARK: - Diff caption decision
+
+    func testDiffCaptionWhenCleanupChangedText() {
+        XCTAssertTrue(CleanupCoordinator.shouldShowDiffCaption(
+            raw: "hello world",
+            final: "Hello world.",
+            cleanupRan: true,
+            captionEnabled: true
+        ))
+    }
+
+    func testDiffCaptionPunctuationOnlyStillCounts() {
+        // Spec: simple inequality after trim — punctuation-only still counts.
+        XCTAssertTrue(CleanupCoordinator.shouldShowDiffCaption(
+            raw: "hello",
+            final: "hello.",
+            cleanupRan: true,
+            captionEnabled: true
+        ))
+    }
+
+    func testDiffCaptionNeverWhenCleanupSkipped() {
+        XCTAssertFalse(CleanupCoordinator.shouldShowDiffCaption(
+            raw: "hello",
+            final: "Hello.",
+            cleanupRan: false,
+            captionEnabled: true
+        ))
+    }
+
+    func testDiffCaptionNeverWhenDisabled() {
+        XCTAssertFalse(CleanupCoordinator.shouldShowDiffCaption(
+            raw: "hello",
+            final: "Hello.",
+            cleanupRan: true,
+            captionEnabled: false
+        ))
+    }
+
+    func testDiffCaptionNeverWhenIdenticalAfterTrim() {
+        XCTAssertFalse(CleanupCoordinator.shouldShowDiffCaption(
+            raw: "  Hello.  ",
+            final: "Hello.",
+            cleanupRan: true,
+            captionEnabled: true
+        ))
+    }
+
+    func testShouldSkipModelCleanupConservativeTable() {
+        struct Case {
+            let text: String
+            let tone: ToneStyle
+            let backtrack: Bool
+            let expected: Bool
+        }
+        let cases: [Case] = [
+            .init(text: "hello", tone: .casual, backtrack: true, expected: true),
+            .init(text: "thanks so much", tone: .formal, backtrack: true, expected: true),
+            .init(text: "delete that", tone: .casual, backtrack: true, expected: false),
+            .init(text: "no wait Tuesday", tone: .casual, backtrack: true, expected: false),
+            .init(text: "is that okay?", tone: .casual, backtrack: true, expected: false),
+            .init(text: "- first item", tone: .casual, backtrack: true, expected: false),
+            .init(text: "1. first item", tone: .casual, backtrack: true, expected: false),
+            .init(text: "one two three four", tone: .casual, backtrack: true, expected: false),
+            .init(text: "hello world", tone: .verbatim, backtrack: true, expected: false),
+            .init(text: "", tone: .casual, backtrack: true, expected: false),
+        ]
+
+        for item in cases {
+            XCTAssertEqual(
+                CleanupCoordinator.shouldSkipModelCleanup(
+                    text: item.text, tone: item.tone, backtrack: item.backtrack
+                ),
+                item.expected,
+                "unexpected gate result for \(item.text)"
+            )
+        }
+    }
+
+    func testSkippedCleanupStillAppliesToneWithoutProviderCall() async {
+        let provider = FakeCleanupProvider()
+        let coordinator = CleanupCoordinator(settings: settings, provider: provider)
+
+        let result = await coordinator.cleanup(
+            "don't wait", tone: .formal, backtrack: true, cleanupEnabled: true
+        )
+
+        XCTAssertEqual(result, "Do not wait.")
+        XCTAssertEqual(provider.cleanupCallCount, 0)
+        XCTAssertEqual(provider.batchedCallCount, 0)
+    }
+
+    func testSkippedCleanupAppliesToneEvenWithoutProvider() async {
+        let coordinator = CleanupCoordinator(settings: settings)
+        let result = await coordinator.cleanup(
+            "don't wait", tone: .formal, backtrack: true, cleanupEnabled: true
+        )
+        XCTAssertEqual(result, "Do not wait.")
     }
 }

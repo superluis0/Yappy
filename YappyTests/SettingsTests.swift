@@ -31,8 +31,12 @@ final class SettingsTests: XCTestCase {
 
     func testDefaultValues() {
         XCTAssertEqual(settings.hotkeyOption, .rightCommandHold)
+        XCTAssertEqual(settings.hotkeyActivation, .holdToTalk)
         XCTAssertFalse(settings.launchAtLogin)
         XCTAssertTrue(settings.cleanupEnabled, "AI cleanup is on by default")
+        XCTAssertEqual(settings.cleanupIntensity, .standard, "Standard cleanup intensity by default")
+        XCTAssertTrue(settings.cleanupDiffCaptionEnabled, "Polish caption on by default")
+        XCTAssertTrue(settings.dictionaryAutoLearnEnabled, "Dictionary auto-learn on by default")
         XCTAssertTrue(settings.audioFeedbackEnabled)
         XCTAssertEqual(settings.audioFeedbackVolume, 0.5)
         XCTAssertTrue(settings.contextAwareToneEnabled)
@@ -73,6 +77,31 @@ final class SettingsTests: XCTestCase {
         settings.listeningGlowStyle = .orange
         let reloaded = Settings(defaults: defaults)
         XCTAssertEqual(reloaded.listeningGlowStyle, .orange, "A chosen glow style survives relaunch on the same suite")
+    }
+
+    func testAskHotkeyOptionDefaultsToFnAndPersists() {
+        XCTAssertEqual(settings.askHotkeyOption, .fnGlobe)
+        settings.askHotkeyOption = .rightControl
+        let reloaded = Settings(defaults: defaults)
+        XCTAssertEqual(reloaded.askHotkeyOption, .rightControl, "A chosen Ask key survives relaunch on the same suite")
+    }
+
+    func testCleanupIntensityAndAutoLearnPersist() {
+        settings.cleanupIntensity = .conservative
+        settings.cleanupDiffCaptionEnabled = false
+        settings.dictionaryAutoLearnEnabled = false
+        let reloaded = Settings(defaults: defaults)
+        XCTAssertEqual(reloaded.cleanupIntensity, .conservative)
+        XCTAssertFalse(reloaded.cleanupDiffCaptionEnabled)
+        XCTAssertFalse(reloaded.dictionaryAutoLearnEnabled)
+    }
+
+    func testVoiceEditAnywhereDefaultsOffAndPersists() {
+        XCTAssertFalse(settings.voiceEditAnywhereEnabled,
+                       "Voice Edit Anywhere is experimental — OFF by default")
+        settings.voiceEditAnywhereEnabled = true
+        let reloaded = Settings(defaults: defaults)
+        XCTAssertTrue(reloaded.voiceEditAnywhereEnabled, "A chosen value survives relaunch on the same suite")
     }
 
     func testToneResolution() {
@@ -119,7 +148,10 @@ final class SettingsTests: XCTestCase {
     }
 
     func testPersistenceWithHotkeyOption() {
-        for option in HotkeyOption.allCases {
+        // `.rightCommandDoubleTap` is intentionally excluded: it no longer
+        // round-trips verbatim by design — see
+        // `testLegacyDoubleTapPresetMigratesToHoldKeyPlusDoubleTapLockActivation`.
+        for option in HotkeyOption.allCases where option != .rightCommandDoubleTap {
             settings.hotkeyOption = option
             let reloaded = Settings(defaults: defaults)
             XCTAssertEqual(reloaded.hotkeyOption, option)
@@ -275,6 +307,70 @@ final class SettingsTests: XCTestCase {
         }
     }
 
+    // MARK: - HotkeyActivation
+
+    func testHotkeyActivationDefaultsToHoldToTalkAndPersists() {
+        XCTAssertEqual(settings.hotkeyActivation, .holdToTalk)
+        settings.hotkeyActivation = .doubleTapLock
+        let reloaded = Settings(defaults: defaults)
+        XCTAssertEqual(reloaded.hotkeyActivation, .doubleTapLock,
+                        "A chosen activation survives relaunch on the same suite")
+    }
+
+    func testHotkeyActivationCaseIterable() {
+        XCTAssertEqual(HotkeyActivation.allCases.count, 2)
+    }
+
+    func testHotkeyActivationCodable() throws {
+        for activation in HotkeyActivation.allCases {
+            let data = try JSONEncoder().encode(activation)
+            let decoded = try JSONDecoder().decode(HotkeyActivation.self, from: data)
+            XCTAssertEqual(decoded, activation)
+        }
+    }
+
+    func testHotkeyActivationResets() {
+        settings.hotkeyActivation = .doubleTapLock
+        settings.reset()
+        XCTAssertEqual(settings.hotkeyActivation, .holdToTalk)
+    }
+
+    // MARK: - Legacy double-tap preset migration
+
+    func testLegacyDoubleTapPresetMigratesToHoldKeyPlusDoubleTapLockActivation() {
+        // Simulate a pre-migration install: only the OLD raw `hotkeyOption`
+        // value is on disk, as a build predating `hotkeyActivation` would have
+        // left it.
+        defaults.set(HotkeyOption.rightCommandDoubleTap.rawValue, forKey: "com.yappy.hotkeyOption")
+
+        let migrated = Settings(defaults: defaults)
+
+        XCTAssertEqual(migrated.hotkeyOption, .rightCommandHold,
+                        "Legacy double-tap preset keeps the Right ⌘ key")
+        XCTAssertEqual(migrated.hotkeyActivation, .doubleTapLock,
+                        "...and moves double-tap timing to the new activation setting")
+
+        // PERSISTED, not just corrected in memory — a later launch must not
+        // need to re-migrate, and must never silently regress to hold-to-talk.
+        XCTAssertEqual(defaults.string(forKey: "com.yappy.hotkeyOption"), HotkeyOption.rightCommandHold.rawValue)
+        XCTAssertEqual(defaults.string(forKey: "com.yappy.hotkeyActivation"), HotkeyActivation.doubleTapLock.rawValue)
+
+        let relaunchedAgain = Settings(defaults: defaults)
+        XCTAssertEqual(relaunchedAgain.hotkeyOption, .rightCommandHold)
+        XCTAssertEqual(relaunchedAgain.hotkeyActivation, .doubleTapLock)
+    }
+
+    func testNonLegacyHotkeyOptionsAreUnaffectedByMigration() {
+        for option in HotkeyOption.allCases where option != .rightCommandDoubleTap {
+            settings.hotkeyActivation = .doubleTapLock // an explicit user choice
+            settings.hotkeyOption = option
+            let reloaded = Settings(defaults: defaults)
+            XCTAssertEqual(reloaded.hotkeyOption, option)
+            XCTAssertEqual(reloaded.hotkeyActivation, .doubleTapLock,
+                            "migration must only ever touch the legacy double-tap preset")
+        }
+    }
+
     // MARK: - TranscriptionModel
 
     func testTranscriptionModelDisplayName() {
@@ -334,7 +430,9 @@ final class CommandCatalogTests: XCTestCase {
     /// silently drops one of them fails a test instead of shipping quietly.
     func testKnownParserPhrasesArePresent() {
         let allPhrases = Set(CommandCatalog.sections.flatMap { $0.entries.map(\.phrase) })
-        for phrase in ["scratch that", "press enter", "copy that", "new paragraph"] {
+        // "comma" is also featured in OnboardingView's model-download mini-deck
+        // (`CommandDeck.featuredPhrases`), looked up by this exact string.
+        for phrase in ["scratch that", "press enter", "copy that", "new paragraph", "comma"] {
             XCTAssertTrue(allPhrases.contains(phrase), "Missing expected phrase \"\(phrase)\"")
         }
     }
