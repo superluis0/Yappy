@@ -115,7 +115,7 @@ Pick your answering model — **Codex (gpt-5.5)** or **Grok** (Composer 2.5 Fast
 
 **Clean transcripts** — standalone fillers (*"um"*, *"uh"*) are stripped and the punctuation around them healed; say *"new line"* or *"new paragraph"* to insert real line breaks while you dictate. Both are toggles, and low-confidence noise decodes are discarded instead of inserted as garbage.
 
-**Spoken punctuation** — dictate the marks you want: *"comma"*, *"period"*, *"question mark"*, *"open paren … close paren."* It matches whole words only, so plurals and embedded words are safe — and it's a toggle if you'd rather say those words literally.
+**Spoken punctuation** — dictate the marks you want: *"comma"*, *"period"*, *"question mark"*, *"open paren … close paren."* It matches whole words only, so plurals and embedded words are safe, and it reads the words around them: *"she missed her period"*, *"add a dash of salt"*, and *"each period lasts twenty minutes"* stay as you said them, because a mark word straight after *a*, *the*, *her*, *his*, *each* and friends is a noun, not a command. It's also a toggle if you'd rather say those words literally.
 
 **Backtrack** — change your mind mid-sentence and Yappy keeps the correction: *"let's meet at 2, actually 3"* lands as *"Let's meet at 3."* Part of the optional AI cleanup, so it rides along with whatever else cleanup is doing.
 
@@ -261,7 +261,7 @@ Yappy's two capabilities have different privacy stories, and we'd rather you kno
 xcodebuild -project Yappy.xcodeproj -scheme Yappy test
 ```
 
-Over 800 tests cover the hotkey state machine, settings persistence and migration, the transcript pipeline (numbers, lists, spoken punctuation, cross-stage interactions), the AI-cleanup accept/reject guard policy (never answer, never invent, never drop), deterministic tone transforms, the custom dictionary with speech-model term boosting and correction mining, the notes store, history-based shortcut suggestions, voice-command parsing, adaptive per-app mode resolution, dictation history and stats, voice-shortcut expansion, app-context classification, and the Answers stack (run state machine, Fn-hold state machine, controller orchestration driven through injected fakes — follow-ups, insert-at-cursor, and card voice commands, Codex/Grok wire-format parsers, block markdown rendering, and answer history persistence).
+Over 1,000 tests cover the hotkey state machine, settings persistence and migration, the transcript pipeline (numbers, lists, spoken punctuation, cross-stage interactions), the AI-cleanup accept/reject guard policy (never answer, never invent, never drop), deterministic tone transforms, the custom dictionary with speech-model term boosting and correction mining, the notes store, history-based shortcut suggestions, voice-command parsing, adaptive per-app mode resolution, dictation history and stats, voice-shortcut expansion, app-context classification, and the Answers stack (run state machine, Fn-hold state machine, controller orchestration driven through injected fakes — follow-ups, insert-at-cursor, and card voice commands, Codex/Grok wire-format parsers, block markdown rendering, and answer history persistence).
 
 ## Built with
 
