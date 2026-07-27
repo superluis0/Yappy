@@ -6,13 +6,8 @@
 	     silently denies and the app never appears in Privacy > Microphone. -->
 	<key>com.apple.security.device.audio-input</key>
 	<true/>
-	<!-- Allow loading the embedded Sparkle framework under Hardened Runtime. The
-	     local "Yappy Local Signing" dev cert has no Apple Team ID, so Library
-	     Validation rejects the (matching-cert, no-Team-ID) framework at launch.
-	     Developer ID release builds re-sign Sparkle with the same real Team ID, so
-	     this is only strictly required for local installs — but it is notarization-
-	     safe and standard for apps embedding third-party frameworks. -->
-	<key>com.apple.security.cs.disable-library-validation</key>
-	<true/>
+	<!-- Library Validation remains enabled: local and release builds sign the app
+	     and embedded Sparkle code with Developer ID Team JY8DZXQ5P2. FluidAudio
+	     is statically linked, so it adds no separately validated runtime code. -->
 </dict>
 </plist>

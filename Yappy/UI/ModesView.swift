@@ -163,6 +163,7 @@ struct ModesView: View {
                             .foregroundStyle(Brand.ink3)
                     }
                     .buttonStyle(.borderless)
+                    .accessibilityLabel("Edit \(mode.name)")
 
                     Button {
                         store.delete(mode)
@@ -173,6 +174,7 @@ struct ModesView: View {
                             .foregroundStyle(Brand.ink4)
                     }
                     .buttonStyle(.borderless)
+                    .accessibilityLabel("Delete \(mode.name)")
                 }
             }
         }
@@ -243,6 +245,7 @@ struct ModesView: View {
                             .labelsHidden()
                             .toggleStyle(.switch)
                             .tint(.accentColor)
+                            .accessibilityLabel("Adapt to the app I'm using")
                     }
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)
@@ -324,6 +327,7 @@ struct ModesView: View {
             }
             .buttonStyle(.borderless)
             .help("Forget this app's mode")
+            .accessibilityLabel("Forget this app's mode")
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 11)

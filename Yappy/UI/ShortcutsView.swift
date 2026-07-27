@@ -252,6 +252,7 @@ struct ShortcutsView: View {
             .toggleStyle(.switch)
             .tint(.accentColor)
             .controlSize(.small)
+            .accessibilityLabel("\(shortcut.trigger) enabled")
 
             // Edit button
             Button {
@@ -265,6 +266,7 @@ struct ShortcutsView: View {
                     .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
             }
             .buttonStyle(.borderless)
+            .accessibilityLabel("Edit \(shortcut.trigger)")
 
             // Delete button
             Button(role: .destructive) {
@@ -277,6 +279,7 @@ struct ShortcutsView: View {
                     .background(Brand.danger.opacity(0.10), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
             }
             .buttonStyle(.borderless)
+            .accessibilityLabel("Delete \(shortcut.trigger)")
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)

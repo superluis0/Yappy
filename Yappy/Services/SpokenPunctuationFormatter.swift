@@ -95,14 +95,14 @@ enum SpokenPunctuationFormatter {
                     continue
                 }
 
-                // Single-word mark.
-                if let symbol = single[lw] {
+                // Single-word mark — skip when a determiner makes the noun reading certain.
+                if let symbol = single[lw], !staysLiteralNoun(tokens: tokens, index: i) {
                     emit(symbol, into: &out, capitalizeNext: &capitalizeNext, gapAction: &gapAction)
                     i += 1
                     continue
                 }
 
-                // Ordinary word.
+                // Ordinary word (including single-word marks kept as literal nouns).
                 out += capitalizeNext ? word.capitalizedFirstCharacter() : word
                 capitalizeNext = false
                 gapAction = .keep
@@ -126,6 +126,55 @@ enum SpokenPunctuationFormatter {
 
         while out.hasSuffix(" ") { out.removeLast() }
         return out
+    }
+
+    // MARK: - Prose guard (mark words stay as nouns)
+
+    /// Determiners after which a single-word mark reads as a literal noun
+    /// ("her period", "a dash of salt") rather than a punctuation command.
+    ///
+    /// The list is chosen on failure cost, not on grammar alone. Guarding too
+    /// eagerly leaves the spoken word visible in the text, which the user can
+    /// see and fix; not guarding silently deletes the word they actually said.
+    /// Visible-and-wrong beats silent-and-destructive, so a determiner reading
+    /// wins whenever it is the common one.
+    ///
+    /// Most entries genuinely cannot end a sentence, so suppressing after them
+    /// can never swallow a real command. FOUR can, and each is kept on purpose:
+    ///
+    ///   "her" / "his"  — also pronouns ("I gave it to her.", "The book is his.")
+    ///   "each"         — also adverbial ("They're five dollars each.")
+    ///   "another"      — also a pronoun ("I'll take another.")
+    ///
+    /// After these, "…each period" keeps the literal word instead of ending the
+    /// sentence. Accepted, because the reverse error is worse: "each period
+    /// lasts twenty minutes" would otherwise become "each. Lasts twenty
+    /// minutes", and "she missed her period" would become "she missed her." —
+    /// both still read as grammatical English, so the user may never notice the
+    /// words that went missing. A stray literal "period" is impossible to miss.
+    ///
+    /// Demonstratives ("this", "that", "these", "those") are deliberately absent:
+    /// they double as pronouns AND commonly end sentences, so "I don't like that
+    /// period" really does mean "I don't like that."
+    private static let nounDeterminers: Set<String> = [
+        "a", "an", "the",
+        "my", "your", "his", "her", "its", "our", "their",
+        "each", "every", "another",
+    ]
+
+    /// True when a single-word mark at `index` is preceded by a determiner and so
+    /// should stay a literal word.
+    ///
+    /// Lookback is exactly one whitespace-only gap + one word. A gap that already
+    /// contains punctuation (e.g. ",") means a different phrase and must not be
+    /// skipped; a two-token window would wrongly suppress "the store comma …".
+    static func staysLiteralNoun(tokens: [TranscriptTokenizer.Token], index: Int) -> Bool {
+        guard index >= 2,
+              case .gap(let gap) = tokens[index - 1], TranscriptTokenizer.isSpaceOnly(gap),
+              case .word(let previous) = tokens[index - 2] else {
+            return false
+        }
+        return nounDeterminers.contains(previous.lowercased())
     }
 
     // MARK: - Emission

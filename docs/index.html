@@ -266,7 +266,7 @@ a { color: inherit; text-decoration: none; }
 }
 /* The v2.9 listening glow: a rainbow ring that slowly circles the pill while
    it listens. A full-spectrum gradient under a looping hue-rotate reads as
-   uniform circling — the same trick the app itself uses. */
+   uniform circling: the same trick the app itself uses. */
 .pill::before, .final-card .pill-static::before {
   content: ''; position: absolute; inset: -2px; border-radius: inherit;
   padding: 2px; pointer-events: none;
@@ -597,7 +597,7 @@ footer { border-top: 1px solid var(--line-2); padding: clamp(3rem, 6vw, 4.5rem) 
         <span class="w">It</span> <span class="w">types.</span><br>
         <span class="w hollow">Everywhere</span> <span class="w hollow">on</span> <span class="w hollow">your</span> <span class="w hollow">Mac.</span>
       </h1>
-      <p class="hero-sub prep" data-rise>Hold a key, speak, release. Your words appear at the cursor in any app, usually in <b>under a second</b>. No API keys, no cloud, no subscriptions. Your voice never leaves the device.</p>
+      <p class="hero-sub prep" data-rise>Hold a key, speak, release. Your words appear at the cursor in any app, usually in <b>under a second</b>. No API keys, no cloud for dictation, no subscriptions. Your voice never leaves the device.</p>
       <div class="duo-tag prep" data-rise>
         <span class="chip voice"><span class="sw"></span>Hold to <b>dictate</b></span>
         <span class="chip answer"><span class="sw"></span>Hold Fn for <b>Answers</b></span>
@@ -702,7 +702,7 @@ footer { border-top: 1px solid var(--line-2); padding: clamp(3rem, 6vw, 4.5rem) 
         <div class="ask-copy prep" data-reveal>
           <span class="eyebrow"><span class="dot"></span>Optional · off by default</span>
           <h2 style="margin-top:1rem;">Sometimes you want an answer, not a transcript.</h2>
-          <p>Dictation types what you say. <b>Answers researches what you ask.</b> Hold <b>Fn</b>, say your question out loud, and the answer streams into a floating card, researched with live web search and shown with the sources it cited. The same listening glow rings the card from question to answer. It is the one feature that reaches the cloud, and it runs entirely on an AI account you already have.</p>
+          <p>Dictation types what you say. <b>Answers researches what you ask.</b> Hold <b>Fn</b>, say your question out loud, and the answer streams into a floating card, researched with live web search and shown with the sources it cited. The same listening glow rings the card from question to answer. It is the one feature that sends your question off this Mac, and it runs entirely on an AI account you already have.</p>
           <ul class="ask-flow">
             <li><span class="k">Hold Fn</span><span>Ask out loud. <span class="said">"Compare the M4 chips in a table."</span></span></li>
             <li><span class="k">Answer</span><span>It appears with <b>real tables, code, and clickable source chips</b>.</span></li>
@@ -885,6 +885,7 @@ footer { border-top: 1px solid var(--line-2); padding: clamp(3rem, 6vw, 4.5rem) 
         <span class="eyebrow"><span class="dot"></span>Private by design</span>
         <h2>Two capabilities. One honest line on each.</h2>
         <p>Dictation and Answers have different privacy stories, and we would rather you know exactly which is which.</p>
+        <p>The network is used only for model downloads, checking for and downloading app updates, and Answers when you enable it (through your own AI account). Yappy has no server, and your voice is never recorded to a file.</p>
       </div>
       <div class="split">
         <!-- Dictation panel: black, voice-orange -->
@@ -895,7 +896,7 @@ footer { border-top: 1px solid var(--line-2); padding: clamp(3rem, 6vw, 4.5rem) 
           <ul class="plist">
             <li>
               <span class="pk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></span>
-              <div><b>Audio is never written to disk</b><span>Transcribed on device, held only in memory, then discarded.</span></div>
+              <div><b>Your voice is never recorded to a file</b><span>Captured in memory, transcribed on device, then discarded.</span></div>
             </li>
             <li>
               <span class="pk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/></svg></span>
@@ -907,7 +908,7 @@ footer { border-top: 1px solid var(--line-2); padding: clamp(3rem, 6vw, 4.5rem) 
             </li>
             <li>
               <span class="pk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"/></svg></span>
-              <div><b>One network request, ever</b><span>The one-time model download. After that, dictation runs fully offline.</span></div>
+              <div><b>Network only for models and updates</b><span>Speech models download once. Sparkle checks for and downloads app updates. Dictation itself never needs the network.</span></div>
             </li>
           </ul>
         </div>
@@ -916,7 +917,7 @@ footer { border-top: 1px solid var(--line-2); padding: clamp(3rem, 6vw, 4.5rem) 
         <div class="panel answers prep" data-reveal>
           <span class="panel-badge">Answers · optional</span>
           <h3>Off by default.<span class="lead">Only your question travels.</span></h3>
-          <p>Answers is the one feature that reaches the cloud, and it stays dark until you turn it on. When you do, it sends the least it can, to an account that is yours.</p>
+          <p>Answers is the one feature that sends your question off this Mac, and it stays dark until you turn it on. When you do, it sends the least it can, to an account that is yours.</p>
           <ul class="plist">
             <li>
               <span class="pk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7l8-4Z"/></svg></span>

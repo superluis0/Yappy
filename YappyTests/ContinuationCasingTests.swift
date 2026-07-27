@@ -10,6 +10,7 @@ final class ContinuationCasingTests: XCTestCase {
 
     func testInsertTimingFormatterContainsOnlyDeclaredMetrics() {
         let timing = TextInserter.InsertTiming(
+            transcribeMs: 210, audioMs: 4300,
             cleanupMs: 12, classifyMs: 3, spaceMs: 1,
             snapMs: 4, snapBytes: 2048, confirmMs: 51,
             restoreMs: 2, opaque: false, polls: 2,
@@ -18,7 +19,8 @@ final class ContinuationCasingTests: XCTestCase {
 
         XCTAssertEqual(
             timing.formattedLine,
-            "insert-timing cleanup_ms=12 classify_ms=3 space_ms=1 snap_ms=4 "
+            "insert-timing transcribe_ms=210 audio_ms=4300 cleanup_ms=12 "
+                + "classify_ms=3 space_ms=1 snap_ms=4 "
                 + "snap_bytes=2048 confirm_ms=51 restore_ms=2 opaque=0 polls=2 "
                 + "field=singleLine words=3"
         )

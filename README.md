@@ -7,7 +7,7 @@
 <h3>Voice-to-text for macOS that runs entirely on your Mac.</h3>
 
 <p>Hold a key, speak, release — your words appear at the cursor in any app, usually in under a second.<br>
-No API keys. No cloud. No subscriptions. Dictation never leaves the device.</p>
+No API keys. No cloud for dictation. No subscriptions. Dictation never leaves the device.</p>
 
 <p>And when you want an <i>answer</i> instead of typing: hold <b>Fn</b> and ask. <b>Answers</b> is an optional, off-by-default assistant<br>that researches with web search through <i>your own</i> ChatGPT (Codex) or Grok account. Hold Fn again to follow up,<br>or say <i>"insert that"</i> to drop the answer straight into whatever you're writing.</p>
 
@@ -87,7 +87,7 @@ It goes further than a one-shot answer:
 
 A few honest facts about how it works:
 
-- **It is the one Yappy feature that uses the cloud — and it's off by default.** Nothing about Answers runs, listens, or connects until you flip it on in Settings.
+- **It is the one Yappy feature that sends your question off this Mac — and it's off by default.** Nothing about Answers runs, listens, or connects until you flip it on in Settings.
 - **It uses accounts you already have.** No API keys and no Yappy account: if the [Codex CLI](https://github.com/openai/codex) (ChatGPT) or the Grok CLI is installed and signed in on your Mac, Yappy detects it automatically — a green light in Settings and you're done. Your spoken question goes to *your* model account; Yappy has no server in the middle.
 - **Only the transcribed question leaves your Mac.** Speech-to-text still happens on-device; the audio itself never goes anywhere.
 - **The model can only answer — it can't act.** Answers runs the model read-only: it researches and replies, and any attempt to run a command or control your Mac ends the turn on the spot. Both backends answer under one strict contract: be concise, cite sources, don't narrate.
@@ -151,7 +151,7 @@ Pick your answering model — **Codex (gpt-5.5)** or **Grok** (Composer 2.5 Fast
 
 **Considered details** — a molten-glass recording pill whose glow breathes with your voice and shifts into a quiet *Polishing* state while AI cleanup runs, a **listening glow** that slowly circles the pill while the key is held (rainbow, white, or orange — pick in Settings, and it carries through to the Answers card), a menu bar icon that animates while recording, and subtle custom start/stop/done sounds — including a distinct cue when something goes wrong, so failure never sounds like success.
 
-**Private by design** — audio is transcribed on-device and never written to disk; no telemetry, no account. After the one-time model download, dictation runs fully offline — nothing you dictate leaves your Mac. The only exception is opt-in and clearly labeled: the **Answers** feature, off by default, which sends your transcribed question (never the audio) to the model account you connect, and runs that model read-only — it can research and answer, but a tool or command event kills the turn. A privacy panel on the home screen reflects this state at a glance.
+**Private by design** — audio is transcribed on-device and your voice is never recorded to a file; no telemetry, no account. After the speech model download, dictation runs fully offline — nothing you dictate leaves your Mac. The network is also used for Sparkle update checks and update downloads, optional voice/speech model downloads, and the opt-in **Answers** feature (off by default), which sends your transcribed question (never the audio) to the model account you connect, and runs that model read-only — it can research and answer, but a tool or command event kills the turn. A privacy panel on the home screen reflects this state at a glance.
 
 ## Setup
 
@@ -230,11 +230,11 @@ Yappy's two capabilities have different privacy stories, and we'd rather you kno
 - Your dictation history, shortcuts, and custom dictionary are stored locally under `~/Library/Application Support/Yappy/`, written with owner-only file permissions. Clear your history anytime from the home window or Settings.
 - History is under your control: turn it off entirely, or set a retention window (7/30/90 days) and older entries prune themselves. Nothing is ever recorded while a password field (secure input) is focused.
 - No telemetry, no analytics, no account.
-- The single one-time network request is the model download from Hugging Face. After that, dictation runs fully offline.
+- Speech models download as needed (from Hugging Face or a hosted release). Sparkle checks for app updates over HTTPS and downloads them when you accept one. After models are local, dictation runs fully offline.
 
 **Answers — opt-in, and only your question travels.**
 
-- Off by default. Until you enable it in Settings, Yappy makes no network requests beyond the one-time model download above.
+- Off by default. Until you enable it in Settings, the only network traffic is model downloads and Sparkle update checks and downloads.
 - When you use it, your spoken question is transcribed **on-device** first; only the resulting text is sent — to the Codex (ChatGPT) or Grok account *you* signed into, using the CLI already on your Mac. The audio never leaves.
 - Yappy operates no server and stores no keys: it talks to your locally installed, locally authenticated CLI, the same one you use in a terminal. Web searches the model performs happen under your account, per that provider's privacy policy.
 - The connected model is run **read-only** — it answers, it can't act. Any tool or command event during a turn ends that turn, enforced at runtime.

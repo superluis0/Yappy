@@ -47,6 +47,7 @@ struct ScratchpadView: View {
                 }
                 .buttonStyle(.borderless)
                 .help("New note")
+                .accessibilityLabel("New note")
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)

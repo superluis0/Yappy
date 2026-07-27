@@ -154,22 +154,29 @@ struct MainWindowView: View {
                      dictionaryStore: dictionaryStore,
                      transcriptionService: transcriptionService, windowState: windowState,
                      openScratchpad: openScratchpad)
+                .accessibilityIdentifier("screen.home")
         case .shortcuts:
             ShortcutsView(store: shortcutStore)
+                .accessibilityIdentifier("screen.shortcuts")
         case .commands:
             CommandsView(settings: settings, windowState: windowState)
+                .accessibilityIdentifier("screen.commands")
         case .dictionary:
             DictionaryView(store: dictionaryStore, settings: settings, transcriptionService: transcriptionService)
+                .accessibilityIdentifier("screen.dictionary")
         case .modes:
             ModesView(store: modeStore, settings: settings)
+                .accessibilityIdentifier("screen.modes")
         case .ask:
             AskHistoryView(store: askController.history, controller: askController)
+                .accessibilityIdentifier("screen.answers")
         case .settings:
             SettingsView(settings: settings, transcriptionService: transcriptionService, updateChecker: updateChecker,
                          askController: askController,
                          historyStore: history,
                          onShowReleaseNotes: { whatsNewPresenter.entry = WhatsNew.current ?? WhatsNew.latest },
                          windowState: windowState)
+                .accessibilityIdentifier("screen.settings")
         }
     }
 }
@@ -236,6 +243,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             defer: false
         )
         window.titlebarAppearsTransparent = true
+        window.title = "Yappy"
+        // Stable handle for UI tests. The transparent titlebar means the title
+        // is not reliably queryable as an AX label, so tests match on this.
+        window.setAccessibilityIdentifier("window.main")
         window.adoptYappyDarkAppearance()
         window.minSize = NSSize(width: 780, height: 480)
         // Don't let the hosting controller shrink the window to its content's
@@ -386,7 +397,15 @@ enum Brand {
     static let ink   = Color(red: 0.96, green: 0.96, blue: 0.97)
     static let ink2  = Color(red: 0.84, green: 0.84, blue: 0.88)
     static let ink3  = Color(red: 0.66, green: 0.66, blue: 0.72)
-    static let ink4  = Color(red: 0.50, green: 0.50, blue: 0.57)
+    /// Secondary/caption ink. Raised from (0.50, 0.50, 0.57), then again from
+    /// (0.52, 0.52, 0.59): code-verified audit found the intermediate value
+    /// still failed WCAG AA 4.5:1 (~4.05:1) against the lightest point of the
+    /// Ask/Voice-Edit card's gradient (AskPillView/SelectionTransformView
+    /// `glass`, top stop (0.165, 0.155, 0.15)) — the worst-case real surface
+    /// this token renders on. (0.56, 0.56, 0.63) clears 4.63:1 there with
+    /// margin, and 5.17–6.17:1 on every other measured surface, without
+    /// collapsing the ramp into ink3.
+    static let ink4  = Color(red: 0.56, green: 0.56, blue: 0.63)
     static let ready  = Color(red: 0.22, green: 0.83, blue: 0.60)
     static let danger = Color(red: 1.0, green: 0.36, blue: 0.36)
 }
@@ -539,6 +558,7 @@ private struct SidebarNavRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier("sidebar.\(item.rawValue.lowercased())")
         .background {
             if isSelected {
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
@@ -551,6 +571,8 @@ private struct SidebarNavRow: View {
         }
         .onHover { hovering = $0 }
         .animation(.easeOut(duration: 0.12), value: hovering)
+        .accessibilityLabel(item.rawValue)
+        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
     }
 }
 

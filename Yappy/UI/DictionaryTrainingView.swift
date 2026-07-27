@@ -187,6 +187,7 @@ struct DictionaryTrainingView: View {
                                 Image(systemName: "xmark.circle.fill").foregroundStyle(.tertiary)
                             }
                             .buttonStyle(.borderless)
+                            .accessibilityLabel("Remove candidate \(candidate)")
                         }
                         .padding(.horizontal, 10).padding(.vertical, 6)
                         .background(.quaternary.opacity(0.4), in: Capsule())

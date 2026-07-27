@@ -31,6 +31,11 @@ struct HomeView: View {
     /// Entries whose "What you said" (raw pre-cleanup transcript) is expanded.
     @State private var revealedRawIDs: Set<UUID> = []
     @State private var copiedRawEntryID: UUID?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Reveals hover-only row actions unconditionally when an assistive
+    /// technology (VoiceOver, Switch Control, …) is active — the hover-fade
+    /// hid Copy/Delete from any input that doesn't hover, e.g. VoiceOver.
+    @Environment(\.accessibilityEnabled) private var accessibilityEnabled
 
     var body: some View {
         ScrollView {
@@ -387,11 +392,17 @@ struct HomeView: View {
             SectionLabel(icon: "lock.shield", title: "Privacy")
             GlassCard(tint: Brand.ready.opacity(0.10)) {
                 VStack(alignment: .leading, spacing: 8) {
-                    privacyLine("Audio is transcribed on this Mac and never written to disk.")
+                    // "never written to disk" would be an overclaim: read-aloud
+                    // writes temporary answer audio locally. Your VOICE is the
+                    // thing that is never recorded to a file, and that is true.
+                    privacyLine("Your voice is transcribed on this Mac and never recorded to a file.")
                     privacyLine("No telemetry, no account, no analytics.")
                     privacyLine(settings.cleanupEnabled
                         ? "AI cleanup runs on-device with Apple Intelligence \u{2014} nothing leaves this Mac."
                         : "Nothing you say leaves this Mac.")
+                    if settings.askEnabled {
+                        privacyLine("Answers sends only your typed-out question to your own AI account \u{2014} nothing else leaves this Mac.")
+                    }
                 }
             }
         }
@@ -465,7 +476,7 @@ struct HomeView: View {
             Image(systemName: icon)
                 .font(.title3)
                 .foregroundStyle(accent)
-                .symbolEffect(.pulse, options: .repeating, isActive: pulse)
+                .symbolEffect(.pulse, options: .repeating, isActive: pulse && !reduceMotion)
             animatedValue(value)
                 .font(.system(size: 26, weight: .bold, design: .rounded))
                 .foregroundStyle(Brand.ink)
@@ -542,6 +553,7 @@ struct HomeView: View {
                                 } label: { Image(systemName: "xmark") }
                                     .buttonStyle(.borderless)
                                     .help("Dismiss")
+                                    .accessibilityLabel("Dismiss suggestion")
                             }
                             .padding(10)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -677,8 +689,9 @@ struct HomeView: View {
                 }
                 .buttonStyle(.borderless)
                 .help("Copy")
-                .opacity(hoveredEntryID == entry.id ? 1 : 0)
-                .allowsHitTesting(hoveredEntryID == entry.id)
+                .accessibilityLabel(copiedEntryID == entry.id ? "Copied" : "Copy dictation")
+                .opacity(hoveredEntryID == entry.id || accessibilityEnabled ? 1 : 0)
+                .allowsHitTesting(hoveredEntryID == entry.id || accessibilityEnabled)
                 .animation(.easeOut(duration: 0.12), value: hoveredEntryID == entry.id)
 
                 Button {
@@ -688,8 +701,9 @@ struct HomeView: View {
                 }
                 .buttonStyle(.borderless)
                 .help("Delete")
-                .opacity(hoveredEntryID == entry.id ? 1 : 0)
-                .allowsHitTesting(hoveredEntryID == entry.id)
+                .accessibilityLabel("Delete dictation")
+                .opacity(hoveredEntryID == entry.id || accessibilityEnabled ? 1 : 0)
+                .allowsHitTesting(hoveredEntryID == entry.id || accessibilityEnabled)
                 .animation(.easeOut(duration: 0.12), value: hoveredEntryID == entry.id)
             }
             .font(.caption)
@@ -791,6 +805,7 @@ struct HomeView: View {
                     }
                     .buttonStyle(.borderless)
                     .help("Copy what you said")
+                    .accessibilityLabel(copiedRawEntryID == entry.id ? "Copied" : "Copy what you said")
                 }
                 .transition(.opacity)
             }

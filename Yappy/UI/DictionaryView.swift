@@ -130,6 +130,7 @@ struct DictionaryView: View {
                             .labelsHidden()
                             .toggleStyle(.switch)
                             .tint(.accentColor)
+                            .accessibilityLabel("Enable custom dictionary")
                     }
                     .padding(.horizontal, 16).padding(.vertical, 12)
 
@@ -203,6 +204,7 @@ struct DictionaryView: View {
                             .labelsHidden()
                             .toggleStyle(.switch)
                             .tint(.accentColor)
+                            .accessibilityLabel("Boost my terms in the speech model")
                     }
                     .padding(.horizontal, 16).padding(.vertical, 12)
 
@@ -409,6 +411,7 @@ private struct TermRow: View {
             }
             .buttonStyle(.borderless)
             .help("Edit aliases or teach pronunciation")
+            .accessibilityLabel("Edit aliases or teach pronunciation for \(term.text)")
 
             Button(action: onDelete) {
                 Image(systemName: "xmark.circle.fill")
@@ -416,6 +419,7 @@ private struct TermRow: View {
                     .foregroundStyle(Brand.ink4)
             }
             .buttonStyle(.borderless)
+            .accessibilityLabel("Delete \(term.text)")
         }
         .padding(.horizontal, 16).padding(.vertical, 11)
     }
@@ -471,6 +475,7 @@ private struct SuggestionRow: View {
             }
             .buttonStyle(.borderless)
             .help("Dismiss")
+            .accessibilityLabel("Dismiss suggestion")
         }
         .padding(.horizontal, 16).padding(.vertical, 11)
     }
@@ -516,6 +521,7 @@ private struct TermDetailSheet: View {
                                         Image(systemName: "xmark.circle.fill").foregroundStyle(.tertiary)
                                     }
                                     .buttonStyle(.borderless)
+                                    .accessibilityLabel("Remove alias \(alias)")
                                 }
                                 .padding(.horizontal, 10).padding(.vertical, 5)
                                 .background(.quaternary.opacity(0.4), in: Capsule())

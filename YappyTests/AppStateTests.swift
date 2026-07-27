@@ -314,6 +314,15 @@ final class AppStateTests: XCTestCase {
         XCTAssertEqual(state.pillAccessibilityLabel, "Couldn't insert — click to retry")
     }
 
+    /// Regression: an info caption (e.g. "Polished — click to use your exact
+    /// words") has no dedicated branch in `pillAccessibilityLabel`, so once the
+    /// caption is showing (isRecording/isProcessing both false) VoiceOver fell
+    /// back to the generic "Yappy" instead of reading the caption.
+    func testPillAccessibilityLabelReflectsInfoCaption() {
+        state.showInfo("Polished — click to use your exact words", action: .useRawTranscript)
+        XCTAssertEqual(state.pillAccessibilityLabel, "Polished — click to use your exact words")
+    }
+
     func testCopyFailureRecoveryWritesPasteboardAndMarksCopied() {
         // This test writes to the REAL general pasteboard — snapshot the
         // user's clipboard string and put it back, or every test run silently

@@ -53,6 +53,7 @@ struct AskHistoryView: View {
         ) {
             Button("Clear All", role: .destructive) {
                 store.clear()
+                controller.clearRuntimeAndHistory()
             }
             Button("Cancel", role: .cancel) {}
         }
@@ -210,6 +211,8 @@ private struct BackendFilterChip: View {
                 )
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(title)
+        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
     }
 }
 
@@ -219,6 +222,17 @@ private struct AskHistoryRow: View {
     @ObservedObject var store: AskHistoryStore
 
     @State private var copied = false
+
+    /// Short question snippet used to name this row's action buttons.
+    /// VoiceOver reaches the header controls BEFORE the question text, so
+    /// without this a user hears "Favorite, Copy, Show, Delete" four times over
+    /// with no idea which entry they act on.
+    private var entryShortTitle: String {
+        let question = entry.question.trimmingCharacters(in: .whitespacesAndNewlines)
+        let oneLine = question.replacingOccurrences(of: "\n", with: " ")
+        guard oneLine.count > 48 else { return oneLine }
+        return String(oneLine.prefix(48)) + "..."
+    }
 
     var body: some View {
         GlassCard {
@@ -243,7 +257,9 @@ private struct AskHistoryRow: View {
                     }
                     .buttonStyle(.borderless)
                     .help(entry.isFavorite ? "Remove favorite" : "Favorite")
-                    .accessibilityLabel(entry.isFavorite ? "Remove favorite" : "Favorite")
+                    .accessibilityLabel(entry.isFavorite
+                        ? "Remove favorite from \(entryShortTitle)"
+                        : "Favorite \(entryShortTitle)")
 
                     Button {
                         NSPasteboard.general.clearContents()
@@ -255,7 +271,7 @@ private struct AskHistoryRow: View {
                             .font(.system(size: 11))
                     }
                     .buttonStyle(.borderless)
-                    .accessibilityLabel(copied ? "Copied" : "Copy")
+                    .accessibilityLabel(copied ? "Copied" : "Copy answer to \(entryShortTitle)")
 
                     Button {
                         controller.showEntry(entry)
@@ -264,7 +280,7 @@ private struct AskHistoryRow: View {
                             .font(.system(size: 11))
                     }
                     .buttonStyle(.borderless)
-                    .accessibilityLabel("Show in pill")
+                    .accessibilityLabel("Show answer to \(entryShortTitle) in pill")
                     .disabled(controller.isBusy)
 
                     Button(role: .destructive) {
@@ -273,21 +289,29 @@ private struct AskHistoryRow: View {
                         Image(systemName: "trash").font(.system(size: 11))
                     }
                     .buttonStyle(.borderless)
-                    .accessibilityLabel("Delete")
+                    .accessibilityLabel("Delete answer to \(entryShortTitle)")
                 }
 
-                Text(entry.question)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(Brand.ink)
-                    .textSelection(.enabled)
-                    .fixedSize(horizontal: false, vertical: true)
+                VStack(alignment: .leading, spacing: 10) {
+                    // The question is the row's rotor landmark. It is deliberately
+                    // NOT merged with the answer below: AskAnswerContent can render
+                    // real controls (Copy code, Load image) and links, and grouping
+                    // with children: .ignore would erase them from the tree.
+                    Text(entry.question)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Brand.ink)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityLabel("Question: \(entry.question)")
+                        .accessibilityAddTraits(.isHeader)
 
-                AskAnswerContent(
-                    text: entry.answer,
-                    accent: .accentColor,
-                    textPrimary: Brand.ink2,
-                    textSecondary: Brand.ink3
-                )
+                    AskAnswerContent(
+                        text: entry.answer,
+                        accent: .accentColor,
+                        textPrimary: Brand.ink2,
+                        textSecondary: Brand.ink3
+                    )
+                }
 
                 let sources = AskSources.extract(from: entry.answer)
                 if !sources.isEmpty {

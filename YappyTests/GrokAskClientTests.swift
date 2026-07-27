@@ -193,4 +193,80 @@ final class GrokAskClientTests: XCTestCase {
         XCTAssertNil(decision.outcome["optionId"],
                      "a cancel must never carry an invented option")
     }
+
+    // MARK: - Spawn environment isolation (Phase B purge/process race)
+
+    func testGrokSpawnEnvironmentPinsHomeToPrivateDirectory() {
+        let home = URL(fileURLWithPath: "/tmp/YappyTests-GrokHome")
+        let env = GrokAskClient.spawnEnvironment(home: home)
+        XCTAssertEqual(env["HOME"], home.path,
+                        "Grok's filesystem isolation hangs entirely on HOME pointing at the private home")
+    }
+
+    func testGrokSpawnEnvironmentPrependsLocalBinToPath() {
+        let home = URL(fileURLWithPath: "/tmp/YappyTests-GrokHome")
+        let env = GrokAskClient.spawnEnvironment(home: home)
+        let realHome = FileManager.default.homeDirectoryForCurrentUser.path
+        XCTAssertTrue(
+            env["PATH"]?.hasPrefix("\(realHome)/.local/bin:\(realHome)/.npm-global/bin:") ?? false,
+            "PATH must still prepend ~/.local/bin then ~/.npm-global/bin"
+        )
+    }
+
+    func testCodexSpawnEnvironmentPinsCodexHomeAndPreservesRealHome() {
+        let home = URL(fileURLWithPath: "/tmp/YappyTests-CodexHome")
+        let env = CodexAskClient.spawnEnvironment(home: home)
+        XCTAssertEqual(env["CODEX_HOME"], home.path)
+        // Characterize current behavior exactly: codex's HOME is the real
+        // home (unlike Grok's, which is overridden), so it can still resolve
+        // unrelated real-home lookups while CODEX_HOME does the isolating.
+        XCTAssertEqual(env["HOME"], FileManager.default.homeDirectoryForCurrentUser.path)
+    }
+
+    func testCodexSpawnEnvironmentPrependsLocalBinToPath() {
+        let home = URL(fileURLWithPath: "/tmp/YappyTests-CodexHome")
+        let env = CodexAskClient.spawnEnvironment(home: home)
+        let realHome = FileManager.default.homeDirectoryForCurrentUser.path
+        XCTAssertTrue(
+            env["PATH"]?.hasPrefix("\(realHome)/.local/bin:\(realHome)/.npm-global/bin:") ?? false,
+            "PATH must still prepend ~/.local/bin then ~/.npm-global/bin"
+        )
+    }
+
+    // MARK: - ProcessExitWaiter (bounded wait so purge can't race WAL checkpoint)
+
+    func testProcessExitWaiterReturnsTrueQuicklyAfterTermination() {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sleep")
+        process.arguments = ["5"]
+        try? process.run()
+        process.terminate()
+
+        let start = Date()
+        let exited = ProcessExitWaiter.waitForExit(process, timeout: 2)
+        let elapsed = Date().timeIntervalSince(start)
+
+        XCTAssertTrue(exited)
+        XCTAssertLessThan(elapsed, 1.5, "termination is near-instant; should not consume the full timeout")
+    }
+
+    func testProcessExitWaiterTimesOutWhileStillRunning() {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sleep")
+        process.arguments = ["5"]
+        try? process.run()
+        defer { process.terminate() }
+
+        let start = Date()
+        let exited = ProcessExitWaiter.waitForExit(process, timeout: 0.3)
+        let elapsed = Date().timeIntervalSince(start)
+
+        XCTAssertFalse(exited)
+        XCTAssertGreaterThanOrEqual(elapsed, 0.3)
+        XCTAssertLessThan(elapsed, 1.0, "should return promptly once the timeout elapses, not wait indefinitely")
+    }
+
+    func testProcessExitWaiterReturnsTrueForNilProcess() {
+        XCTAssertTrue(ProcessExitWaiter.waitForExit(nil, timeout: 0.1))
+    }
 }

@@ -68,6 +68,18 @@ enum SpokenNumberFormatter {
 
             if let converted = convertRun(words) {
                 let (text, consumedThrough) = applySuffixes(to: converted, tokens: tokens, runEnd: lastIdx)
+                // Prose guard: a lone small number with nothing quantitative
+                // around it reads better spelled out ("one of these days", not
+                // "1 of these days"). Only reachable when no suffix anchored the
+                // run — money, percentages and clock times keep their digits.
+                if consumedThrough == lastIdx,
+                   !isDottedMeridiem(tokens, afterRunEnd: lastIdx),
+                   staysSpelledOut(kind: converted.kind, words: words,
+                                   tokens: tokens, runStart: i, runEnd: lastIdx) {
+                    for idx in i...lastIdx { output += tokens[idx].text }
+                    i = lastIdx + 1
+                    continue
+                }
                 output += text
                 i = consumedThrough + 1
             } else {
@@ -498,6 +510,75 @@ enum SpokenNumberFormatter {
 
     /// Words that may begin a run: any number word, or an ordinal (conversion
     /// rules decide later whether a standalone ordinal actually converts).
+    // MARK: - Prose guard (small numbers stay spelled out)
+
+    /// Words that make the following number a count or measurement, where
+    /// digits read correctly ("3 miles", "5 gigabytes"). Deliberately EXCLUDES
+    /// durations (minute/hour/day/week/year): "one day" and "give me one
+    /// minute" are ordinary prose, and spelling them matches the same style
+    /// rule this guard exists to honor.
+    private static let measurementUnits: Set<String> = [
+        "mile", "miles", "foot", "feet", "inch", "inches", "yard", "yards",
+        "meter", "meters", "metre", "metres", "centimeter", "centimeters",
+        "kilometer", "kilometers", "km", "mm", "cm",
+        "pound", "pounds", "lb", "lbs", "kilo", "kilos", "kilogram", "kilograms",
+        "gram", "grams", "ounce", "ounces", "ton", "tons",
+        "gallon", "gallons", "liter", "liters", "litre", "litres",
+        "cup", "cups", "tablespoon", "tablespoons", "teaspoon", "teaspoons",
+        "degree", "degrees", "volt", "volts", "watt", "watts", "amp", "amps",
+        "hertz", "megahertz", "gigahertz", "mph", "kph",
+        "byte", "bytes", "kilobyte", "kilobytes", "megabyte", "megabytes",
+        "gigabyte", "gigabytes", "terabyte", "terabytes", "pixel", "pixels",
+    ]
+
+    /// Words that introduce a numbered thing, where digits are what the user
+    /// wants ("step 2", "version 3", "room 4").
+    private static let enumerationCues: Set<String> = [
+        "number", "step", "chapter", "part", "section", "page", "line", "item",
+        "phase", "round", "level", "version", "grade", "room", "apartment",
+        "apt", "unit", "figure", "table", "exhibit", "question", "problem",
+        "track", "episode", "season", "volume", "floor", "gate", "seat", "row",
+        "tier", "rank", "option", "slide", "note", "week",
+    ]
+
+    /// True when a converted run should be left as the user spoke it.
+    ///
+    /// Scope is deliberately narrow: a SINGLE cardinal word for 0-9 with no
+    /// quantitative signal beside it. Multi-word numbers ("twenty three"),
+    /// anything 10 and over, ordinals, decimals, and every suffixed form
+    /// (currency, percent, clock time) are untouched, so lists, times and
+    /// measurements keep the digits that make them readable.
+    private static func staysSpelledOut(
+        kind: RunKind, words: [String], tokens: [Token], runStart: Int, runEnd: Int
+    ) -> Bool {
+        guard words.count == 1, case .integer(let value) = kind, (0...9).contains(value) else {
+            return false
+        }
+        // A digit already adjacent means the user is enumerating or comparing;
+        // mixing "one" with "3" in one breath would look accidental.
+        if let (_, next) = wordAfter(tokens, index: runEnd),
+           next.first?.isNumber == true { return false }
+        if let previous = wordBefore(tokens, index: runStart) {
+            if previous.first?.isNumber == true { return false }
+            if enumerationCues.contains(previous) { return false }
+        }
+        if let (_, next) = wordAfter(tokens, index: runEnd),
+           measurementUnits.contains(next) { return false }
+        return true
+    }
+
+    /// The immediately preceding word, lowercased — mirrors `wordAfter`, so a
+    /// single space is the only separator that still counts as adjacent
+    /// (punctuation between them means it is a different phrase).
+    private static func wordBefore(_ tokens: [Token], index: Int) -> String? {
+        guard index >= 2,
+              case .gap(let gap) = tokens[index - 1], gap == " ",
+              case .word(let word) = tokens[index - 2] else {
+            return nil
+        }
+        return word.lowercased()
+    }
+
     private static func isRunStartWord(_ word: String) -> Bool {
         isNumberWord(word) || ordinalValues[word] != nil
     }

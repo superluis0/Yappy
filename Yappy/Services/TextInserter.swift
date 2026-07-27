@@ -159,6 +159,8 @@ final class TextInserter {
     /// Privacy-safe timing values supplied by the dictation pipeline. Paste and
     /// restore stages are filled in by `TextInserter` before the line is emitted.
     struct TimingSeed {
+        let transcribeMs: Int
+        let audioMs: Int
         let cleanupMs: Int
         let classifyMs: Int
         let words: Int
@@ -166,6 +168,8 @@ final class TextInserter {
     }
 
     struct InsertTiming: Equatable {
+        let transcribeMs: Int
+        let audioMs: Int
         let cleanupMs: Int
         let classifyMs: Int
         let spaceMs: Int
@@ -179,7 +183,8 @@ final class TextInserter {
         let words: Int
 
         var formattedLine: String {
-            "insert-timing cleanup_ms=\(cleanupMs) classify_ms=\(classifyMs) "
+            "insert-timing transcribe_ms=\(transcribeMs) audio_ms=\(audioMs) "
+                + "cleanup_ms=\(cleanupMs) classify_ms=\(classifyMs) "
                 + "space_ms=\(spaceMs) snap_ms=\(snapMs) snap_bytes=\(snapBytes) "
                 + "confirm_ms=\(confirmMs) restore_ms=\(restoreMs) "
                 + "opaque=\(opaque ? 1 : 0) polls=\(polls) "
@@ -212,6 +217,8 @@ final class TextInserter {
             guard !emitted else { return }
             emitted = true
             let timing = InsertTiming(
+                transcribeMs: seed.transcribeMs,
+                audioMs: seed.audioMs,
                 cleanupMs: seed.cleanupMs,
                 classifyMs: seed.classifyMs,
                 spaceMs: spaceMs,

@@ -82,6 +82,7 @@ struct RecordingPillView: View {
 
     @State private var visible = false
     @State private var breathe = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var accent: Color { .accentColor }
 
@@ -119,7 +120,7 @@ struct RecordingPillView: View {
                     .frame(width: 120, height: 16)
                     .blur(radius: 12)
                     .opacity(0.15 + 0.5 * averageLevel)
-                    .animation(.easeOut(duration: 0.12), value: averageLevel)
+                    .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: averageLevel)
             }
 
             HStack(spacing: 8) {
@@ -180,13 +181,14 @@ struct RecordingPillView: View {
         )
         .scaleEffect(visible ? 1.0 : 0.8)
         .opacity(visible ? 1.0 : 0.0)
-        .animation(.spring(response: 0.22, dampingFraction: 0.82), value: visible)
-        .animation(.easeInOut(duration: 0.15), value: appState.isRecording)
+        // Spring appear is decorative; Reduce Motion still shows the pill instantly.
+        .animation(reduceMotion ? nil : .spring(response: 0.22, dampingFraction: 0.82), value: visible)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.15), value: appState.isRecording)
         // Cross-fade the neutral dots into the accent-tinted "Polishing" look when
         // AI cleanup starts, so the sub-phase reads without any layout jump.
-        .animation(.easeInOut(duration: 0.2), value: appState.isPolishing)
-        .animation(.easeInOut(duration: 0.2), value: appState.failureMessage)
-        .animation(.easeInOut(duration: 0.2), value: appState.infoMessage)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: appState.isPolishing)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: appState.failureMessage)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: appState.infoMessage)
         // Fill the (larger) panel with a clear, non-interactive container so the
         // capsule is centered and its shadow fades into transparent margin
         // rather than being clipped at the panel's rectangular edge.
@@ -254,6 +256,8 @@ struct RecordingPillView: View {
     /// Three breathing dots. During the polishing sub-phase they warm to the
     /// accent tint (from the neutral molten cream used while transcribing), so the
     /// same motion signals "now reshaping your words" without changing the beat.
+    /// Under Reduce Motion the dots stay solid at full scale — still convey
+    /// "processing" without a pulse.
     private var processingDots: some View {
         let dotColor = appState.isPolishing
             ? accent
@@ -263,16 +267,18 @@ struct RecordingPillView: View {
                 Circle()
                     .fill(dotColor)
                     .frame(width: 5, height: 5)
-                    .scaleEffect(breathe ? 1.0 : 0.55)
+                    .scaleEffect((breathe || reduceMotion) ? 1.0 : 0.55)
                     .animation(
-                        .easeInOut(duration: 0.5)
-                            .repeatForever(autoreverses: true)
-                            .delay(Double(index) * 0.15),
+                        reduceMotion
+                            ? nil
+                            : .easeInOut(duration: 0.5)
+                                .repeatForever(autoreverses: true)
+                                .delay(Double(index) * 0.15),
                         value: breathe
                     )
             }
         }
-        .onAppear { breathe = true }
+        .onAppear { if !reduceMotion { breathe = true } }
         .onDisappear { breathe = false }
     }
 }

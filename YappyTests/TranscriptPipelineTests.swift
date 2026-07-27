@@ -69,9 +69,15 @@ final class TranscriptPipelineTests: XCTestCase {
     }
 
     func testListsFlagDisablesStage() {
+        // No "1." markers proves the list stage is off. The counters now stay
+        // spelled out because nothing marks them as quantities once the list
+        // stage isn't there to claim them — mid-sentence digits ("buy 1 milk")
+        // are the exact prose problem the small-number guard exists to avoid.
+        // With lists ON (the default, and the test above) this same input still
+        // becomes a numbered list: SpokenListFormatter matches words and digits.
         XCTAssertEqual(
             pipeline(lists: false).process("buy one milk two eggs three bread"),
-            "buy 1 milk 2 eggs 3 bread"
+            "buy one milk two eggs three bread"
         )
     }
 

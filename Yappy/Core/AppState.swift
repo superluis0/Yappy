@@ -105,7 +105,7 @@ final class AppState: ObservableObject {
         clearInfoCaption()
         currentTranscription = ""
         audioLevels = Array(repeating: 0.0, count: Constants.pillBarCount)
-        Self.announceForAccessibility("Recording")
+        Self.announceForAccessibility("Recording started")
     }
 
     /// Marks a dictation as queued while the speech model finishes loading. The
@@ -126,7 +126,7 @@ final class AppState: ObservableObject {
 
         isRecording = false
         isProcessing = true
-        Self.announceForAccessibility("Processing")
+        Self.announceForAccessibility("Recording stopped")
     }
 
     /// Enters the "polishing" sub-phase (AI cleanup is running). Only meaningful
@@ -286,6 +286,7 @@ final class AppState: ObservableObject {
     /// Terse label for the pill's single accessibility element.
     var pillAccessibilityLabel: String {
         if let failureMessage { return failureMessage }
+        if let infoMessage { return infoMessage }
         if isRecording { return "Recording" }
         if isPolishing { return "Processing, polishing" }
         if isProcessing { return "Processing" }
@@ -293,8 +294,9 @@ final class AppState: ObservableObject {
         return "Yappy"
     }
 
-    /// Posts a VoiceOver announcement so pill failures are audible, not only visual.
-    private static func announceForAccessibility(_ message: String) {
+    /// Posts a VoiceOver announcement so state changes are audible, not only visual.
+    /// Shared by dictation (AppState) and Answers (AskController) so there is one mechanism.
+    static func announceForAccessibility(_ message: String) {
         guard NSApp != nil else { return }
         NSAccessibility.post(
             element: NSApp as Any,

@@ -31,8 +31,24 @@ jobs:
     - name: Build
       run: xcodebuild -project Yappy.xcodeproj -scheme Yappy -configuration Debug build
 
-    - name: Test
-      run: xcodebuild -project Yappy.xcodeproj -scheme Yappy -destination 'platform=macOS' test
+    # The BLOCKING gate is the unit suite. UI tests are excluded here and run in
+    # their own report-only step below.
+    - name: Test (unit — blocking)
+      run: |
+        xcodebuild -project Yappy.xcodeproj -scheme Yappy \
+          -destination 'platform=macOS' -skip-testing:YappyUITests test
+
+    # UI smoke tests launch the app and drive its window, so they only belong on
+    # a machine where nobody is at the keyboard — never on a dev Mac. They are
+    # new and unproven on the runner image, so they start REPORT-ONLY (same
+    # convention as the linters below): findings surface as annotations without
+    # blocking a release. Promote to blocking once they have been stable for a
+    # few runs.
+    - name: Test (UI smoke — report-only)
+      continue-on-error: true
+      run: |
+        xcodebuild -project Yappy.xcodeproj -scheme Yappy \
+          -destination 'platform=macOS' -only-testing:YappyUITests test
 
     # Lint and format checks run in REPORT-ONLY mode: continue-on-error keeps them
     # from ever blocking the build; they surface findings as annotations only.

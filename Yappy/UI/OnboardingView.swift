@@ -573,11 +573,13 @@ private struct StepIcon: View {
 }
 
 /// Applies the welcome icon's repeating variable-color pulse only when requested,
-/// keeping the symbol-effect call out of a `@ViewBuilder` branch.
+/// keeping the symbol-effect call out of a `@ViewBuilder` branch. Skipped under
+/// Reduce Motion so the icon stays static while still conveying the step.
 private struct IconPulse: ViewModifier {
     let active: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     func body(content: Content) -> some View {
-        if active {
+        if active && !reduceMotion {
             content.symbolEffect(.variableColor.iterative, options: .repeating)
         } else {
             content

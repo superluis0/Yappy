@@ -202,10 +202,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
     }
 
+    /// UI smoke tests launch the app as a separate process, so they opt into a
+    /// deliberately quiet launch path with an explicit argument. This keeps the
+    /// main-window suite independent of onboarding, TCC prompts, model downloads,
+    /// hotkeys, update checks, microphone warm-up, and Answers backends.
+    private var isRunningUITests: Bool {
+        ProcessInfo.processInfo.arguments.contains("-YappyUITesting")
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Show the Dock icon for the whole time Yappy is running (alongside the
         // menu bar item), not just while the main window is open.
         NSApp.setActivationPolicy(.regular)
+
+        if isRunningUITests {
+            mainWindowController.present()
+            return
+        }
+
+        // Privacy: orphan-sweep backend Q/A artifacts BEFORE bindSettings() (or any
+        // other path that can prewarm/spawn a backend — the askEnabled sink prewarms).
+        // Skip in unit-test mode to preserve developer's real backend state.
+        if !isRunningUnitTests {
+            AskRuntimeStorage.orphanSweepAtLaunch()
+        }
 
         // Select the persisted speech model BEFORE any warm-up runs, so the
         // launch-time load (below) loads the right one. Changes after launch are
@@ -376,8 +396,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         escapeInterceptor.stop()
         scratchpadHotkey.stop()
         askHotkey.stop()
-        askController.shutdown()
+        // TTS helper down BEFORE the purge: shutdownAndPurgeRuntime() deletes
+        // the spoken-answer .wav files, and the helper must not be mid-playback
+        // (or mid-synthesis into one) when they are unlinked.
         ttsClient.stop()
+        askController.shutdownAndPurgeRuntime()
         notesStore.flush()
         maxDurationTimer?.invalidate()
         accessibilityPollTimer?.invalidate()
@@ -678,7 +701,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // so this is audio-idle — so its system-prompt prefill overlaps
                 // transcription instead of adding latency to the cleanup that follows.
                 self.cleanupCoordinator.prepareSession()
+                let transcribeStartedAt = CACurrentMediaTime()
                 let raw = try await self.transcriptionService.transcribe(samples)
+                let transcribeMs = Int((CACurrentMediaTime() - transcribeStartedAt) * 1000)
+                let audioMs = Int(duration * 1000)
 
                 // Escape pressed while transcribing: drop the result — nothing has
                 // landed yet and the user rejected it.
@@ -726,6 +752,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                             joinContinuation: false,
                             rawEndedMidThought: false,
                             timing: TextInserter.TimingSeed(
+                                transcribeMs: transcribeMs,
+                                audioMs: audioMs,
                                 cleanupMs: 0,
                                 classifyMs: 0,
                                 words: verbatimRemainder.split(whereSeparator: { $0.isWhitespace }).count,
@@ -854,6 +882,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         // failed canned-shortcut paste is as recoverable as a
                         // failed dictation paste.
                         let cannedTiming = TextInserter.TimingSeed(
+                            transcribeMs: transcribeMs,
+                            audioMs: audioMs,
                             cleanupMs: 0,
                             classifyMs: 0,
                             words: canned.split(whereSeparator: { $0.isWhitespace }).count,
@@ -928,9 +958,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     text = expanded
                 } else {
                     if willPolish { self.ifCurrent(generation) { self.appState.beginPolishing() } }
+                    // The user's own vocabulary present in this transcript, so the
+                    // cleanup model preserves its exact casing ("yappy" → "Yappy")
+                    // instead of guessing. Empty when none appear → prompt unchanged.
+                    let knownTerms = CleanupCoordinator.vocabularyHints(
+                        in: expanded, terms: self.dictionaryStore.terms
+                    )
                     text = await self.cleanupCoordinator.cleanup(
                         expanded, tone: tone, backtrack: self.settings.backtrackEnabled,
-                        cleanupEnabled: cleanupEnabled
+                        cleanupEnabled: cleanupEnabled, knownTerms: knownTerms
                     )
                     self.appState.endPolishing()
                 }
@@ -1054,6 +1090,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     let trimmedExpanded = expanded.trimmingCharacters(in: .whitespacesAndNewlines)
                     let rawEndedMidThought = trimmedExpanded.last.map { !".!?…".contains($0) } ?? false
                     let insertTiming = TextInserter.TimingSeed(
+                        transcribeMs: transcribeMs,
+                        audioMs: audioMs,
                         cleanupMs: cleanupMs,
                         classifyMs: classifyMs,
                         words: expanded.split(whereSeparator: { $0.isWhitespace }).count,
@@ -1112,9 +1150,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                             timeoutNanoseconds: 4_000_000_000
                         )
                     } else if showDiff {
+                        // Name WHAT the polish changed when it can be named
+                        // confidently ("Polished punctuation — click to undo").
+                        // The 200 pt pill fits at most one named class without
+                        // truncating the click affordance (measured at 11 pt,
+                        // 0.75 min scale), so a combined summary shows its
+                        // highest-priority class; the full phrase stays in
+                        // changeSummary. Nil keeps the generic caption.
+                        let summaryLead = CleanupCoordinator.changeSummary(
+                            raw: expanded, final: finalText
+                        )?.components(separatedBy: " and ").first
+                        let polishCaption = summaryLead.map {
+                            "Polished \($0) — click to undo"
+                        } ?? "Polished — click to use your exact words"
                         self.ifCurrent(generation) {
                             self.appState.showInfo(
-                                "Polished — click to use your exact words",
+                                polishCaption,
                                 action: .useRawTranscript
                             ) { [weak self] in
                                 // Same path as the "use what I said" voice
@@ -1982,6 +2033,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             case .codex: CodexAskClient.isInstalled && CodexAskClient.isSignedIn
             case .grok: GrokAskClient.isAvailable && GrokAskClient.isSignedIn
             }
+        }
+        // Post-purge re-prewarm must respect the same gates as the askEnabled
+        // sink: never start a backend while Answers is off or before the launch
+        // speech-model load has finished (prewarming earlier races CoreAudio).
+        askController.prewarmIfReady = { [weak self] in
+            guard let self, self.settings.askEnabled, self.readyToPrewarmAsk else { return }
+            self.askPillController.prewarm()
+            self.askController.prewarm()
         }
         askController.updateInstallationState(installed: CodexAskClient.isInstalled, for: .codex)
         askController.updateInstallationState(installed: GrokAskClient.isAvailable, for: .grok)

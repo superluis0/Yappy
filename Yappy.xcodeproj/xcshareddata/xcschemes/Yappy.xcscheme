@@ -38,6 +38,16 @@
                ReferencedContainer = "container:Yappy.xcodeproj">
             </BuildableReference>
          </TestableReference>
+         <TestableReference
+            skipped = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "E400000100000000000000A1"
+               BuildableName = "YappyUITests.xctest"
+               BlueprintName = "YappyUITests"
+               ReferencedContainer = "container:Yappy.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
       </Testables>
    </TestAction>
    <LaunchAction

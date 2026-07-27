@@ -286,6 +286,12 @@ final class AskController: ObservableObject {
     /// Whether completed runs are persisted to Ask history. Mirrors
     /// `settings.askSaveHistoryEnabled`; set by AppDelegate.
     var saveHistory = true
+    /// Injectable seam for stopAndWait-both + purgeAll. Defaults to the real
+    /// implementation; tests override so they never touch the filesystem.
+    var runtimePurge: () -> Void = {}
+    /// Injectable seam for gated prewarm. Defaults to calling prewarm();
+    /// AppDelegate sets this to respect readyToPrewarmAsk + askEnabled.
+    var prewarmIfReady: () -> Void = {}
     /// The backend the current run was dispatched to, snapshotted at submit().
     private var activeBackend: AskBackend = .codex
 
@@ -545,6 +551,64 @@ final class AskController: ObservableObject {
         }
         grokClient.onEvent = { [weak self] event in
             Task { @MainActor [weak self] in self?.handleGrokEvent(event) }
+        }
+        // Default purge path: stopAndWait first (no WAL race), then purge.
+        runtimePurge = { [weak self] in
+            self?.defaultRuntimePurge()
+        }
+        // Default prewarm: just call prewarm(). AppDelegate may override this
+        // to respect readyToPrewarmAsk + askEnabled gates.
+        prewarmIfReady = { [weak self] in
+            self?.prewarm()
+        }
+    }
+
+    /// stopAndWait both backends, then purge runtime artifacts.
+    private func defaultRuntimePurge() {
+        // Stop read-aloud FIRST. purgeAll() deletes the spoken-answer .wav files,
+        // and only the manual dismiss path happened to stop speech on its way
+        // here — auto-dismiss (the common history-OFF path, especially with
+        // "Speak every answer" on) and Clear-runtime did not, so playback could
+        // be reading a file as it was unlinked.
+        stopSpeaking()
+        codexClient.stopAndWait(timeout: 1.0)
+        grokClient.stopAndWait(timeout: 1.0)
+        _ = AskRuntimeStorage.purgeAll()
+    }
+
+    /// Quit path: reuse shutdown bookkeeping, then stopAndWait + purge.
+    /// Keeps plain `shutdown()` unchanged for other callers.
+    func shutdownAndPurgeRuntime() {
+        transientCaptionTask?.cancel()
+        runtimePurge()
+    }
+
+    /// Clear-all: wipe backend runtime files that may still hold Q/A text,
+    /// then re-prewarm so the next answer is not cold.
+    func clearRuntimeAndHistory() {
+        runtimePurge()
+        prewarmIfReady()
+    }
+
+    /// History-OFF only: after a true answer-session close (pill/card gone,
+    /// controller idle), purge runtime artifacts and re-prewarm.
+    private func purgeRuntimeAfterSessionCloseIfNeeded() {
+        guard !saveHistory else { return }
+        // Never while a run is still on screen / active, or while pinned.
+        guard run == nil, !isBusy, !pillPinned else { return }
+        runtimePurge()
+        prewarmIfReady()
+    }
+
+    /// Single teardown funnel: pill+card leave the screen, controller → idle.
+    /// Auto-dismiss, manual dismiss, Escape-dismiss, and insert-then-dismiss
+    /// all land here. History-OFF purge fires only for true session close.
+    private func clearToIdle(purgingRuntime: Bool) {
+        run = nil
+        fallbackCaption = nil
+        clearTransientCaption()
+        if purgingRuntime {
+            purgeRuntimeAfterSessionCloseIfNeeded()
         }
     }
 
@@ -899,11 +963,9 @@ final class AskController: ObservableObject {
         if let r = run, !r.status.isTerminal { abort(stopSpeech: false) }
         cancelActivityWatchdog()
         rejectedTurnIDs.removeAll()
-        run = nil
-        fallbackCaption = nil
-        clearTransientCaption()
         pillPinned = false
         capturedOverCompletedCard = false
+        clearToIdle(purgingRuntime: true)
     }
 
     /// Re-summons the most recent completed answer into the pill, pinned (no
@@ -1704,6 +1766,9 @@ final class AskController: ObservableObject {
                 run = r
             }
         }
+        if finished.status == .completed {
+            AppState.announceForAccessibility("Answer ready")
+        }
         if let dispatched = lastRunMetrics.dispatchedAt {
             let ttfe = lastRunMetrics.firstEventAt.map { Int(($0 - dispatched) * 1000) }
             let ttft = lastRunMetrics.firstAnswerTokenAt.map { Int(($0 - dispatched) * 1000) }
@@ -1775,9 +1840,8 @@ final class AskController: ObservableObject {
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
             }
             guard let self, self.run?.id == runID, self.run?.status.isTerminal == true else { return }
-            self.run = nil
-            self.fallbackCaption = nil
-            self.transientCaption = nil
+            // Terminal session close — history-OFF purge happens inside clearToIdle.
+            self.clearToIdle(purgingRuntime: true)
         }
     }
 }

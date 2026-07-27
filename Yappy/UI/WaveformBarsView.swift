@@ -16,6 +16,8 @@ struct WaveformBarsView: View {
     /// When set, each bar gets a soft glow of this color.
     var glow: Color?
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     var body: some View {
         HStack(spacing: spacing) {
             ForEach(0..<levels.count, id: \.self) { index in
@@ -23,7 +25,8 @@ struct WaveformBarsView: View {
                     .fill(style)
                     .frame(width: barWidth, height: barHeight(at: index))
                     .shadow(color: glow ?? .clear, radius: glow == nil ? 0 : 3)
-                    .animation(.spring(response: 0.25, dampingFraction: 0.7), value: levels)
+                    // Bars still track level under Reduce Motion; only the spring eases.
+                    .animation(reduceMotion ? nil : .spring(response: 0.25, dampingFraction: 0.7), value: levels)
             }
         }
     }

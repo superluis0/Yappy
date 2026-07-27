@@ -35,6 +35,7 @@ struct SelectionTransformView: View {
     /// Natural height of the two panes, measured so the scroll region can size to
     /// content up to `maxPanesHeight`, then scroll.
     @State private var panesHeight: CGFloat = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         Group {
@@ -45,8 +46,8 @@ struct SelectionTransformView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-        .animation(.spring(response: 0.28, dampingFraction: 0.85), value: controller.stage)
-        .animation(.easeOut(duration: 0.16), value: controller.caption)
+        .animation(reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 0.85), value: controller.stage)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: controller.caption)
     }
 
     private var isVisible: Bool {
@@ -456,17 +457,21 @@ private struct PanesHeightKey: PreferenceKey {
 }
 
 /// A gently breathing dot for the compact capture states (file-local; mirrors
-/// the dictation/Ask pills' indicator).
+/// the dictation/Ask pills' indicator). Solid under Reduce Motion.
 private struct PulsingDot: View {
     var tint: Color
     @State private var pulse = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         Circle()
             .fill(tint)
             .frame(width: 7, height: 7)
-            .scaleEffect(pulse ? 1.0 : 0.55)
-            .opacity(pulse ? 1.0 : 0.45)
-            .onAppear { withAnimation(.easeInOut(duration: 0.7).repeatForever(autoreverses: true)) { pulse = true } }
+            .scaleEffect((pulse || reduceMotion) ? 1.0 : 0.55)
+            .opacity((pulse || reduceMotion) ? 1.0 : 0.45)
+            .onAppear {
+                guard !reduceMotion else { return }
+                withAnimation(.easeInOut(duration: 0.7).repeatForever(autoreverses: true)) { pulse = true }
+            }
     }
 }

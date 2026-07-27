@@ -22,6 +22,8 @@
 # Usage:
 #   Scripts/rebuild-install.sh              # build + install + relaunch (default)
 #   Scripts/rebuild-install.sh --test       # run the unit suite first; abort if it fails
+#                                           # (unit only — UI tests drive the screen,
+#                                           #  so they are left to CI)
 #   Scripts/rebuild-install.sh --build-only # build + verify signature only; don't install
 #   Scripts/rebuild-install.sh --help
 #
@@ -70,8 +72,13 @@ security find-identity -v -p codesigning 2>/dev/null | grep -qF "$EXPECTED_IDENT
 
 if [[ "$RUN_TESTS" == 1 ]]; then
   log "Running unit tests…"
+  # UNIT tests only. The shared scheme's test action also lists YappyUITests
+  # unskipped, and those launch Yappy and drive its window — on the dev machine
+  # that steals focus from whatever you are doing mid-run. Local installs gate on
+  # the unit suite; CI runs the UI smoke tests, where no one is at the keyboard.
   xcodebuild test -project Yappy.xcodeproj -scheme "$SCHEME" \
     -destination 'platform=macOS' -configuration Debug -quiet \
+    -skip-testing:YappyUITests \
     || die "Tests failed — not building or installing."
   ok "Tests passed."
 fi

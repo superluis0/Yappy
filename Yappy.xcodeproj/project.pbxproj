@@ -33,6 +33,10 @@
 		B10000AZ00000000000000A1 /* TransformEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000AZ00000000000000A1 /* TransformEngine.swift */; };
 		B10000BA00000000000000A1 /* SelectionTransformController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000BA00000000000000A1 /* SelectionTransformController.swift */; };
 		B10000BB00000000000000A1 /* SelectionTransformView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000BB00000000000000A1 /* SelectionTransformView.swift */; };
+		B10000BC00000000000000A1 /* AskRuntimeStorage.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000BC00000000000000A1 /* AskRuntimeStorage.swift */; };
+		B10000BD00000000000000A1 /* AskRuntimeStorageTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000BD00000000000000A1 /* AskRuntimeStorageTests.swift */; };
+		B10000BE00000000000000A1 /* StorageInventory.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000BE00000000000000A1 /* StorageInventory.swift */; };
+		B10000BF00000000000000A1 /* StorageInventoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000BF00000000000000A1 /* StorageInventoryTests.swift */; };
 		B10000AY00000000000000A1 /* CommandsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000AY00000000000000A1 /* CommandsView.swift */; };
 		B100009800000000000000A1 /* AskRun.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200009800000000000000A1 /* AskRun.swift */; };
 		B100009900000000000000A1 /* CodexEvent.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200009900000000000000A1 /* CodexEvent.swift */; };
@@ -144,10 +148,18 @@
 		B100001700000000000000A1 /* HistoryStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200001700000000000000A1 /* HistoryStoreTests.swift */; };
 		B100009600000000000000A1 /* WhatsNewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200009600000000000000A1 /* WhatsNewTests.swift */; };
 		B100009700000000000000A1 /* FoundationModelsCleanupProviderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200009700000000000000A1 /* FoundationModelsCleanupProviderTests.swift */; };
+		E100000100000000000000A1 /* YappyUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E200000100000000000000A1 /* YappyUITests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
 		B300000100000000000000A1 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = B500000100000000000000A1 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = B400000100000000000000A1;
+			remoteInfo = Yappy;
+		};
+		E300000100000000000000A1 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = B500000100000000000000A1 /* Project object */;
 			proxyType = 1;
@@ -183,6 +195,10 @@
 		B20000AZ00000000000000A1 /* TransformEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransformEngine.swift; sourceTree = "<group>"; };
 		B20000BA00000000000000A1 /* SelectionTransformController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SelectionTransformController.swift; sourceTree = "<group>"; };
 		B20000BB00000000000000A1 /* SelectionTransformView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SelectionTransformView.swift; sourceTree = "<group>"; };
+		B20000BC00000000000000A1 /* AskRuntimeStorage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AskRuntimeStorage.swift; sourceTree = "<group>"; };
+		B20000BD00000000000000A1 /* AskRuntimeStorageTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AskRuntimeStorageTests.swift; sourceTree = "<group>"; };
+		B20000BE00000000000000A1 /* StorageInventory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageInventory.swift; sourceTree = "<group>"; };
+		B20000BF00000000000000A1 /* StorageInventoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageInventoryTests.swift; sourceTree = "<group>"; };
 		B20000AY00000000000000A1 /* CommandsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandsView.swift; sourceTree = "<group>"; };
 		B200009800000000000000A1 /* AskRun.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AskRun.swift; sourceTree = "<group>"; };
 		B200009900000000000000A1 /* CodexEvent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexEvent.swift; sourceTree = "<group>"; };
@@ -296,6 +312,8 @@
 		B200001800000000000000A1 /* YappyTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = YappyTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		B200001900000000000000A1 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		B200001A00000000000000A1 /* Yappy.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Yappy.entitlements; sourceTree = "<group>"; };
+		E200000100000000000000A1 /* YappyUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YappyUITests.swift; sourceTree = "<group>"; };
+		E200000200000000000000A1 /* YappyUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = YappyUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -315,6 +333,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		E700000100000000000000A1 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -323,6 +348,7 @@
 			children = (
 				B800000200000000000000A1 /* Yappy */,
 				B800000700000000000000A1 /* YappyTests */,
+				E800000100000000000000A1 /* YappyUITests */,
 				B800000800000000000000A1 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -416,6 +442,8 @@
 				B20000BA00000000000000A1 /* SelectionTransformController.swift */,
 				B20000A000000000000000A1 /* VLog.swift */,
 				B20000A100000000000000A1 /* AskHotkey.swift */,
+				B20000BC00000000000000A1 /* AskRuntimeStorage.swift */,
+				B20000BE00000000000000A1 /* StorageInventory.swift */,
 				B20000A200000000000000A1 /* GrokAskClient.swift */,
 				B20000AW00000000000000A1 /* ContinuationJudge.swift */,
 				B20000AI00000000000000A1 /* GrokAgentClient.swift */,
@@ -485,6 +513,8 @@
 				B20000A800000000000000A1 /* AskAnswerBlocksTests.swift */,
 				B20000AM00000000000000A1 /* TTSTextNormalizerTests.swift */,
 				B20000AP00000000000000A1 /* GrokAskClientTests.swift */,
+				B20000BD00000000000000A1 /* AskRuntimeStorageTests.swift */,
+				B20000BF00000000000000A1 /* StorageInventoryTests.swift */,
 				B20000AV00000000000000A1 /* ContinuationCasingTests.swift */,
 				B20000AQ00000000000000A1 /* CleanupCoordinatorTests.swift */,
 				B20000AR00000000000000A1 /* TranscriptTokenizerTests.swift */,
@@ -518,11 +548,20 @@
 			path = YappyTests;
 			sourceTree = "<group>";
 		};
+		E800000100000000000000A1 /* YappyUITests */ = {
+			isa = PBXGroup;
+			children = (
+				E200000100000000000000A1 /* YappyUITests.swift */,
+			);
+			path = YappyUITests;
+			sourceTree = "<group>";
+		};
 		B800000800000000000000A1 /* Products */ = {
 			isa = PBXGroup;
 			children = (
 				B200001300000000000000A1 /* Yappy.app */,
 				B200001800000000000000A1 /* YappyTests.xctest */,
+				E200000200000000000000A1 /* YappyUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -568,6 +607,23 @@
 			productReference = B200001800000000000000A1 /* YappyTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
+		E400000100000000000000A1 /* YappyUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E900000100000000000000A1 /* Build configuration list for PBXNativeTarget "YappyUITests" */;
+			buildPhases = (
+				EA00000100000000000000A1 /* Sources */,
+				E700000100000000000000A1 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				EC00000100000000000000A1 /* PBXTargetDependency */,
+			);
+			name = YappyUITests;
+			productName = YappyUITests;
+			productReference = E200000200000000000000A1 /* YappyUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -582,6 +638,10 @@
 						CreatedOnToolsVersion = 15.0;
 					};
 					B400000200000000000000A1 = {
+						CreatedOnToolsVersion = 15.0;
+						TestTargetID = B400000100000000000000A1;
+					};
+					E400000100000000000000A1 = {
 						CreatedOnToolsVersion = 15.0;
 						TestTargetID = B400000100000000000000A1;
 					};
@@ -606,6 +666,7 @@
 			targets = (
 				B400000100000000000000A1 /* Yappy */,
 				B400000200000000000000A1 /* YappyTests */,
+				E400000100000000000000A1 /* YappyUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -671,6 +732,8 @@
 				B10000A400000000000000A1 /* AskController.swift in Sources */,
 				B10000A000000000000000A1 /* VLog.swift in Sources */,
 				B10000A100000000000000A1 /* AskHotkey.swift in Sources */,
+				B10000BC00000000000000A1 /* AskRuntimeStorage.swift in Sources */,
+				B10000BE00000000000000A1 /* StorageInventory.swift in Sources */,
 				B10000A200000000000000A1 /* GrokAskClient.swift in Sources */,
 				B10000AW00000000000000A1 /* ContinuationJudge.swift in Sources */,
 				B10000AI00000000000000A1 /* GrokAgentClient.swift in Sources */,
@@ -738,6 +801,8 @@
 				B10000A800000000000000A1 /* AskAnswerBlocksTests.swift in Sources */,
 				B10000AM00000000000000A1 /* TTSTextNormalizerTests.swift in Sources */,
 				B10000AP00000000000000A1 /* GrokAskClientTests.swift in Sources */,
+				B10000BD00000000000000A1 /* AskRuntimeStorageTests.swift in Sources */,
+				B10000BF00000000000000A1 /* StorageInventoryTests.swift in Sources */,
 				B10000AV00000000000000A1 /* ContinuationCasingTests.swift in Sources */,
 				B10000AQ00000000000000A1 /* CleanupCoordinatorTests.swift in Sources */,
 				B10000AR00000000000000A1 /* TranscriptTokenizerTests.swift in Sources */,
@@ -770,6 +835,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		EA00000100000000000000A1 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E100000100000000000000A1 /* YappyUITests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -777,6 +850,11 @@
 			isa = PBXTargetDependency;
 			target = B400000100000000000000A1 /* Yappy */;
 			targetProxy = B300000100000000000000A1 /* PBXContainerItemProxy */;
+		};
+		EC00000100000000000000A1 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = B400000100000000000000A1 /* Yappy */;
+			targetProxy = E300000100000000000000A1 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -926,7 +1004,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 3.0.0;
+				MARKETING_VERSION = 3.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.yappy.app.debug;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -958,7 +1036,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 3.0.0;
+				MARKETING_VERSION = 3.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.yappy.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -998,6 +1076,36 @@
 			};
 			name = Release;
 		};
+		ED00000100000000000000A1 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.yappy.app.uitests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TEST_TARGET_NAME = Yappy;
+			};
+			name = Debug;
+		};
+		ED00000200000000000000A1 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.yappy.app.uitests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TEST_TARGET_NAME = Yappy;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -1015,6 +1123,15 @@
 			buildConfigurations = (
 				BD00000500000000000000A1 /* Debug */,
 				BD00000600000000000000A1 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		E900000100000000000000A1 /* Build configuration list for PBXNativeTarget "YappyUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				ED00000100000000000000A1 /* Debug */,
+				ED00000200000000000000A1 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

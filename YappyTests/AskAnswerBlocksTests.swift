@@ -143,6 +143,39 @@ final class AskAnswerBlocksTests: XCTestCase {
         XCTAssertEqual(AskAnswerBlock.strippingLeadingNarration(text), text)
     }
 
+    func testStripsNarrationWithTypographicApostrophe() {
+        // Verbatim field failure (grok, 2026-07-17): "I’ll" uses U+2019, which
+        // the ASCII opener table missed — the narration shipped in the answer.
+        let text = "I\u{2019}ll get the latest official count of Jupiter\u{2019}s moons. Jupiter has **115 known moons** as of April 9, 2026."
+        XCTAssertEqual(
+            AskAnswerBlock.strippingLeadingNarration(text),
+            "Jupiter has **115 known moons** as of April 9, 2026."
+        )
+    }
+
+    func testNarrationOnlyDetectedWithTypographicApostrophe() {
+        XCTAssertTrue(AskAnswerBlock.isNarrationOnly("I\u{2019}ll get the latest official count of Jupiter\u{2019}s moons."))
+        XCTAssertTrue(AskAnswerBlock.isNarrationOnly("I\u{2019}m checking the schedule."))
+    }
+
+    func testStripsGluedNarrationBeforeBoldAnswer() {
+        // Verbatim field failure (grok, 2026-07-16): narration glued straight
+        // onto the bold answer opener, no space after the terminator — the
+        // delta split fell inside the delimiter run so the glue repair could
+        // not insert one, and the old boundary scan required a literal space.
+        let text = "Checking today\u{2019}s Starship launch schedule.**Yes.** SpaceX has **Starship Flight 13** scheduled for today."
+        XCTAssertEqual(
+            AskAnswerBlock.strippingLeadingNarration(text),
+            "**Yes.** SpaceX has **Starship Flight 13** scheduled for today."
+        )
+    }
+
+    func testGluedGerundProseWithFiniteVerbIsKept() {
+        // The see-through boundary must not defeat the finite-verb guard.
+        let text = "Checking baggage is free on this fare.**Tip:** carry-ons are too."
+        XCTAssertEqual(AskAnswerBlock.strippingLeadingNarration(text), text)
+    }
+
     func testMixedAnswer() {
         let text = """
         The top options:

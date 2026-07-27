@@ -190,7 +190,30 @@ final class GrokAskClient: @unchecked Sendable {
         }
     }
 
+    /// `cancel()` + bounded wait for actual child exit, so a purge that
+    /// follows cannot race the child's sqlite WAL checkpoint. Safe on main
+    /// thread for timeouts <= 2s (termination is near-instant); returns
+    /// early on exit.
+    func stopAndWait(timeout: TimeInterval) {
+        let running = lock.withLock { process }
+        cancel()
+        ProcessExitWaiter.waitForExit(running, timeout: timeout)
+    }
+
     // MARK: - Spawn + stream reading
+
+    /// Pure builder for the turn's spawn environment, isolated from
+    /// `spawnAndRead` so isolation-pin tests can characterize it without
+    /// spawning a real process. HOME is pinned to the private Grok home —
+    /// Grok's filesystem isolation hangs entirely on this.
+    static func spawnEnvironment(home: URL) -> [String: String] {
+        let realHome = FileManager.default.homeDirectoryForCurrentUser.path
+        return [
+            "HOME": home.path,
+            "TMPDIR": NSTemporaryDirectory(),
+            "PATH": "\(realHome)/.local/bin:\(realHome)/.npm-global/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin",
+        ]
+    }
 
     private struct TurnResult {
         var sawAnyEvent: Bool
@@ -243,12 +266,7 @@ final class GrokAskClient: @unchecked Sendable {
         // Minimal, fixed environment: the child gets exactly what it needs and
         // nothing the app process happened to inherit. ~/.local/bin comes first
         // in PATH: that's where node lives, and the npm shim needs it.
-        let realHome = FileManager.default.homeDirectoryForCurrentUser.path
-        process.environment = [
-            "HOME": home.path,
-            "TMPDIR": NSTemporaryDirectory(),
-            "PATH": "\(realHome)/.local/bin:\(realHome)/.npm-global/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin",
-        ]
+        process.environment = Self.spawnEnvironment(home: home)
 
         let stdout = Pipe()
         process.standardOutput = stdout

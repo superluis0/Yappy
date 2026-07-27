@@ -32,6 +32,9 @@ struct SettingsView: View {
     /// is opened, which is fine for a disclosure group.
     @State private var voiceCommandsExpanded = false
     @State private var confirmClearHistory = false
+    @State private var confirmClearAnswersRuntime = false
+    /// `nil` until the first `StorageInventory.measure()` completes.
+    @State private var storageItems: [StorageItem]?
 
     /// One backend's connection state, for the Ask "green light". Checked
     /// silently (file probes only, no network) and re-checked whenever the app
@@ -156,7 +159,6 @@ struct SettingsView: View {
                 }
                 .labelsHidden().fixedSize()
             }
-            RowDivider()
             SettingRow(icon: "hand.tap", title: "Activation",
                        subtitle: activationSubtitle) {
                 Picker("", selection: $settings.hotkeyActivation) {
@@ -164,7 +166,6 @@ struct SettingsView: View {
                 }
                 .labelsHidden().fixedSize()
             }
-            RowDivider()
             SettingRow(icon: "sparkles", title: "Listening glow",
                        subtitle: "The ring around the pill while it listens, and around Answers through the reply. Rainbow slowly circles; White and Orange hold steady.") {
                 Picker("", selection: $settings.listeningGlowStyle) {
@@ -172,49 +173,40 @@ struct SettingsView: View {
                 }
                 .labelsHidden().fixedSize()
             }
-            RowDivider()
             SettingToggle(icon: "speaker.wave.2.fill", title: "Recording sounds",
                           subtitle: "A soft chime when capture starts and stops.",
                           isOn: $settings.audioFeedbackEnabled)
             if settings.audioFeedbackEnabled {
-                RowDivider()
-                SettingRow(icon: "dial.medium", title: "Sound volume", active: true) {
-                    Slider(value: $settings.audioFeedbackVolume, in: 0...1)
-                        .frame(width: 150).tint(.accentColor)
+                NestedSettingGroup {
+                    SettingRow(icon: "dial.medium", title: "Sound volume", active: true) {
+                        Slider(value: $settings.audioFeedbackVolume, in: 0...1)
+                            .frame(width: 150).tint(.accentColor)
+                    }
                 }
             }
-            RowDivider()
             DisclosureGroup(isExpanded: $voiceCommandsExpanded) {
                 VStack(spacing: 0) {
-                    RowDivider()
                     SettingToggle(icon: "number", title: "Spoken numbers as digits",
                                   subtitle: "“three thirty PM” becomes 3:30 PM, “twenty dollars” becomes $20.",
                                   isOn: $settings.numberFormattingEnabled)
-                    RowDivider()
                     SettingToggle(icon: "list.number", title: "Spoken numbered lists",
                                   subtitle: "Count off items and Yappy lays them out as a 1. 2. 3. list.",
                                   isOn: $settings.numberedListsEnabled)
-                    RowDivider()
                     SettingToggle(icon: "eraser", title: "Remove filler words",
                                   subtitle: "Strips stray “um”, “uh”, “erm”, and “hmm”.",
                                   isOn: $settings.fillerRemovalEnabled)
-                    RowDivider()
                     SettingToggle(icon: "text.alignleft", title: "Spoken formatting commands",
                                   subtitle: "Say “new line” or “new paragraph” to insert line breaks.",
                                   isOn: $settings.spokenCommandsEnabled)
-                    RowDivider()
                     SettingToggle(icon: "questionmark.circle", title: "Spoken punctuation",
                                   subtitle: "Say “comma”, “period”, or “question mark” to punctuate.",
                                   isOn: $settings.spokenPunctuationEnabled)
-                    RowDivider()
                     SettingToggle(icon: "arrow.uturn.backward", title: "Voice editing commands",
                                   subtitle: "“scratch that”, “delete the last word”, or “all caps that”.",
                                   isOn: $settings.voiceEditingEnabled)
-                    RowDivider()
                     SettingToggle(icon: "wand.and.rays", title: "Voice commands",
                                   subtitle: "“switch to <mode> mode”, “open scratchpad”, or “new note”.",
                                   isOn: $settings.voiceControlEnabled)
-                    RowDivider()
                     SettingRow(icon: "text.book.closed", title: "See every phrase",
                                subtitle: "The full list of spoken commands and formatting Yappy understands.") {
                         Button("Open Commands") { windowState.select(.commands) }
@@ -236,7 +228,6 @@ struct SettingsView: View {
             }
             .padding(.horizontal, 16).padding(.vertical, 12)
             .tint(Brand.ink3)
-            RowDivider()
             SettingToggle(icon: "wand.and.stars", title: "Voice Edit (experimental)",
                           subtitle: settings.hotkeyOption == .rightOptionHold
                               ? "Right Option is your dictation key — pick a different activation hotkey above to free it for Voice Edit."
@@ -246,45 +237,43 @@ struct SettingsView: View {
     }
 
     private var aiCleanupSection: some View {
-        SettingsSection(icon: "sparkles", title: "AI cleanup", tinted: true) {
+        SettingsSection(icon: "sparkles", title: "AI cleanup") {
             SettingToggle(icon: "wand.and.stars", title: "Clean up transcripts",
                           subtitle: "On-device polish for punctuation, casing, and phrasing. Runs with Apple Intelligence (macOS 26+); inserts the raw transcript if it isn’t available.",
                           isOn: $settings.cleanupEnabled)
             if settings.cleanupEnabled {
-                RowDivider()
-                SettingRow(icon: "slider.horizontal.3", title: "How much cleanup",
-                           subtitle: "Standard polishes lightly. Conservative only fixes punctuation, capitalization, and standalone fillers — no rewording.") {
-                    Picker("", selection: $settings.cleanupIntensity) {
-                        ForEach(CleanupIntensity.allCases) { Text($0.displayName).tag($0) }
+                NestedSettingGroup {
+                    SettingRow(icon: "slider.horizontal.3", title: "How much cleanup",
+                               subtitle: "Standard polishes lightly. Conservative only fixes punctuation, capitalization, and standalone fillers — no rewording.") {
+                        Picker("", selection: $settings.cleanupIntensity) {
+                            ForEach(CleanupIntensity.allCases) { Text($0.displayName).tag($0) }
+                        }
+                        .labelsHidden().fixedSize()
                     }
-                    .labelsHidden().fixedSize()
-                }
-                RowDivider()
-                SettingToggle(icon: "text.magnifyingglass", title: "Show polish caption",
-                              subtitle: "After insert, briefly offer “use your exact words” when cleanup changed the text.",
-                              isOn: $settings.cleanupDiffCaptionEnabled)
-                RowDivider()
-                SettingToggle(icon: "arrow.triangle.2.circlepath", title: "Adapt tone to the app",
-                              subtitle: "Match register to where you’re typing. Formal expands contractions and ends sentences with punctuation; Casual drops the trailing period on short messages; Verbatim skips cleanup.",
-                              isOn: $settings.contextAwareToneEnabled)
-                if settings.contextAwareToneEnabled {
-                    ForEach(AppCategory.allCases, id: \.self) { category in
-                        RowDivider()
-                        SettingRow(icon: "app", title: category.displayName) {
-                            Picker("", selection: toneBinding(for: category)) {
-                                Text("Auto (\(category.defaultTone.displayName))").tag(Optional<ToneStyle>.none)
-                                ForEach(ToneStyle.allCases, id: \.self) { Text($0.displayName).tag(Optional($0)) }
+                    SettingToggle(icon: "text.magnifyingglass", title: "Show polish caption",
+                                  subtitle: "After insert, briefly offer “use your exact words” when cleanup changed the text.",
+                                  isOn: $settings.cleanupDiffCaptionEnabled)
+                    SettingToggle(icon: "arrow.triangle.2.circlepath", title: "Adapt tone to the app",
+                                  subtitle: "Match register to where you’re typing. Formal expands contractions and ends sentences with punctuation; Casual drops the trailing period on short messages; Verbatim skips cleanup.",
+                                  isOn: $settings.contextAwareToneEnabled)
+                    if settings.contextAwareToneEnabled {
+                        NestedSettingGroup(nested: true) {
+                            ForEach(AppCategory.allCases, id: \.self) { category in
+                                SettingRow(icon: "app", title: category.displayName) {
+                                    Picker("", selection: toneBinding(for: category)) {
+                                        Text("Auto (\(category.defaultTone.displayName))").tag(Optional<ToneStyle>.none)
+                                        ForEach(ToneStyle.allCases, id: \.self) { Text($0.displayName).tag(Optional($0)) }
+                                    }
+                                    .labelsHidden().fixedSize()
+                                }
                             }
-                            .labelsHidden().fixedSize()
                         }
                     }
+                    SettingToggle(icon: "arrow.uturn.left", title: "Resolve self-corrections",
+                                  subtitle: "“meet at 2, actually 3” becomes “Let’s meet at 3.”",
+                                  isOn: $settings.backtrackEnabled)
                 }
-                RowDivider()
-                SettingToggle(icon: "arrow.uturn.left", title: "Resolve self-corrections",
-                              subtitle: "“meet at 2, actually 3” becomes “Let’s meet at 3.”",
-                              isOn: $settings.backtrackEnabled)
             }
-            RowDivider()
             SettingToggle(icon: "character.book.closed", title: "Auto-learn dictionary corrections",
                           subtitle: "High-confidence “scratch that” fixes become aliases immediately (click the pill to undo). Low-confidence ones stay as Dictionary suggestions.",
                           isOn: $settings.dictionaryAutoLearnEnabled)
@@ -294,7 +283,6 @@ struct SettingsView: View {
     private var generalSection: some View {
         SettingsSection(icon: "gearshape", title: "General") {
             SettingToggle(icon: "power", title: "Launch Yappy at login", isOn: $settings.launchAtLogin)
-            RowDivider()
             SettingRow(icon: "waveform", title: "Speech model",
                        subtitle: "Parakeet — English, fastest. Nemotron — multilingual, ~670 MB on first use.") {
                 Picker("", selection: $settings.transcriptionModel) {
@@ -303,13 +291,11 @@ struct SettingsView: View {
                 .labelsHidden().fixedSize()
             }
             if settings.transcriptionModel == .nemotron {
-                RowDivider()
                 SettingRow(icon: "lightbulb", title: "Dictating mostly in English?",
                            subtitle: "Parakeet is faster and more accurate for English, and supports dictionary boosting.") {
                     EmptyView()
                 }
             }
-            RowDivider()
             ModelStatusRow(settings: settings, transcriptionService: transcriptionService)
                 .padding(.horizontal, 16).padding(.vertical, 12)
         }
@@ -324,9 +310,8 @@ struct SettingsView: View {
     /// The enable toggle stays locked until something is connected, so the
     /// whole flow is "see the green light, flip the switch."
     private var askSection: some View {
-        SettingsSection(icon: "questionmark.bubble", title: "Answers", tinted: true) {
+        SettingsSection(icon: "questionmark.bubble", title: "Answers") {
             askReadinessRow
-            RowDivider()
             // Locked until a backend is connected — but never locks the OFF
             // direction (a vanished codex must not trap the toggle on).
             SettingToggle(icon: "mic", title: "Hold \(settings.askHotkeyOption.shortName) to ask",
@@ -335,91 +320,85 @@ struct SettingsView: View {
                 .disabled(!askAnyBackendReady && !settings.askEnabled)
                 .opacity(askAnyBackendReady || settings.askEnabled ? 1 : 0.55)
             if settings.askEnabled {
-                RowDivider()
-                SettingRow(icon: "keyboard", title: "Ask key",
-                           subtitle: askKeySubtitle) {
-                    Picker("", selection: $settings.askHotkeyOption) {
-                        ForEach(AskHotkeyOption.allCases) { Text($0.displayName).tag($0) }
-                    }
-                    .labelsHidden().fixedSize()
-                }
-                // Offer the model choice only when there IS a choice.
-                if askCodexReadiness == .ready && askGrokReadiness == .ready {
-                    RowDivider()
-                    SettingRow(icon: "cpu", title: "Answering model",
-                               subtitle: "Both research with their own web search.") {
-                        Picker("", selection: $settings.askBackend) {
-                            ForEach(AskBackend.allCases) { Text($0.displayName).tag($0) }
+                NestedSettingGroup {
+                    SettingRow(icon: "keyboard", title: "Ask key",
+                               subtitle: askKeySubtitle) {
+                        Picker("", selection: $settings.askHotkeyOption) {
+                            ForEach(AskHotkeyOption.allCases) { Text($0.displayName).tag($0) }
                         }
                         .labelsHidden().fixedSize()
                     }
-                }
-                // Grok has two models; the choice routes every Grok answer.
-                if settings.askBackend == .grok, askGrokReadiness == .ready {
-                    RowDivider()
-                    SettingRow(icon: "brain.head.profile", title: "Grok model",
-                               subtitle: "Grok 4.5 answers best; Composer 2.5 Fast is snappier.") {
-                        Picker("", selection: $settings.askGrokModel) {
-                            ForEach(AskGrokModel.allCases) { Text($0.displayName).tag($0) }
-                        }
-                        .labelsHidden().fixedSize()
-                    }
-                }
-                RowDivider()
-                SettingToggle(icon: "clock.arrow.circlepath", title: "Save answer history",
-                              subtitle: "Keeps questions and answers in a local log on this Mac. Turn off and nothing is stored.",
-                              isOn: $settings.askSaveHistoryEnabled)
-                RowDivider()
-                ttsReadinessRow
-                RowDivider()
-                SettingToggle(icon: "speaker.wave.2", title: "Read answers aloud",
-                              subtitle: "Adds a Speak button to the answer card, and the “read that” voice command.",
-                              isOn: $settings.answersSpeakEnabled)
-                    .disabled(ttsReadiness != .ready && !settings.answersSpeakEnabled)
-                    .opacity(ttsReadiness == .ready || settings.answersSpeakEnabled ? 1 : 0.55)
-                if settings.answersSpeakEnabled {
-                    RowDivider()
-                    SettingToggle(icon: "speaker.wave.2.bubble.left", title: "Speak every answer",
-                                  subtitle: "Read each answer aloud automatically as it finishes.",
-                                  isOn: $settings.answersAutoSpeak)
-                    RowDivider()
-                    SettingRow(icon: "waveform", title: "Voice",
-                               subtitle: "Eight on-device voices, American and British. Tap play to hear a sample.") {
-                        HStack(spacing: 10) {
-                            voicePreviewButton
-                            Picker("", selection: $settings.answersVoice) {
-                                ForEach(AnswersVoice.allCases) { Text($0.displayName).tag($0.rawValue) }
+                    // Offer the model choice only when there IS a choice.
+                    if askCodexReadiness == .ready && askGrokReadiness == .ready {
+                        SettingRow(icon: "cpu", title: "Answering model",
+                                   subtitle: "Both research with their own web search.") {
+                            Picker("", selection: $settings.askBackend) {
+                                ForEach(AskBackend.allCases) { Text($0.displayName).tag($0) }
                             }
                             .labelsHidden().fixedSize()
-                            .onChange(of: settings.answersVoice) { _, _ in
-                                // Switching voices cancels a sample in progress.
-                                askController.stopVoicePreview()
+                        }
+                    }
+                    // Grok has two models; the choice routes every Grok answer.
+                    if settings.askBackend == .grok, askGrokReadiness == .ready {
+                        SettingRow(icon: "brain.head.profile", title: "Grok model",
+                                   subtitle: "Grok 4.5 answers best; Composer 2.5 Fast is snappier.") {
+                            Picker("", selection: $settings.askGrokModel) {
+                                ForEach(AskGrokModel.allCases) { Text($0.displayName).tag($0) }
+                            }
+                            .labelsHidden().fixedSize()
+                        }
+                    }
+                    SettingToggle(icon: "clock.arrow.circlepath", title: "Save answer history",
+                                  subtitle: "On keeps a local log on this Mac. Off also wipes backend runtime files whenever an answer closes, which may make the next answer start a little slower.",
+                                  isOn: $settings.askSaveHistoryEnabled)
+                    ttsReadinessRow
+                    SettingToggle(icon: "speaker.wave.2", title: "Read answers aloud",
+                                  subtitle: "Adds a Speak button to the answer card, and the “read that” voice command.",
+                                  isOn: $settings.answersSpeakEnabled)
+                        .disabled(ttsReadiness != .ready && !settings.answersSpeakEnabled)
+                        .opacity(ttsReadiness == .ready || settings.answersSpeakEnabled ? 1 : 0.55)
+                    if settings.answersSpeakEnabled {
+                        NestedSettingGroup(nested: true) {
+                            SettingToggle(icon: "speaker.wave.2.bubble.left", title: "Speak every answer",
+                                          subtitle: "Read each answer aloud automatically as it finishes.",
+                                          isOn: $settings.answersAutoSpeak)
+                            SettingRow(icon: "waveform", title: "Voice",
+                                       subtitle: "Eight on-device voices, American and British. Tap play to hear a sample.") {
+                                HStack(spacing: 10) {
+                                    voicePreviewButton
+                                    Picker("", selection: $settings.answersVoice) {
+                                        ForEach(AnswersVoice.allCases) { Text($0.displayName).tag($0.rawValue) }
+                                    }
+                                    .labelsHidden().fixedSize()
+                                    .onChange(of: settings.answersVoice) { _, _ in
+                                        // Switching voices cancels a sample in progress.
+                                        askController.stopVoicePreview()
+                                    }
+                                }
+                            }
+                            SettingRow(icon: "gauge.with.needle", title: "Voice speed",
+                                       subtitle: "How fast answers are read. The play button previews the current speed.") {
+                                Picker("", selection: $settings.answersVoiceSpeed) {
+                                    ForEach(AnswersVoiceSpeed.allCases) { Text($0.displayName).tag($0) }
+                                }
+                                .labelsHidden().fixedSize()
+                                .onChange(of: settings.answersVoiceSpeed) { _, _ in
+                                    // A sample rendered at the old speed shouldn't keep playing.
+                                    askController.stopVoicePreview()
+                                }
                             }
                         }
                     }
-                    RowDivider()
-                    SettingRow(icon: "gauge.with.needle", title: "Voice speed",
-                               subtitle: "How fast answers are read. The play button previews the current speed.") {
-                        Picker("", selection: $settings.answersVoiceSpeed) {
-                            ForEach(AnswersVoiceSpeed.allCases) { Text($0.displayName).tag($0) }
-                        }
-                        .labelsHidden().fixedSize()
-                        .onChange(of: settings.answersVoiceSpeed) { _, _ in
-                            // A sample rendered at the old speed shouldn't keep playing.
-                            askController.stopVoicePreview()
-                        }
-                    }
-                }
-                if settings.askHotkeyOption == .fnGlobe {
-                    RowDivider()
-                    SettingRow(icon: "globe", title: "Set the Globe key free",
-                               subtitle: "For reliable Fn capture, set System Settings → Keyboard → “Press 🌐 to” = Do Nothing.") {
-                        Button("Open Keyboard Settings") {
-                            if let url = URL(string: "x-apple.systempreferences:com.apple.Keyboard-Settings.extension") {
-                                NSWorkspace.shared.open(url)
+                    if settings.askHotkeyOption == .fnGlobe {
+                        SettingRow(icon: "globe", title: "Set the Globe key free",
+                                   subtitle: "For reliable Fn capture, set System Settings → Keyboard → “Press 🌐 to” = Do Nothing.") {
+                            Button("Open Keyboard Settings") {
+                                if let url = URL(string: "x-apple.systempreferences:com.apple.Keyboard-Settings.extension") {
+                                    NSWorkspace.shared.open(url)
+                                }
                             }
+                            .buttonStyle(.bordered)
                         }
-                        .buttonStyle(.bordered)
                     }
                 }
             }
@@ -602,6 +581,7 @@ struct SettingsView: View {
         }
         .buttonStyle(.plain)
         .help(isPreviewing ? "Stop the sample" : "Hear a sample of this voice")
+        .accessibilityLabel(isPreviewing ? "Stop voice sample" : "Play voice sample")
     }
 
     @ViewBuilder
@@ -650,7 +630,6 @@ struct SettingsView: View {
                           subtitle: "Keeps a local log of your dictations for stats and history. Never leaves your Mac.",
                           isOn: $settings.saveHistoryEnabled)
             if settings.saveHistoryEnabled {
-                RowDivider()
                 SettingRow(icon: "calendar", title: "Keep history for",
                            subtitle: "Older dictations are removed automatically.") {
                     Picker("", selection: $settings.historyRetentionDays) {
@@ -663,7 +642,6 @@ struct SettingsView: View {
                 }
             }
             if let historyStore {
-                RowDivider()
                 SettingRow(icon: "trash", title: "Clear history now",
                            subtitle: "Permanently deletes every stored dictation. This can’t be undone.",
                            iconColor: Brand.danger) {
@@ -673,16 +651,127 @@ struct SettingsView: View {
                             isPresented: $confirmClearHistory,
                             titleVisibility: .visible
                         ) {
-                            Button("Delete All", role: .destructive) { historyStore.clearAll() }
+                            Button("Delete All", role: .destructive) {
+                                historyStore.clearAll()
+                                // Re-measure: the storage rows below would
+                                // otherwise keep showing the deleted history's
+                                // size until Settings is reopened.
+                                Task { await refreshStorageInventory() }
+                            }
                             Button("Cancel", role: .cancel) {}
                         }
                 }
             }
-            RowDivider()
             SettingRow(icon: "key.fill", title: "Password fields are never recorded",
                        subtitle: "While a secure input field (like a password box) is focused, dictations aren’t added to your history.") {
                 EmptyView()
             }
+
+            // MARK: Storage on this Mac (Phase C)
+            storageTotalRow
+            ForEach(storageDisplayRows) { row in
+                storageItemRow(row)
+            }
+            SettingRow(icon: "trash", title: "Clear Answers runtime data",
+                       subtitle: "Wipes temporary session files Answers backends keep on this Mac. Answer history is separate.",
+                       iconColor: Brand.danger) {
+                Button("Clear runtime data") { confirmClearAnswersRuntime = true }
+                    .confirmationDialog(
+                        "Clear Answers runtime data? Temporary session files used by Answers will be deleted. This can’t be undone.",
+                        isPresented: $confirmClearAnswersRuntime,
+                        titleVisibility: .visible
+                    ) {
+                        Button("Clear Runtime Data", role: .destructive) {
+                            askController.clearRuntimeAndHistory()
+                            Task { await refreshStorageInventory() }
+                        }
+                        Button("Cancel", role: .cancel) {}
+                    }
+            }
+        }
+        .task { await refreshStorageInventory() }
+    }
+
+    /// Measured items when ready; otherwise placeholder rows from `locations`
+    /// so empty paths still appear as honest "Empty" proof once sized.
+    /// The `-1` is a view-local "not measured yet" marker: `StorageInventory`
+    /// never returns a negative count, so a negative can only mean these
+    /// synthesized rows.
+    private var storageDisplayRows: [StorageItem] {
+        if let storageItems { return storageItems }
+        return StorageInventory.locations.map {
+            StorageItem(id: $0.id, title: $0.title, detail: $0.detail, bytes: -1)
+        }
+    }
+
+    private var storageTotalBytes: Int64? {
+        guard let storageItems else { return nil }
+        return storageItems.reduce(0) { $0 + $1.bytes }
+    }
+
+    private var storageTotalRow: some View {
+        SettingRow(
+            icon: "internaldrive",
+            title: "Storage on this Mac",
+            subtitle: "Your voice is never recorded to a file. This is everything Yappy keeps on this Mac."
+        ) {
+            if let total = storageTotalBytes {
+                Text(StorageInventory.formatted(total))
+                    .font(.system(size: 13))
+                    .foregroundStyle(Brand.ink3)
+                    .monospacedDigit()
+            } else {
+                ProgressView().controlSize(.small)
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(storageTotalAccessibilityLabel)
+    }
+
+    private var storageTotalAccessibilityLabel: String {
+        if let total = storageTotalBytes {
+            return "Storage on this Mac, \(StorageInventory.formatted(total))"
+        }
+        return "Storage on this Mac, measuring"
+    }
+
+    private func storageItemRow(_ item: StorageItem) -> some View {
+        let isPlaceholder = item.bytes < 0
+        let sizeText: String = {
+            if isPlaceholder { return "—" }
+            if item.isEmpty { return "Empty" }
+            return StorageInventory.formatted(item.bytes)
+        }()
+        let sizeColor: Color = {
+            if isPlaceholder { return Brand.ink4 }
+            if item.isEmpty { return Brand.ink4 }
+            return Brand.ink3
+        }()
+        return SettingRow(
+            icon: "doc",
+            title: item.title,
+            subtitle: item.detail,
+            iconColor: isPlaceholder ? Brand.ink4 : nil
+        ) {
+            Text(sizeText)
+                .font(.system(size: 13))
+                .foregroundStyle(sizeColor)
+                .monospacedDigit()
+                .opacity(isPlaceholder ? 0.55 : 1)
+        }
+        .opacity(isPlaceholder ? 0.72 : 1)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(item.title), \(isPlaceholder ? "measuring" : sizeText)")
+    }
+
+    /// Sizes via `StorageInventory.measure()` only — no file I/O on the main thread.
+    private func refreshStorageInventory() async {
+        let items = await StorageInventory.measure()
+        // Assign without animation so Reduce Motion / size flips never animate.
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            storageItems = items
         }
     }
 
@@ -692,16 +781,13 @@ struct SettingsView: View {
                 Text(updateChecker.currentVersionDisplay)
                     .font(.system(size: 13)).foregroundStyle(Brand.ink3)
             }
-            RowDivider()
             SettingRow(icon: "sparkles", title: "What’s new",
                        subtitle: "See the release notes for this version.") {
                 Button("View") { onShowReleaseNotes() }
             }
-            RowDivider()
             SettingToggle(icon: "clock.arrow.circlepath", title: "Check automatically",
                           subtitle: "Downloaded from GitHub and signature-verified before installing.",
                           isOn: $settings.autoUpdateChecksEnabled)
-            RowDivider()
             SettingRow(icon: "arrow.down.circle", title: "Check for updates") {
                 HStack(spacing: 10) {
                     if let release = updateChecker.available {
@@ -730,7 +816,6 @@ struct SettingsView: View {
     private var permissionsSection: some View {
         SettingsSection(icon: "lock.shield", title: "Permissions") {
             permissionRow(title: "Microphone", granted: microphoneGranted, pane: "Privacy_Microphone")
-            RowDivider()
             permissionRow(title: "Accessibility", granted: accessibilityGranted, pane: "Privacy_Accessibility")
         }
     }
@@ -774,24 +859,53 @@ struct SettingsView: View {
 private struct SettingsSection<Content: View>: View {
     let icon: String
     let title: String
+    /// Retained for call-site compatibility; no longer paints an accent tint —
+    /// every section now uses the same neutral glass so no two sections read as
+    /// "special" (the old orange-tinted AI cleanup / Answers looked out of place
+    /// next to the neutral ones).
     var tinted: Bool = false
     @ViewBuilder var content: () -> Content
 
+    /// Ephemeral, defaults expanded so nothing is hidden on open (and the
+    /// Settings UI test still finds every section's content). Collapsing is a
+    /// convenience for a long page, not a persisted preference.
+    @State private var expanded = true
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 9) {
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .fill(Color.accentColor.opacity(0.18))
-                    .frame(width: 23, height: 23)
-                    .overlay(Image(systemName: icon).font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(Color.accentColor))
-                Text(title).font(.system(size: 13, weight: .semibold)).foregroundStyle(Brand.ink2)
-                Spacer()
+            Button {
+                if reduceMotion {
+                    expanded.toggle()
+                } else {
+                    withAnimation(.easeInOut(duration: 0.18)) { expanded.toggle() }
+                }
+            } label: {
+                HStack(spacing: 9) {
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(Color.accentColor.opacity(0.18))
+                        .frame(width: 23, height: 23)
+                        .overlay(Image(systemName: icon).font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(Color.accentColor))
+                    Text(title).font(.system(size: 13, weight: .semibold)).foregroundStyle(Brand.ink2)
+                    Spacer()
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Brand.ink4)
+                        .rotationEffect(.degrees(expanded ? 0 : -90))
+                }
+                .padding(.horizontal, 4).padding(.bottom, 11)
+                .contentShape(Rectangle())
             }
-            .padding(.horizontal, 4).padding(.bottom, 11)
+            .buttonStyle(.plain)
+            .accessibilityLabel(title)
+            .accessibilityHint(expanded ? "Expanded. Activate to collapse." : "Collapsed. Activate to expand.")
+            .accessibilityAddTraits(expanded ? [.isSelected] : [])
 
-            VStack(spacing: 0) { content() }
-                .glassPanel(cornerRadius: 16, tint: tinted ? Color.accentColor.opacity(0.32) : nil)
+            if expanded {
+                VStack(spacing: 0) { content() }
+                    .glassPanel(cornerRadius: 16)
+            }
         }
     }
 }
@@ -841,7 +955,11 @@ private struct SettingToggle: View {
 
     var body: some View {
         SettingRow(icon: icon, title: title, subtitle: subtitle, active: isOn) {
+            // labelsHidden() drops the (empty) inline label — without an explicit
+            // accessibilityLabel VoiceOver announces a bare "switch, off/on" with
+            // no name. Single-point fix: every SettingToggle call site inherits it.
             Toggle("", isOn: $isOn).labelsHidden().toggleStyle(.switch).tint(.accentColor)
+                .accessibilityLabel(title)
         }
     }
 }
@@ -850,5 +968,79 @@ private struct SettingToggle: View {
 private struct RowDivider: View {
     var body: some View {
         Rectangle().fill(Color.white.opacity(0.07)).frame(height: 1).padding(.leading, 63)
+    }
+
+}
+/// Indented container for dependent settings, with a left accent rail.
+/// Rows inside separate by their own padding; no RowDividers.
+private struct NestedSettingGroup<Content: View>: View {
+    var nested: Bool = false
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        // A thin rail at the LEADING edge (an HStack sibling, so it always
+        // matches content height — no overlay geometry to misplace). Neutral,
+        // not accent, so nested groups don't pile more orange onto the page.
+        HStack(alignment: .top, spacing: 10) {
+            RoundedRectangle(cornerRadius: 1, style: .continuous)
+                .fill(Color.white.opacity(0.11))
+                .frame(width: 2)
+                .padding(.vertical, 6)
+            VStack(alignment: .leading, spacing: 0) {
+                content()
+            }
+        }
+        .padding(.leading, nested ? 14 : 20)
+        .padding(.vertical, 2)
+    }
+}
+
+/// A compact toggle chip for boolean settings in a chip row.
+private struct SettingChip: View {
+    let title: String
+    @Binding var isOn: Bool
+
+    var body: some View {
+        Button {
+            isOn.toggle()
+        } label: {
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(isOn ? Color.accentColor : Color.white.opacity(0.2))
+                    .frame(width: 7, height: 7)
+                Text(title)
+                    .font(.system(size: 11.5, weight: .medium))
+                    .foregroundStyle(isOn ? Brand.ink2 : Brand.ink4)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(Color.white.opacity(0.07))
+            .cornerRadius(8)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
+        .accessibilityAddTraits(isOn ? [.isSelected] : [])
+    }
+}
+
+/// A wrapping row of SettingChips.
+private struct SettingChipRow: View {
+    let chips: [SettingChip]
+
+    init(_ chips: SettingChip...) {
+        self.chips = chips
+    }
+
+    var body: some View {
+        HStack(spacing: 7) {
+            ForEach(chips.indices, id: \.self) { i in
+                chips[i]
+                if i < chips.count - 1 {
+                    Spacer(minLength: 0)
+                }
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 9)
     }
 }

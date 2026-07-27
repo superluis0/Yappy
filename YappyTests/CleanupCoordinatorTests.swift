@@ -29,14 +29,17 @@ private final class FakeCleanupProvider: CleanupProvider {
 
     func isAvailable() async -> Bool { true }
 
-    func cleanup(_ text: String, tone: ToneStyle, backtrack: Bool, intensity: CleanupIntensity) async -> String {
+    private(set) var lastKnownTerms: [String] = []
+
+    func cleanup(_ text: String, tone: ToneStyle, backtrack: Bool, intensity: CleanupIntensity, knownTerms: [String]) async -> String {
         cleanupCallCount += 1
+        lastKnownTerms = knownTerms
         lastIntensities.append(intensity)
         if let mapped = singleLineMap[text] { return mapped }
         return text + defaultCleanupSuffix
     }
 
-    func cleanupBatched(lines: [String], tone: ToneStyle, backtrack: Bool, intensity: CleanupIntensity) async -> [String]? {
+    func cleanupBatched(lines: [String], tone: ToneStyle, backtrack: Bool, intensity: CleanupIntensity, knownTerms: [String]) async -> [String]? {
         batchedCallCount += 1
         lastBatchedIntensities.append(intensity)
         if let explicit = batchedResult {
@@ -298,6 +301,123 @@ final class CleanupCoordinatorTests: XCTestCase {
         ))
     }
 
+    // MARK: - Change summary (what the polish changed)
+
+    func testChangeSummaryCasingOnly() {
+        XCTAssertEqual(
+            CleanupCoordinator.changeSummary(raw: "i think so", final: "I think so"),
+            "capitalization"
+        )
+        XCTAssertEqual(
+            CleanupCoordinator.changeSummary(raw: "HELLO WORLD", final: "Hello World"),
+            "capitalization"
+        )
+    }
+
+    func testChangeSummaryPunctuationOnly() {
+        // Added.
+        XCTAssertEqual(
+            CleanupCoordinator.changeSummary(raw: "hello world", final: "hello, world"),
+            "punctuation"
+        )
+        // Replaced.
+        XCTAssertEqual(
+            CleanupCoordinator.changeSummary(raw: "hello.", final: "hello!"),
+            "punctuation"
+        )
+        // Straight quote curled by the model still reads as punctuation.
+        XCTAssertEqual(
+            CleanupCoordinator.changeSummary(raw: "it's fine", final: "it\u{2019}s fine"),
+            "punctuation"
+        )
+    }
+
+    func testChangeSummaryFillerRemovalOnly() {
+        XCTAssertEqual(
+            CleanupCoordinator.changeSummary(raw: "i was um thinking", final: "i was thinking"),
+            "filler words"
+        )
+        // Two-word filler removed adjacently.
+        XCTAssertEqual(
+            CleanupCoordinator.changeSummary(raw: "you know i think so", final: "i think so"),
+            "filler words"
+        )
+    }
+
+    func testChangeSummaryCombinedTwoClasses() {
+        XCTAssertEqual(
+            CleanupCoordinator.changeSummary(raw: "hello world", final: "Hello world."),
+            "capitalization and punctuation"
+        )
+        XCTAssertEqual(
+            CleanupCoordinator.changeSummary(raw: "i was, um, thinking", final: "i was thinking"),
+            "punctuation and filler words"
+        )
+        XCTAssertEqual(
+            CleanupCoordinator.changeSummary(raw: "um hello world", final: "Hello world"),
+            "capitalization and filler words"
+        )
+        XCTAssertEqual(
+            CleanupCoordinator.changeSummary(raw: "hello  world", final: "Hello world"),
+            "capitalization and spacing"
+        )
+    }
+
+    func testChangeSummaryIdenticalReturnsNil() {
+        XCTAssertNil(CleanupCoordinator.changeSummary(raw: "Hello.", final: "Hello."))
+        // Trim-identical: the caption gate already treats these as unchanged.
+        XCTAssertNil(CleanupCoordinator.changeSummary(raw: "  Hello.  ", final: "Hello."))
+        XCTAssertNil(CleanupCoordinator.changeSummary(raw: "", final: "Hello."))
+        XCTAssertNil(CleanupCoordinator.changeSummary(raw: "Hello.", final: ""))
+    }
+
+    func testChangeSummaryMoreThanTwoClassesSaysSeveralFixes() {
+        // Filler removed + capitalized + period added = three classes.
+        XCTAssertEqual(
+            CleanupCoordinator.changeSummary(raw: "um hello world", final: "Hello, world."),
+            "several fixes"
+        )
+        // Casing + punctuation + whitespace, no word changes.
+        XCTAssertEqual(
+            CleanupCoordinator.changeSummary(
+                raw: "hello  world its me", final: "Hello world, its me."
+            ),
+            "several fixes"
+        )
+    }
+
+    func testChangeSummaryUnnameableChangesReturnNil() {
+        // Word rewrite (words added): never guess.
+        XCTAssertNil(
+            CleanupCoordinator.changeSummary(raw: "we are gonna go", final: "we are going to go")
+        )
+        // Removed words that are NOT known fillers: content loss, stay generic.
+        XCTAssertNil(
+            CleanupCoordinator.changeSummary(raw: "please do not go", final: "please go")
+        )
+        // A lone removed "you" is never claimed as filler ("you know" only
+        // counts as a removed pair).
+        XCTAssertNil(
+            CleanupCoordinator.changeSummary(raw: "thank you friend", final: "thank friend")
+        )
+        // Spelling fix that splits a token (apostrophe insertion).
+        XCTAssertNil(
+            CleanupCoordinator.changeSummary(raw: "dont go", final: "don't go")
+        )
+    }
+
+    func testChangeSummaryWhitespaceClasses() {
+        XCTAssertEqual(
+            CleanupCoordinator.changeSummary(raw: "one  two", final: "one two"),
+            "spacing"
+        )
+        // Line-structure change reads as formatting, not spacing.
+        XCTAssertEqual(
+            CleanupCoordinator.changeSummary(raw: "one\ntwo", final: "one two"),
+            "formatting"
+        )
+    }
+
     func testShouldSkipModelCleanupConservativeTable() {
         struct Case {
             let text: String
@@ -349,4 +469,82 @@ final class CleanupCoordinatorTests: XCTestCase {
         )
         XCTAssertEqual(result, "Do not wait.")
     }
+
+    // MARK: - Vocabulary hints (dictionary as cleanup context)
+
+    private func term(_ text: String, aliases: [String] = []) -> DictionaryTerm {
+        DictionaryTerm(text: text, aliases: aliases)
+    }
+
+    func testVocabularyHintsIncludesOnlyTermsPresentInText() {
+        let terms = [term("Yappy"), term("Kubernetes"), term("Landeros")]
+        let hints = CleanupCoordinator.vocabularyHints(
+            in: "let us sync with landeros about yappy tomorrow", terms: terms
+        )
+        // "yappy" and "landeros" appear (case-insensitively); "Kubernetes" does not.
+        XCTAssertEqual(Set(hints), ["Yappy", "Landeros"])
+    }
+
+    func testVocabularyHintsEmptyWhenNoTermPresent() {
+        let terms = [term("Yappy"), term("Kubernetes")]
+        XCTAssertTrue(
+            CleanupCoordinator.vocabularyHints(in: "buy milk and eggs", terms: terms).isEmpty
+        )
+        // Empty dictionary or empty text also yields nothing.
+        XCTAssertTrue(CleanupCoordinator.vocabularyHints(in: "yappy", terms: []).isEmpty)
+    }
+
+    func testVocabularyHintsMatchesWholeTokenNotSubstring() {
+        // "go" must not fire on "golang" — single-word terms match a whole token.
+        let hints = CleanupCoordinator.vocabularyHints(
+            in: "i love golang programming", terms: [term("Go")]
+        )
+        XCTAssertTrue(hints.isEmpty)
+    }
+
+    func testVocabularyHintsMatchesAliasButReturnsCanonical() {
+        // Spoken "k eights" → canonical "Kubernetes".
+        let terms = [term("Kubernetes", aliases: ["k eights", "kube"])]
+        let hints = CleanupCoordinator.vocabularyHints(
+            in: "deploy it to k eights", terms: terms
+        )
+        XCTAssertEqual(hints, ["Kubernetes"])
+    }
+
+    func testVocabularyHintsMultiWordTermMatchesAsSubstring() {
+        let hints = CleanupCoordinator.vocabularyHints(
+            in: "ship it on prod cluster friday", terms: [term("Prod Cluster")]
+        )
+        XCTAssertEqual(hints, ["Prod Cluster"])
+    }
+
+    func testVocabularyHintsRespectsLimit() {
+        let terms = (0..<40).map { term("Term\($0)") }
+        let text = terms.map { $0.text.lowercased() }.joined(separator: " ")
+        let hints = CleanupCoordinator.vocabularyHints(in: text, terms: terms, limit: 5)
+        XCTAssertEqual(hints.count, 5)
+    }
+
+    func testKnownTermsClauseEmptyWhenNoTerms() {
+        // No terms → no clause at all, so the prompt is byte-identical to before.
+        XCTAssertEqual(FoundationModelsCleanupProvider.knownTermsClause([]), "")
+    }
+
+    func testKnownTermsClauseListsTermsAsPreservationHint() {
+        let clause = FoundationModelsCleanupProvider.knownTermsClause(["Yappy", "Kubernetes"])
+        XCTAssertTrue(clause.contains("Yappy, Kubernetes"))
+        // It must frame preservation, never permission to add words.
+        XCTAssertTrue(clause.lowercased().contains("do not add"))
+    }
+
+    func testKnownTermsReachTheProviderCall() async {
+        let fake = FakeCleanupProvider()
+        let coordinator = CleanupCoordinator(settings: settings, provider: fake)
+        _ = await coordinator.cleanup(
+            "please ship the yappy build today", tone: .formal, backtrack: false,
+            cleanupEnabled: true, knownTerms: ["Yappy"]
+        )
+        XCTAssertEqual(fake.lastKnownTerms, ["Yappy"])
+    }
+
 }

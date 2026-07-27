@@ -45,6 +45,26 @@ enum WhatsNew {
     /// announcing; upgraders from any earlier version see the entry for the
     /// version they land on.
     static let entries: [String: Entry] = [
+        "3.1.0": Entry(
+            version: "3.1.0",
+            headline: "Your words, kept exactly as you said them.",
+            highlights: [
+                Highlight(icon: "text.quote",
+                          title: "Spoken words stay words",
+                          detail: "“She missed her period”, “add a dash of salt”, “one of these days” — Yappy now tells the difference between a punctuation command and an ordinary noun, so your sentences survive intact. Saying “comma” still types a comma."),
+                Highlight(icon: "character.book.closed.fill",
+                          title: "Your dictionary guides the polish",
+                          detail: "Terms you have taught Yappy now travel with the cleanup pass, so a name or bit of jargon keeps the exact spelling and capitalization you chose instead of being second-guessed."),
+                Highlight(icon: "arrow.uturn.backward.circle",
+                          title: "See what changed",
+                          detail: "When the polish pass edits your text, the pill names what it did — “Polished punctuation”, “Polished capitalization” — and one click puts your original words back."),
+                Highlight(icon: "lock.shield",
+                          title: "Answers clean up after themselves",
+                          detail: "Quitting Yappy now purges the working files its Answers backends leave behind, and a new Storage panel in Settings shows exactly what is on disk and where, so nothing lingers unseen."),
+                Highlight(icon: "slider.horizontal.3",
+                          title: "A calmer Settings",
+                          detail: "Sections collapse, dividers and stray tints are gone, and related options group under a single quiet rail — the same settings, far less noise."),
+            ]),
         "3.0.0": Entry(
             version: "3.0.0",
             headline: "Edit anything, anywhere, with your voice.",

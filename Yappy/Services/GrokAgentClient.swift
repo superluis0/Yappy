@@ -212,6 +212,18 @@ final class GrokAgentClient: @unchecked Sendable {
         }
     }
 
+    /// `stop()` plus a bounded wait for the child to actually exit.
+    /// This client owns the LONG-LIVED warm agent that holds GrokHome's session
+    /// files open, so it is the process a runtime purge most needs to have
+    /// exited: without this, `stop()` returns while the agent is still
+    /// checkpointing and the purge unlinks files underneath it. The protocol
+    /// default does not wait, which is exactly the race this closes.
+    func stopAndWait(timeout: TimeInterval) {
+        let running = process
+        stop()
+        ProcessExitWaiter.waitForExit(running, timeout: timeout)
+    }
+
     func stop() {
         readTask?.cancel()
         readTask = nil

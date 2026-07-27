@@ -91,9 +91,19 @@ enum AskAnswerBlock: Equatable {
         " requires ", " helps ", " makes ", " lets ", " gives ", " keeps ",
     ]
 
+    /// Models write typographic apostrophes ("I’ll", "I’m") while the opener
+    /// tables use ASCII — grok's narration slipped through exactly this way in
+    /// the field. Normalized ONLY for match decisions; returned text is never
+    /// rewritten. U+2019 and U+02BC map 1:1 so character counts are unchanged.
+    private static func normalizedForMatching(_ text: String) -> String {
+        text.lowercased()
+            .replacingOccurrences(of: "\u{2019}", with: "'")
+            .replacingOccurrences(of: "\u{02BC}", with: "'")
+    }
+
     /// True when the first non-empty line reads as process narration.
     private static func firstLineIsNarration(_ lines: [String], at index: Int) -> Bool {
-        let first = lines[index].trimmingCharacters(in: .whitespaces).lowercased()
+        let first = normalizedForMatching(lines[index].trimmingCharacters(in: .whitespaces))
         guard first.count <= 90, narrationOpeners.contains(where: { first.hasPrefix($0) }) else {
             return false
         }
@@ -153,13 +163,17 @@ enum AskAnswerBlock: Equatable {
         var output = text
         for _ in 0..<3 {
             let trimmed = output.drop(while: { $0 == " " || $0 == "\n" })
-            let lowered = trimmed.lowercased()
+            let lowered = normalizedForMatching(String(trimmed))
             let matchesPlain = sentenceNarrationOpeners.contains(where: { lowered.hasPrefix($0) })
             let matchesGuarded = guardedSentenceNarrationOpeners.contains(where: { lowered.hasPrefix($0) })
             guard matchesPlain || matchesGuarded else { break }
             // The narration sentence must END within 90 characters at a real
-            // boundary: terminator + space, preceded by a lowercase letter or
-            // digit (so "U.S." initialisms and "3.5" decimals never cut).
+            // boundary, preceded by a lowercase letter or digit (so "U.S."
+            // initialisms and "3.5" decimals never cut): terminator + space,
+            // or terminator + a short inline-delimiter run + capital — grok
+            // glues narration straight onto a bold answer opener
+            // ("schedule.**Yes") and the glue repair can't fix a delta split
+            // inside the delimiter run, so the boundary must see through it.
             var boundary: Substring.Index?
             var index = trimmed.index(after: trimmed.startIndex)
             while index < trimmed.endIndex,
@@ -168,10 +182,18 @@ enum AskAnswerBlock: Equatable {
                 if ".!?".contains(character) {
                     let next = trimmed.index(after: index)
                     let previous = trimmed[trimmed.index(before: index)]
-                    if next < trimmed.endIndex, trimmed[next] == " ",
-                       previous.isLowercase || previous.isNumber {
-                        boundary = next
-                        break
+                    if next < trimmed.endIndex, previous.isLowercase || previous.isNumber {
+                        if trimmed[next] == " " {
+                            boundary = next
+                            break
+                        }
+                        let delimiterRun = trimmed[next...].prefix(while: { "*_~".contains($0) })
+                        if (1...3).contains(delimiterRun.count),
+                           let after = trimmed[next...].dropFirst(delimiterRun.count).first,
+                           after.isUppercase {
+                            boundary = next
+                            break
+                        }
                     }
                 }
                 index = trimmed.index(after: index)
@@ -180,7 +202,7 @@ enum AskAnswerBlock: Equatable {
             if !matchesPlain {
                 // Guarded gerund opener: keep the sentence when it reads as
                 // real prose (carries a conjugated-verb marker).
-                let sentence = trimmed[..<boundary].lowercased()
+                let sentence = normalizedForMatching(String(trimmed[..<boundary]))
                 if finiteVerbMarkers.contains(where: { sentence.contains($0) }) { break }
             }
             let remainder = String(trimmed[boundary...])

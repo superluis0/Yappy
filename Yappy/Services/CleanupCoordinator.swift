@@ -18,14 +18,16 @@ protocol CleanupProvider: AnyObject {
     /// Cleans a dictation transcript. The caller has already decided cleanup should
     /// run (enabled, non-verbatim tone). Returns the original text on any failure.
     /// `intensity` selects the instruction variant (standard vs conservative).
-    func cleanup(_ text: String, tone: ToneStyle, backtrack: Bool, intensity: CleanupIntensity) async -> String
+    /// `knownTerms` are the user's own vocabulary present in the text (canonical
+    /// spelling), passed to the model so it preserves their exact casing.
+    func cleanup(_ text: String, tone: ToneStyle, backtrack: Bool, intensity: CleanupIntensity, knownTerms: [String]) async -> String
 
     /// Cleans several dictated lines in a SINGLE call and returns one cleaned string
     /// per input line (same order and count), or `nil` if the result can't be trusted
     /// to map 1:1 back onto the input lines. Lets the coordinator clean a multi-line
     /// dictation in one model round-trip instead of one call per line, falling back to
     /// the per-line path when this returns `nil`. Default: `nil` (no batching).
-    func cleanupBatched(lines: [String], tone: ToneStyle, backtrack: Bool, intensity: CleanupIntensity) async -> [String]?
+    func cleanupBatched(lines: [String], tone: ToneStyle, backtrack: Bool, intensity: CleanupIntensity, knownTerms: [String]) async -> [String]?
 
     /// Asks the provider to load its model into memory ahead of use, so the first
     /// real request doesn't pay a cold-start. Best-effort and idempotent.
@@ -39,7 +41,7 @@ protocol CleanupProvider: AnyObject {
 
 extension CleanupProvider {
     /// Default: no batching — the coordinator falls back to the per-line path.
-    func cleanupBatched(lines: [String], tone: ToneStyle, backtrack: Bool, intensity: CleanupIntensity) async -> [String]? { nil }
+    func cleanupBatched(lines: [String], tone: ToneStyle, backtrack: Bool, intensity: CleanupIntensity, knownTerms: [String]) async -> [String]? { nil }
 
     /// Default: nothing to warm up.
     func prewarm() async {}
@@ -74,7 +76,8 @@ final class CleanupCoordinator {
         tone: ToneStyle,
         backtrack: Bool,
         cleanupEnabled: Bool?,
-        intensity: CleanupIntensity? = nil
+        intensity: CleanupIntensity? = nil,
+        knownTerms: [String] = []
     ) async -> String {
         guard (cleanupEnabled ?? settings.cleanupEnabled), !text.isEmpty else { return text }
         guard tone != .verbatim else { return text }
@@ -92,7 +95,8 @@ final class CleanupCoordinator {
 
         let resolvedIntensity = intensity ?? settings.cleanupIntensity
         let cleaned = await cleanWithProvider(
-            text, provider: provider, tone: tone, backtrack: backtrack, intensity: resolvedIntensity
+            text, provider: provider, tone: tone, backtrack: backtrack,
+            intensity: resolvedIntensity, knownTerms: knownTerms
         )
 
         // Apply the DETERMINISTIC tone transform to the final cleaned string. The
@@ -177,15 +181,204 @@ final class CleanupCoordinator {
         return a != b
     }
 
+    /// Names what the polish changed between the raw transcript and the final
+    /// text, for the diff caption: "punctuation", "capitalization",
+    /// "filler words", "spacing" / "formatting", a two-class combination like
+    /// "punctuation and filler words", or "several fixes" when three or more
+    /// classes changed. Returns `nil` when the change can't be confidently
+    /// named (word rewrites, added words, removed non-filler words) so the
+    /// caption falls back to the generic wording rather than over-claiming.
+    /// Pure, deterministic, and cheap — token/character comparison only.
+    nonisolated static func changeSummary(raw: String, final: String) -> String? {
+        let a = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        let b = final.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !a.isEmpty, !b.isEmpty, a != b else { return nil }
+
+        let rawParts = TranscriptParts(of: a)
+        let finalParts = TranscriptParts(of: b)
+        let rawLower = rawParts.words.map { $0.lowercased() }
+        let finalLower = finalParts.words.map { $0.lowercased() }
+
+        // Ordered by the caption's priority: capitalization, punctuation,
+        // filler words, spacing/formatting.
+        var classes: [String] = []
+
+        if rawLower == finalLower {
+            // Same words in the same order — the polish touched only casing,
+            // punctuation, or whitespace. Each is independently detectable.
+            if rawParts.words != finalParts.words {
+                classes.append("capitalization")
+            }
+            if rawParts.punctuation != finalParts.punctuation {
+                classes.append("punctuation")
+            }
+            if rawParts.whitespaceRuns != finalParts.whitespaceRuns {
+                classes.append(
+                    rawParts.newlineCount != finalParts.newlineCount ? "formatting" : "spacing"
+                )
+            }
+        } else {
+            // Word content differs. The only word-level change we can name
+            // confidently is the removal of known filler words; anything else
+            // (rewrites, additions, removed content words) stays generic.
+            guard let match = subsequenceMatch(final: finalLower, within: rawLower),
+                  removedWordsAreKnownFillers(match.removed.map { ($0, rawLower[$0]) })
+            else { return nil }
+
+            let casingChanged = match.aligned.contains { rawIndex, finalIndex in
+                rawParts.words[rawIndex] != finalParts.words[finalIndex]
+            }
+            if casingChanged {
+                classes.append("capitalization")
+            }
+            if rawParts.punctuation != finalParts.punctuation {
+                classes.append("punctuation")
+            }
+            classes.append("filler words")
+            // Whitespace differences here are an artifact of the removal
+            // itself, never reported as a separate class.
+        }
+
+        switch classes.count {
+        case 0: return nil
+        case 1, 2: return classes.joined(separator: " and ")
+        default: return "several fixes"
+        }
+    }
+
+    /// One pass over a transcript, split into the three streams `changeSummary`
+    /// compares independently: word tokens (runs of letters/digits, case kept),
+    /// the punctuation-character sequence, and the whitespace-run sequence.
+    private struct TranscriptParts {
+        var words: [String] = []
+        var punctuation: String = ""
+        var whitespaceRuns: [String] = []
+        var newlineCount: Int = 0
+
+        init(of text: String) {
+            var currentWord = ""
+            var currentRun = ""
+            for character in text {
+                if character.isLetter || character.isNumber {
+                    if !currentRun.isEmpty { whitespaceRuns.append(currentRun); currentRun = "" }
+                    currentWord.append(character)
+                } else {
+                    if !currentWord.isEmpty { words.append(currentWord); currentWord = "" }
+                    if character.isWhitespace {
+                        currentRun.append(character)
+                        if character == "\n" || character == "\r" { newlineCount += 1 }
+                    } else {
+                        if !currentRun.isEmpty { whitespaceRuns.append(currentRun); currentRun = "" }
+                        punctuation.append(character)
+                    }
+                }
+            }
+            if !currentWord.isEmpty { words.append(currentWord) }
+            if !currentRun.isEmpty { whitespaceRuns.append(currentRun) }
+        }
+    }
+
+    /// Greedy in-order match of `final` as a subsequence of `raw` (both already
+    /// lowercased). Returns the aligned index pairs and the raw indices of the
+    /// removed words, or `nil` when `final` is not a subsequence (words were
+    /// added or rewritten) or nothing was removed.
+    private nonisolated static func subsequenceMatch(
+        final: [String], within raw: [String]
+    ) -> (aligned: [(rawIndex: Int, finalIndex: Int)], removed: [Int])? {
+        var aligned: [(rawIndex: Int, finalIndex: Int)] = []
+        var removed: [Int] = []
+        var finalIndex = 0
+        for rawIndex in raw.indices {
+            if finalIndex < final.count, raw[rawIndex] == final[finalIndex] {
+                aligned.append((rawIndex, finalIndex))
+                finalIndex += 1
+            } else {
+                removed.append(rawIndex)
+            }
+        }
+        guard finalIndex == final.count, !removed.isEmpty else { return nil }
+        return (aligned, removed)
+    }
+
+    /// Whether every removed word is a known spoken filler — hesitations plus
+    /// the discourse fillers the model prunes. Two-word fillers ("you know",
+    /// "i mean") only count when both words were removed adjacently, so a lone
+    /// removed "you" or "i" is never claimed as filler.
+    private nonisolated static func removedWordsAreKnownFillers(
+        _ removed: [(index: Int, word: String)]
+    ) -> Bool {
+        let singles: Set<String> = [
+            "um", "uh", "er", "erm", "umm", "uhh", "uhm", "hmm", "ah", "mm", "mhm",
+            "like", "well", "so", "actually", "basically", "literally", "anyway",
+            "kinda", "sorta",
+        ]
+        let pairs: [[String]] = [["you", "know"], ["i", "mean"], ["kind", "of"], ["sort", "of"]]
+        var i = 0
+        while i < removed.count {
+            if i + 1 < removed.count,
+               removed[i + 1].index == removed[i].index + 1,
+               pairs.contains(where: { $0[0] == removed[i].word && $0[1] == removed[i + 1].word }) {
+                i += 2
+                continue
+            }
+            guard singles.contains(removed[i].word) else { return false }
+            i += 1
+        }
+        return true
+    }
+
     /// Runs the provider's model cleanup over `text`, preserving its exact "\n"
     /// structure, and returns the cleaned string. No tone transform is applied here —
     /// that is layered on by `cleanup` over the whole final result.
+    /// The user's own vocabulary that actually appears in `text`, in canonical
+    /// (written) spelling — a preservation hint the model gets so it keeps their
+    /// exact casing instead of guessing from generic knowledge ("yappy" → the
+    /// product name "Yappy", not the word "happy"; "kubernetes" → "Kubernetes").
+    ///
+    /// Only terms PRESENT in the text are returned. A transcript with none yields
+    /// an empty hint, so the prompt is byte-identical to before — zero token cost
+    /// and zero behavior change on text that has no known term. Single-word terms
+    /// match a whole token (so "go" does not fire on "golang"); multi-word terms
+    /// and aliases match as a substring. Matching an alias still returns the
+    /// canonical `text`, which is what the model should preserve.
+    nonisolated static func vocabularyHints(
+        in text: String, terms: [DictionaryTerm], limit: Int = 24
+    ) -> [String] {
+        guard !text.isEmpty, !terms.isEmpty else { return [] }
+        let lower = text.lowercased()
+        let tokens = Set(lower.split { !$0.isLetter && !$0.isNumber }.map(String.init))
+
+        func present(_ raw: String) -> Bool {
+            let needle = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            guard needle.count >= 2 else { return false }
+            if needle.contains(where: { $0 == " " }) { return lower.contains(needle) }
+            return tokens.contains(needle)
+        }
+
+        var hints: [String] = []
+        var seen = Set<String>()
+        for term in terms {
+            let canonical = term.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            let key = canonical.lowercased()
+            guard !canonical.isEmpty, !seen.contains(key) else { continue }
+            if present(canonical)
+                || term.aliases.contains(where: present)
+                || term.learnedAliases.contains(where: present) {
+                hints.append(canonical)
+                seen.insert(key)
+                if hints.count >= limit { break }
+            }
+        }
+        return hints
+    }
+
     private func cleanWithProvider(
         _ text: String,
         provider: CleanupProvider,
         tone: ToneStyle,
         backtrack: Bool,
-        intensity: CleanupIntensity
+        intensity: CleanupIntensity,
+        knownTerms: [String]
     ) async -> String {
         // Clean each line independently so spoken "new line" / "next line" breaks
         // survive. Given the whole block, the on-device model reflows them — turning a
@@ -194,7 +387,7 @@ final class CleanupCoordinator {
         // structure (blank lines and a trailing break included) is preserved because the
         // model never sees the breaks. Single-line dictations keep the fast one-call path.
         guard text.contains("\n") else {
-            return await provider.cleanup(text, tone: tone, backtrack: backtrack, intensity: intensity)
+            return await provider.cleanup(text, tone: tone, backtrack: backtrack, intensity: intensity, knownTerms: knownTerms)
         }
 
         let rawLines = text.components(separatedBy: "\n")
@@ -211,7 +404,7 @@ final class CleanupCoordinator {
         if contentIndices.count >= 2 {
             let contentLines = contentIndices.map { rawLines[$0] }
             if let batched = await provider.cleanupBatched(
-                lines: contentLines, tone: tone, backtrack: backtrack, intensity: intensity
+                lines: contentLines, tone: tone, backtrack: backtrack, intensity: intensity, knownTerms: knownTerms
             ), batched.count == contentIndices.count {
                 var merged = rawLines
                 for (slot, cleaned) in zip(contentIndices, batched) {
@@ -228,7 +421,7 @@ final class CleanupCoordinator {
                 cleanedLines.append(line)
             } else {
                 cleanedLines.append(
-                    await provider.cleanup(line, tone: tone, backtrack: backtrack, intensity: intensity)
+                    await provider.cleanup(line, tone: tone, backtrack: backtrack, intensity: intensity, knownTerms: knownTerms)
                 )
             }
         }

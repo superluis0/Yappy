@@ -80,6 +80,18 @@ final class CodexAskClient: @unchecked Sendable {
 
     static var resolvedCodexPath: String { resolveCodexPath() }
 
+    /// The private Codex home, without refreshing credentials. Shares
+    /// prepareCodexHome's appSupportDirectory() so the purge can never target
+    /// a different directory than the one the client actually uses. The
+    /// fallback fires only where prepareCodexHome would have thrown — no home
+    /// was ever created there, so purging it deletes nothing.
+    static var homeURL: URL {
+        let base = (try? appSupportDirectory())
+            ?? FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent("Library/Application Support/Yappy", isDirectory: true)
+        return base.appendingPathComponent("CodexAskHome", isDirectory: true)
+    }
+
     // MARK: - Readiness (drives the Settings "green light")
 
     /// A usable codex binary exists somewhere we know to look.
@@ -165,6 +177,20 @@ final class CodexAskClient: @unchecked Sendable {
         return home
     }
 
+    /// Pure builder for the app-server's spawn environment, isolated from
+    /// `start()` so isolation-pin tests can characterize it without spawning
+    /// a real process. CODEX_HOME points at the private home; HOME stays the
+    /// real one (codex itself still wants a real HOME for unrelated lookups).
+    static func spawnEnvironment(home: URL) -> [String: String] {
+        let realHome = FileManager.default.homeDirectoryForCurrentUser.path
+        return [
+            "CODEX_HOME": home.path,
+            "HOME": realHome,
+            "TMPDIR": NSTemporaryDirectory(),
+            "PATH": "\(realHome)/.local/bin:\(realHome)/.npm-global/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin",
+        ]
+    }
+
     // MARK: - Lifecycle
 
     func start() throws {
@@ -188,13 +214,7 @@ final class CodexAskClient: @unchecked Sendable {
         // Minimal, fixed environment: the child gets exactly what it needs and
         // nothing the app process happened to inherit. PATH covers the places
         // node + dev tools actually live so a node-shim codex still runs.
-        let realHome = FileManager.default.homeDirectoryForCurrentUser.path
-        process.environment = [
-            "CODEX_HOME": home.path,
-            "HOME": realHome,
-            "TMPDIR": NSTemporaryDirectory(),
-            "PATH": "\(realHome)/.local/bin:\(realHome)/.npm-global/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin",
-        ]
+        process.environment = Self.spawnEnvironment(home: home)
 
         process.standardInput = inputPipe
         process.standardOutput = outputPipe
@@ -235,6 +255,15 @@ final class CodexAskClient: @unchecked Sendable {
         for continuation in continuations {
             continuation.resume(throwing: ClientError.notRunning)
         }
+    }
+
+    /// `stop()` + bounded wait for actual child exit, so a purge that follows
+    /// cannot race the child's sqlite WAL checkpoint. Safe on main thread for
+    /// timeouts <= 2s (termination is near-instant); returns early on exit.
+    func stopAndWait(timeout: TimeInterval) {
+        let running = process
+        stop()
+        ProcessExitWaiter.waitForExit(running, timeout: timeout)
     }
 
     private func ensureReady() async throws {
@@ -595,5 +624,30 @@ final class CodexAskClient: @unchecked Sendable {
         if let string = value as? String, !string.isEmpty { return string }
         if let number = value as? NSNumber { return number.stringValue }
         return nil
+    }
+}
+
+/// Bounded, best-effort wait for a `Process` to actually exit — used by both
+/// Ask backend clients' `stopAndWait(timeout:)` so a purge dispatched right
+/// after teardown cannot race the child's sqlite WAL checkpoint. Polls
+/// `isRunning` rather than installing a `terminationHandler`: both clients
+/// may already have one set (restart/health logic), and a second handler
+/// would clobber it. No SIGKILL escalation on timeout — that's out of scope;
+/// callers proceed regardless, and unlinking a still-open sqlite file is
+/// safe on APFS.
+enum ProcessExitWaiter {
+    /// Polls `process.isRunning` until it exits or `timeout` elapses.
+    /// Returns `true` if the process is nil or exited within the timeout,
+    /// `false` if it was still running when the timeout elapsed.
+    @discardableResult
+    static func waitForExit(_ process: Process?, timeout: TimeInterval) -> Bool {
+        guard let process, process.isRunning else { return true }
+        let deadline = Date().addingTimeInterval(timeout)
+        let pollInterval: TimeInterval = 0.02
+        while process.isRunning {
+            if Date() >= deadline { return false }
+            Thread.sleep(forTimeInterval: pollInterval)
+        }
+        return true
     }
 }

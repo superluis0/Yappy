@@ -267,11 +267,15 @@ final class SpokenNumberFormatterTests: XCTestCase {
 
     func testBareScaleWordLeftAlone() {
         // Idiomatic, not literal — should not become "1000000".
-        XCTAssertEqual(f("one in a million"), "1 in a million")
+        XCTAssertEqual(f("one in a million"), "one in a million")
     }
 
     func testTrailingPointKeptAsWord() {
-        XCTAssertEqual(f("the six point plan"), "the 6 point plan")
+        // Changed with the prose guard: "the six point plan" is a
+        // compound adjective, not a quantity, so it reads as prose.
+        // The point of this test still holds — "point" is not consumed
+        // as a decimal separator.
+        XCTAssertEqual(f("the six point plan"), "the six point plan")
     }
 
     func testPunctuationBreaksRun() {
@@ -294,4 +298,50 @@ final class SpokenNumberFormatterTests: XCTestCase {
             XCTAssertEqual(f(once), once, "not idempotent for: \(sample)")
         }
     }
+
+    // MARK: - Prose guard: lone small numbers stay spelled out
+
+    /// The reported bug: "hey one of these days" became "hey 1 of these days",
+    /// which reads as a typo in ordinary writing other people see.
+    func testLoneSmallNumberInProseStaysSpelledOut() {
+        XCTAssertEqual(f("hey one of these days"), "hey one of these days")
+        XCTAssertEqual(f("one of the best"), "one of the best")
+        XCTAssertEqual(f("no one is here"), "no one is here")
+        XCTAssertEqual(f("at one point I gave up"), "at one point I gave up")
+        XCTAssertEqual(f("we talked for one another"), "we talked for one another")
+        XCTAssertEqual(f("give me two seconds"), "give me two seconds")
+        XCTAssertEqual(f("I have three of those"), "I have three of those")
+    }
+
+    /// Sentence-initial capitalization must survive being left alone.
+    func testSpelledOutNumberKeepsOriginalCasing() {
+        XCTAssertEqual(f("One of these days"), "One of these days")
+    }
+
+    /// Everything the user explicitly wants as digits still converts.
+    func testQuantitativeContextsStillUseDigits() {
+        XCTAssertEqual(f("step one"), "step 1")
+        XCTAssertEqual(f("number two"), "number 2")
+        XCTAssertEqual(f("version three"), "version 3")
+        XCTAssertEqual(f("page seven"), "page 7")
+        XCTAssertEqual(f("three miles"), "3 miles")
+        XCTAssertEqual(f("five gigabytes"), "5 gigabytes")
+        XCTAssertEqual(f("seventy two degrees"), "72 degrees")
+        XCTAssertEqual(f("nine percent"), "9%")
+        XCTAssertEqual(f("five dollars"), "$5")
+        XCTAssertEqual(f("three pm"), "3 PM")
+        XCTAssertEqual(f("nine thirty am"), "9:30 AM")
+    }
+
+    /// Only a LONE 0-9 is affected: bigger and compound numbers keep digits.
+    func testGuardIsNarrowlyScoped() {
+        XCTAssertEqual(f("twenty three of these"), "23 of these")
+        XCTAssertEqual(f("ten of these"), "10 of these")
+        XCTAssertEqual(f("one hundred of these"), "100 of these")
+        XCTAssertEqual(f("one point five"), "1.5")
+        // Lone ordinals were already left alone (see testOrdinals);
+        // the cardinal guard matches that established behavior.
+        XCTAssertEqual(f("first of all"), "first of all")
+    }
+
 }

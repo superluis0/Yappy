@@ -15,6 +15,8 @@ protocol CodexAsking: AnyObject {
     func ask(transcript: String, continuingThread: String?, effort: String) async throws -> CodexRunStart
     func interrupt(threadID: String, turnID: String)
     func stop()
+    /// stop() + bounded wait for child exit before a purge can race WAL checkpoint.
+    func stopAndWait(timeout: TimeInterval)
 }
 
 struct GrokAskRequest: Equatable, Sendable {
@@ -31,11 +33,24 @@ protocol GrokAsking: AnyObject {
     func ask(_ request: GrokAskRequest) async throws
     func cancel()
     func stop()
+    /// stop() + bounded wait for child exit before a purge can race WAL checkpoint.
+    func stopAndWait(timeout: TimeInterval)
 }
 
 extension GrokAsking {
     func prewarm() async {}
     func stop() { cancel() }
+    func stopAndWait(timeout: TimeInterval) {
+        _ = timeout
+        stop()
+    }
+}
+
+extension CodexAsking {
+    func stopAndWait(timeout: TimeInterval) {
+        _ = timeout
+        stop()
+    }
 }
 
 extension CodexAskClient: CodexAsking {}
@@ -82,5 +97,14 @@ final class GrokClientRouter: GrokAsking {
     func stop() {
         warm.stop()
         oneShot.stop()
+    }
+
+    func stopAndWait(timeout: TimeInterval) {
+        // Wait for both children to exit, splitting the timeout between them.
+        // Sequential is fine — termination is near-instant; the timeout gates
+        // against a hung child blocking the purge.
+        let halfTimeout = timeout / 2
+        warm.stopAndWait(timeout: halfTimeout)
+        oneShot.stopAndWait(timeout: halfTimeout)
     }
 }

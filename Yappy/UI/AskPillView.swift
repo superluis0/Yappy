@@ -31,6 +31,7 @@ struct AskPillView: View {
     /// current answer, reported via preference. 0 = none.
     @State private var widestBlock: CGFloat = 0
     @State private var copied = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// Content-driven card width: wide tables expand the card to fit exactly
     /// (block width + card padding), clamped to [cardWidth, maxCardWidth].
@@ -63,9 +64,10 @@ struct AskPillView: View {
             widestBlock = 0
             copied = false
         }
-        .animation(.spring(response: 0.28, dampingFraction: 0.85), value: controller.run?.status)
-        .animation(.spring(response: 0.28, dampingFraction: 0.85), value: controller.run?.steps.count ?? 0)
-        .animation(.spring(response: 0.28, dampingFraction: 0.85), value: expandedWidth)
+        // Status/size morph is decorative; Reduce Motion keeps instant transitions.
+        .animation(reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 0.85), value: controller.run?.status)
+        .animation(reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 0.85), value: controller.run?.steps.count ?? 0)
+        .animation(reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 0.85), value: expandedWidth)
     }
 
     /// The card with its full styling chain — split out of `body` to keep the
@@ -107,7 +109,7 @@ struct AskPillView: View {
                 if !isCompact(run), run.status.isTerminal { controller.pinFromCardTap() }
             })
             .onExitCommand { controller.abort() }
-            .transition(.opacity.combined(with: .move(edge: .bottom)))
+            .transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .bottom)))
     }
 
     /// Capsule while capturing, card once content is on the way.
@@ -207,7 +209,7 @@ struct AskPillView: View {
                 .buttonStyle(.plain)
                 .help("Pinned — click to let it auto-dismiss")
                 .accessibilityLabel("Pinned — tap to unpin")
-                .transition(.scale.combined(with: .opacity))
+                .transition(reduceMotion ? .opacity : .scale.combined(with: .opacity))
             }
             Button { controller.dismiss() } label: {
                 Image(systemName: "xmark")
@@ -219,7 +221,7 @@ struct AskPillView: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Dismiss")
         }
-        .animation(.easeOut(duration: 0.15), value: controller.pillPinned)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: controller.pillPinned)
     }
 
     @ViewBuilder
@@ -809,6 +811,7 @@ private struct LevelBars: View {
             }
         }
         .frame(height: 20)
+        // Level updates stay live under Reduce Motion (state, not decoration).
         .animation(.easeOut(duration: 0.12), value: levels)
     }
 }
@@ -816,14 +819,19 @@ private struct LevelBars: View {
 private struct PulsingDot: View {
     var tint: Color
     @State private var pulse = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
+        // Static solid dot under Reduce Motion — still marks "working".
         Circle()
             .fill(tint)
             .frame(width: 7, height: 7)
-            .scaleEffect(pulse ? 1.0 : 0.55)
-            .opacity(pulse ? 1.0 : 0.45)
-            .onAppear { withAnimation(.easeInOut(duration: 0.7).repeatForever(autoreverses: true)) { pulse = true } }
+            .scaleEffect((pulse || reduceMotion) ? 1.0 : 0.55)
+            .opacity((pulse || reduceMotion) ? 1.0 : 0.45)
+            .onAppear {
+                guard !reduceMotion else { return }
+                withAnimation(.easeInOut(duration: 0.7).repeatForever(autoreverses: true)) { pulse = true }
+            }
     }
 }
 
@@ -841,6 +849,7 @@ private struct ActionRow: View {
     var critical: Color
 
     @State private var pulse = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private static let thinkingWords = [
         "Thinking", "Pondering", "Reasoning", "Considering",
@@ -850,18 +859,25 @@ private struct ActionRow: View {
     var body: some View {
         let running = step.state == .running
         let failed = step.state == .failed
+        // Under Reduce Motion, running rows stay fully opaque — state still reads.
+        let runningOpacity: Double = running
+            ? (reduceMotion ? 1.0 : (pulse ? 1.0 : 0.45))
+            : 1
+        let runningTextOpacity: Double = running
+            ? (reduceMotion ? 1.0 : (pulse ? 1.0 : 0.6))
+            : 1
         HStack(alignment: .firstTextBaseline, spacing: 10) {
             Image(systemName: icon)
                 .font(.system(size: 11.5, weight: .medium))
                 .foregroundStyle(failed ? critical : (running ? accent : textTertiary))
                 .frame(width: 15)
-                .opacity(running ? (pulse ? 1.0 : 0.45) : 1)
+                .opacity(runningOpacity)
             titleView(running: running)
                 .font(.system(size: 12.5))
                 .foregroundStyle(running ? textPrimary : textSecondary)
                 .lineLimit(step.kind == .narration ? 2 : 1)
                 .truncationMode(.tail)
-                .opacity(running ? (pulse ? 1.0 : 0.6) : 1)
+                .opacity(runningTextOpacity)
             Spacer(minLength: 0)
         }
         .onAppear { startPulseIfRunning() }
@@ -869,21 +885,25 @@ private struct ActionRow: View {
     }
 
     private func startPulseIfRunning() {
-        guard step.state == .running else { pulse = false; return }
+        guard step.state == .running, !reduceMotion else { pulse = false; return }
         pulse = false
         withAnimation(.easeInOut(duration: 0.7).repeatForever(autoreverses: true)) { pulse = true }
     }
 
     /// A running thinking row cycles its word every ~1.6s with a soft fade;
-    /// everything else shows its stored title.
+    /// everything else shows its stored title. Reduce Motion holds a single word.
     @ViewBuilder
     private func titleView(running: Bool) -> some View {
         if running, step.kind == .thinking {
-            TimelineView(.periodic(from: .now, by: 1.6)) { context in
-                let index = Int(context.date.timeIntervalSinceReferenceDate / 1.6) % Self.thinkingWords.count
-                Text(Self.thinkingWords[index])
-                    .contentTransition(.opacity)
-                    .animation(.easeInOut(duration: 0.4), value: index)
+            if reduceMotion {
+                Text(step.title.isEmpty ? "Thinking" : step.title)
+            } else {
+                TimelineView(.periodic(from: .now, by: 1.6)) { context in
+                    let index = Int(context.date.timeIntervalSinceReferenceDate / 1.6) % Self.thinkingWords.count
+                    Text(Self.thinkingWords[index])
+                        .contentTransition(.opacity)
+                        .animation(.easeInOut(duration: 0.4), value: index)
+                }
             }
         } else {
             Text(step.title)

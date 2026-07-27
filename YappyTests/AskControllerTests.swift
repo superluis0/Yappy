@@ -104,6 +104,9 @@ final class AskControllerTests: XCTestCase {
         let grokClient = grok ?? FakeGrokClient()
         let store = history ?? AskHistoryStore(directory: historyDirectory)
         let controller = AskController(codexClient: codexClient, grokClient: grokClient, history: store)
+        // Override runtimePurge with a no-op so existing tests don't touch the filesystem.
+        // Privacy-specific tests will override this counter to verify purge calls.
+        controller.runtimePurge = { _ = 0 }
         return (controller, codexClient, grokClient)
     }
 
@@ -1996,6 +1999,98 @@ final class AskControllerTests: XCTestCase {
 
         XCTAssertEqual(spoken, ["It's sunny and mild today."])
         XCTAssertNil(controller.transientCaption)
+    }
+
+    // MARK: - Privacy runtime purge (history OFF / clear-all)
+
+    func testHistoryOffSessionCloseInvokesRuntimePurgeOnce() async {
+        let codex = FakeCodexClient()
+        let (controller, _, _) = makeController(codex: codex)
+        controller.saveHistory = false
+        var purgeCount = 0
+        controller.runtimePurge = { purgeCount += 1 }
+
+        await completeCodexRun(
+            controller: controller,
+            codex: codex,
+            question: "Private question?",
+            answer: "Private answer."
+        )
+        XCTAssertEqual(purgeCount, 0, "must not purge while the completed card is still on screen")
+
+        controller.dismiss()
+        XCTAssertNil(controller.run)
+        XCTAssertEqual(purgeCount, 1)
+    }
+
+    func testHistoryOnSessionCloseDoesNotInvokeRuntimePurge() async {
+        let codex = FakeCodexClient()
+        let (controller, _, _) = makeController(codex: codex)
+        controller.saveHistory = true
+        var purgeCount = 0
+        controller.runtimePurge = { purgeCount += 1 }
+
+        await completeCodexRun(
+            controller: controller,
+            codex: codex,
+            question: "Logged question?",
+            answer: "Logged answer."
+        )
+        controller.dismiss()
+        XCTAssertNil(controller.run)
+        XCTAssertEqual(purgeCount, 0)
+    }
+
+    func testPinnedCardDefersRuntimePurgeUntilUnpinAndClose() async {
+        let codex = FakeCodexClient()
+        let (controller, _, _) = makeController(codex: codex)
+        controller.saveHistory = false
+        var purgeCount = 0
+        controller.runtimePurge = { purgeCount += 1 }
+
+        await completeCodexRun(
+            controller: controller,
+            codex: codex,
+            question: "Pinned question?",
+            answer: "Pinned answer."
+        )
+        controller.pillPinned = true
+        XCTAssertEqual(purgeCount, 0, "pin keeps the session open — no purge yet")
+
+        // Unpin alone does not close the session (card still visible).
+        controller.pillPinned = false
+        XCTAssertNotNil(controller.run)
+        XCTAssertEqual(purgeCount, 0, "unpin without close must not purge")
+
+        controller.dismiss()
+        XCTAssertNil(controller.run)
+        XCTAssertEqual(purgeCount, 1)
+    }
+
+    func testClearRuntimeAndHistoryAlwaysInvokesRuntimePurge() {
+        let (controller, _, _) = makeController()
+        controller.saveHistory = true
+        var purgeCount = 0
+        controller.runtimePurge = { purgeCount += 1 }
+
+        controller.clearRuntimeAndHistory()
+        XCTAssertEqual(purgeCount, 1)
+
+        controller.saveHistory = false
+        controller.clearRuntimeAndHistory()
+        XCTAssertEqual(purgeCount, 2)
+    }
+
+    func testShutdownAndPurgeRuntimeInvokesRuntimePurge() {
+        let (controller, _, _) = makeController()
+        var purgeCount = 0
+        controller.runtimePurge = { purgeCount += 1 }
+
+        controller.shutdownAndPurgeRuntime()
+        XCTAssertEqual(purgeCount, 1)
+        // Plain shutdown must remain a non-purging path.
+        controller.shutdown()
+        XCTAssertEqual(purgeCount, 1)
     }
 
 }
