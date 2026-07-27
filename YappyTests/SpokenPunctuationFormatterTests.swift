@@ -197,7 +197,7 @@ final class SpokenPunctuationFormatterTests: XCTestCase {
             ("he said open quote hi close quote", "he said \u{201C}hi\u{201D}"),
             ("he said open quote hi end quote", "he said \u{201C}hi\u{201D}"),
             ("a forward slash b", "a/b"),
-            ("yes em dash no", "yes—no"),
+            ("yes em dash no", "yes—no")
         ]
         for item in cases {
             let result = f(item.input)

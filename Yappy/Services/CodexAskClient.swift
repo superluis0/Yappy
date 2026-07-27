@@ -187,7 +187,7 @@ final class CodexAskClient: @unchecked Sendable {
             "CODEX_HOME": home.path,
             "HOME": realHome,
             "TMPDIR": NSTemporaryDirectory(),
-            "PATH": "\(realHome)/.local/bin:\(realHome)/.npm-global/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin",
+            "PATH": "\(realHome)/.local/bin:\(realHome)/.npm-global/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
         ]
     }
 
@@ -543,7 +543,7 @@ final class CodexAskClient: @unchecked Sendable {
             }
         } else {
             guard let envelope = CodexEventEnvelope(jsonObject: object) else { return }
-            if case .ignored = envelope.event { return }   // bookkeeping traffic
+            if case .ignored = envelope.event { return } // bookkeeping traffic
             onNotification?(envelope)
         }
     }
@@ -606,7 +606,7 @@ final class CodexAskClient: @unchecked Sendable {
             "/Applications/Codex.app/Contents/Resources/codex",
             "\(home)/.npm-global/bin/codex",
             "/opt/homebrew/bin/codex",
-            "/usr/local/bin/codex",
+            "/usr/local/bin/codex"
         ]
         return candidates.first { FileManager.default.isExecutableFile(atPath: $0) } ?? "/usr/local/bin/codex"
     }

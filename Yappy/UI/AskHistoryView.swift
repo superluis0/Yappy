@@ -171,7 +171,7 @@ struct AskHistoryView: View {
     private static let exampleQuestions = [
         "Compare the M4, M4 Pro and M4 Max chips",
         "What changed in Swift 6.2?",
-        "Give me the command to rebase onto main",
+        "Give me the command to rebase onto main"
     ]
 
     private var noMatchesState: some View {

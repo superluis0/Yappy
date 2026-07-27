@@ -51,7 +51,7 @@ enum AskAnswerBlock: Equatable {
         "let me find", "checking ", "confirming ", "verifying ", "finding ",
         "one moment", "one sec",
         "i'll ", "i will ",
-        "i'm checking", "i'm looking", "i'm searching", "context is",
+        "i'm checking", "i'm looking", "i'm searching", "context is"
     ]
 
     /// The subset safe to match at SENTENCE granularity inside the first line.
@@ -66,7 +66,7 @@ enum AskAnswerBlock: Equatable {
         "searching for", "searching the", "looking up", "looking into",
         "let me ", "one moment", "one sec",
         "i'll ", "i will ",
-        "i'm checking", "i'm looking", "i'm searching", "context is",
+        "i'm checking", "i'm looking", "i'm searching", "context is"
     ]
 
     /// Bare research gerunds grok leads with in the field ("Checking current
@@ -80,7 +80,7 @@ enum AskAnswerBlock: Equatable {
     /// clipped — accepted because voice answers opening that way are far
     /// rarer than grok's research preamble.
     private static let guardedSentenceNarrationOpeners = [
-        "checking ", "confirming ", "verifying ", "double-checking ",
+        "checking ", "confirming ", "verifying ", "double-checking "
     ]
 
     /// Conjugated-verb markers that mark a gerund-opener sentence as real
@@ -88,7 +88,7 @@ enum AskAnswerBlock: Equatable {
     private static let finiteVerbMarkers = [
         " is ", " are ", " was ", " were ", " has ", " have ", " had ",
         " can ", " will ", " would ", " should ", " means ", " takes ",
-        " requires ", " helps ", " makes ", " lets ", " gives ", " keeps ",
+        " requires ", " helps ", " makes ", " lets ", " gives ", " keeps "
     ]
 
     /// Models write typographic apostrophes ("I’ll", "I’m") while the opener
@@ -270,8 +270,7 @@ enum AskAnswerBlock: Equatable {
             listItems = []
         }
         func flushTable() {
-            if let table = Self.makeTable(tableLines) { blocks.append(table) }
-            else { paragraph.append(contentsOf: tableLines); flushParagraph() }
+            if let table = Self.makeTable(tableLines) { blocks.append(table) } else { paragraph.append(contentsOf: tableLines); flushParagraph() }
             tableLines = []
         }
         func flushAll() {
@@ -498,7 +497,7 @@ enum AskAnswerBlock: Equatable {
         while index < text.endIndex {
             let character = text[index]
             let next = text.index(after: index)
-            if (character == "," || character == ";" || character == ":"),
+            if character == "," || character == ";" || character == ":",
                next < text.endIndex,
                text[next] == " ",
                index > text.startIndex {
@@ -521,7 +520,6 @@ enum AskAnswerBlock: Equatable {
         guard candidate.count >= 60 else { return nil }
         return candidate
     }
-
 
     /// Rejects clause fragments where `stripInlineMarkdown` of the span alone
     /// could diverge from the same span stripped inside the full sentence.
@@ -757,7 +755,7 @@ enum AskAnswerBlock: Equatable {
 
     private static let citationHeaderMarkers: Set<String> = [
         "sources", "source", "references", "reference",
-        "citations", "citation", "further reading",
+        "citations", "citation", "further reading"
     ]
 
     /// True when `text` is a bare citation-section label (optionally wrapped in

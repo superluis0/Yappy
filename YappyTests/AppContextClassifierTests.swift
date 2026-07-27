@@ -200,7 +200,7 @@ final class AppContextClassifierTests: XCTestCase {
     func testFormalizeIsIdempotent() {
         let inputs = [
             "don't", "I'm here", "The dog's leash", "hello", "Ready?",
-            "I think we can't", "Let's go", "cannot stop",
+            "I think we can't", "Let's go", "cannot stop"
         ]
         for input in inputs {
             let once = ToneStyle.formalize(input)

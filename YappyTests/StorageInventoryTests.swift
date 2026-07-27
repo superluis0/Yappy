@@ -27,7 +27,7 @@ final class StorageInventoryTests: XCTestCase {
         let expected = try allocatedSize(of: first) + allocatedSize(of: second)
         let items = await StorageInventory.measure(
             locations: [
-                StorageLocation(id: "fixture", title: "Fixture", detail: "Nested fixture", url: root),
+                StorageLocation(id: "fixture", title: "Fixture", detail: "Nested fixture", url: root)
             ]
         )
 
@@ -48,7 +48,7 @@ final class StorageInventoryTests: XCTestCase {
         let items = await StorageInventory.measure(
             locations: [
                 StorageLocation(id: "empty", title: "Empty", detail: "Empty directory", url: empty),
-                StorageLocation(id: "missing", title: "Missing", detail: "Missing directory", url: missing),
+                StorageLocation(id: "missing", title: "Missing", detail: "Missing directory", url: missing)
             ]
         )
 
@@ -65,7 +65,7 @@ final class StorageInventoryTests: XCTestCase {
         let expected = try allocatedSize(of: fixture)
         let items = await StorageInventory.measure(
             locations: [
-                StorageLocation(id: "file", title: "File", detail: "Single file", url: fixture),
+                StorageLocation(id: "file", title: "File", detail: "Single file", url: fixture)
             ]
         )
 

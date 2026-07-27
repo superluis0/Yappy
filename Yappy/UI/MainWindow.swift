@@ -394,9 +394,9 @@ private struct WhatsNewSheet: View {
 
 /// Brand ink ramp + status colors used across the redesigned window.
 enum Brand {
-    static let ink   = Color(red: 0.96, green: 0.96, blue: 0.97)
-    static let ink2  = Color(red: 0.84, green: 0.84, blue: 0.88)
-    static let ink3  = Color(red: 0.66, green: 0.66, blue: 0.72)
+    static let ink = Color(red: 0.96, green: 0.96, blue: 0.97)
+    static let ink2 = Color(red: 0.84, green: 0.84, blue: 0.88)
+    static let ink3 = Color(red: 0.66, green: 0.66, blue: 0.72)
     /// Secondary/caption ink. Raised from (0.50, 0.50, 0.57), then again from
     /// (0.52, 0.52, 0.59): code-verified audit found the intermediate value
     /// still failed WCAG AA 4.5:1 (~4.05:1) against the lightest point of the
@@ -405,8 +405,8 @@ enum Brand {
     /// this token renders on. (0.56, 0.56, 0.63) clears 4.63:1 there with
     /// margin, and 5.17–6.17:1 on every other measured surface, without
     /// collapsing the ramp into ink3.
-    static let ink4  = Color(red: 0.56, green: 0.56, blue: 0.63)
-    static let ready  = Color(red: 0.22, green: 0.83, blue: 0.60)
+    static let ink4 = Color(red: 0.56, green: 0.56, blue: 0.63)
+    static let ready = Color(red: 0.22, green: 0.83, blue: 0.60)
     static let danger = Color(red: 1.0, green: 0.36, blue: 0.36)
 }
 
@@ -465,10 +465,10 @@ struct GlassBackdrop: View {
     var body: some View {
         ZStack {
             Color(red: 0.043, green: 0.043, blue: 0.055)
-            bloom(Color(red: 1.0,  green: 0.42, blue: 0.21), .topLeading,     0.16)
-            bloom(Color(red: 0.36, green: 0.55, blue: 1.0),  .bottomTrailing, 0.14)
-            bloom(Color(red: 0.22, green: 0.82, blue: 0.66), .bottomLeading,  0.09)
-            bloom(Color(red: 0.74, green: 0.35, blue: 1.0),  .topTrailing,    0.10)
+            bloom(Color(red: 1.0, green: 0.42, blue: 0.21), .topLeading, 0.16)
+            bloom(Color(red: 0.36, green: 0.55, blue: 1.0), .bottomTrailing, 0.14)
+            bloom(Color(red: 0.22, green: 0.82, blue: 0.66), .bottomLeading, 0.09)
+            bloom(Color(red: 0.74, green: 0.35, blue: 1.0), .topTrailing, 0.10)
         }
         .ignoresSafeArea()
     }
@@ -481,7 +481,7 @@ struct GlassBackdrop: View {
 /// the shared building block for every tab's content groups.
 struct GlassCard<Content: View>: View {
     var cornerRadius: CGFloat = 16
-    var tint: Color? = nil
+    var tint: Color?
     var padding: CGFloat = 16
     @ViewBuilder var content: () -> Content
 

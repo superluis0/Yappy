@@ -48,8 +48,7 @@ enum VoiceControlCommandParser {
     /// Pulls X out of "switch to X mode" / "use X mode" / "X mode"; nil otherwise.
     private static func modeName(from utterance: String) -> String? {
         var s = utterance
-        if s.hasPrefix("switch to ") { s.removeFirst("switch to ".count) }
-        else if s.hasPrefix("use ") { s.removeFirst("use ".count) }
+        if s.hasPrefix("switch to ") { s.removeFirst("switch to ".count) } else if s.hasPrefix("use ") { s.removeFirst("use ".count) }
         guard s.hasSuffix(" mode") else { return nil }
         s.removeLast(" mode".count)
         let name = s.trimmingCharacters(in: .whitespaces)

@@ -18,7 +18,7 @@ struct DictionaryTrainingView: View {
 
     private struct Prompt {
         let instruction: String
-        let template: String?   // "{}" placeholder for sentence takes; nil = isolated
+        let template: String? // "{}" placeholder for sentence takes; nil = isolated
     }
 
     private var prompts: [Prompt] {
@@ -27,7 +27,7 @@ struct DictionaryTrainingView: View {
             Prompt(instruction: "Say \u{201c}\(term.text)\u{201d} again", template: nil),
             Prompt(instruction: "Once more: \u{201c}\(term.text)\u{201d}", template: nil),
             Prompt(instruction: "Now in a sentence: \u{201c}I work with \(term.text) every day\u{201d}",
-                   template: "i work with {} every day"),
+                   template: "i work with {} every day")
         ]
     }
 

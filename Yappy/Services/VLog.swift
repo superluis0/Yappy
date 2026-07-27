@@ -75,13 +75,13 @@ enum VLog {
         }
     }
 
-    static func app(_ message: @autoclosure () -> String)    { log(.app, message()) }
+    static func app(_ message: @autoclosure () -> String) { log(.app, message()) }
     static func hotkey(_ message: @autoclosure () -> String) { log(.hotkey, message()) }
-    static func audio(_ message: @autoclosure () -> String)  { log(.audio, message()) }
-    static func pill(_ message: @autoclosure () -> String)   { log(.pill, message()) }
-    static func store(_ message: @autoclosure () -> String)  { log(.store, message()) }
-    static func codex(_ message: @autoclosure () -> String)  { log(.codex, message()) }
-    static func grok(_ message: @autoclosure () -> String)   { log(.grok, message()) }
-    static func tts(_ message: @autoclosure () -> String)    { log(.tts, message()) }
-    static func ask(_ message: @autoclosure () -> String)    { log(.ask, message()) }
+    static func audio(_ message: @autoclosure () -> String) { log(.audio, message()) }
+    static func pill(_ message: @autoclosure () -> String) { log(.pill, message()) }
+    static func store(_ message: @autoclosure () -> String) { log(.store, message()) }
+    static func codex(_ message: @autoclosure () -> String) { log(.codex, message()) }
+    static func grok(_ message: @autoclosure () -> String) { log(.grok, message()) }
+    static func tts(_ message: @autoclosure () -> String) { log(.tts, message()) }
+    static func ask(_ message: @autoclosure () -> String) { log(.ask, message()) }
 }

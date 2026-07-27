@@ -160,7 +160,7 @@ final class Settings: ObservableObject {
             "com.yappy.openRouterAPIKey",
             "com.yappy.streamingTextEnabled",
             "com.yappy.voiceCommandsEnabled",
-            "com.yappy.keychainMigrationComplete",
+            "com.yappy.keychainMigrationComplete"
         ]
     }
 
@@ -783,7 +783,7 @@ final class Settings: ObservableObject {
             Keys.voiceEditingEnabled, Keys.voiceControlEnabled, Keys.voiceEditAnywhereEnabled,
             Keys.saveHistoryEnabled, Keys.historyRetentionDays, Keys.activeModeID,
             Keys.useCases, Keys.autoUpdateChecksEnabled,
-            Keys.answersSpeakEnabled, Keys.answersAutoSpeak, Keys.answersVoice,
+            Keys.answersSpeakEnabled, Keys.answersAutoSpeak, Keys.answersVoice
         ] {
             defaults.removeObject(forKey: key)
         }

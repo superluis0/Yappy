@@ -128,7 +128,7 @@ enum StorageInventory {
                 title: "Voice shortcuts",
                 detail: "Spoken shortcut triggers and their saved expansions.",
                 url: yappySupport.appendingPathComponent("shortcuts.json")
-            ),
+            )
         ]
     }
 
@@ -174,7 +174,7 @@ enum StorageInventory {
             .isRegularFileKey,
             .isSymbolicLinkKey,
             .totalFileAllocatedSizeKey,
-            .fileSizeKey,
+            .fileSizeKey
         ]
 
         guard let rootValues = try? url.resourceValues(forKeys: keys),

@@ -99,7 +99,7 @@ final class ParakeetTranscriptionService: ObservableObject {
         "JointDecision.mlmodelc",
         "Preprocessor.mlmodelc",
         "config.json",
-        "parakeet_vocab.json",
+        "parakeet_vocab.json"
     ]
 
     // Nemotron (multilingual) backing state.

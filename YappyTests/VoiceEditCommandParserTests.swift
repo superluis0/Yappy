@@ -101,19 +101,19 @@ final class VoiceEditCommandParserTests: XCTestCase {
     // MARK: - Trailing-range math
 
     func testTrailingWord() {
-        XCTAssertEqual(TextEditMath.trailingWordLength(of: "hello world"), 6)   // " world"
+        XCTAssertEqual(TextEditMath.trailingWordLength(of: "hello world"), 6) // " world"
         XCTAssertEqual(TextEditMath.trailingWordLength(of: "world"), 5)
-        XCTAssertEqual(TextEditMath.trailingWordLength(of: "hello world "), 7)  // trailing space + " world"...
+        XCTAssertEqual(TextEditMath.trailingWordLength(of: "hello world "), 7) // trailing space + " world"...
     }
 
     func testTrailingSentence() {
-        XCTAssertEqual(TextEditMath.trailingSentenceLength(of: "Hi. Bye."), 5)  // " Bye."
+        XCTAssertEqual(TextEditMath.trailingSentenceLength(of: "Hi. Bye."), 5) // " Bye."
         XCTAssertEqual(TextEditMath.trailingSentenceLength(of: "Just one sentence"), 17)
         XCTAssertEqual(TextEditMath.trailingSentenceLength(of: "One. Two. Three."), 7) // " Three."
     }
 
     func testTrailingLine() {
-        XCTAssertEqual(TextEditMath.trailingLineLength(of: "line1\nline2"), 6)   // "\nline2"
+        XCTAssertEqual(TextEditMath.trailingLineLength(of: "line1\nline2"), 6) // "\nline2"
         XCTAssertEqual(TextEditMath.trailingLineLength(of: "single line"), 11)
     }
 
@@ -487,12 +487,12 @@ final class SelectionTransformControllerTests: XCTestCase {
         XCTAssertEqual(controller.instruction, "make this bullets")
         XCTAssertEqual(controller.result, "- a\n- b")
 
-        controller.replace()   // async: re-activate origin, verify frontmost, paste
+        controller.replace() // async: re-activate origin, verify frontmost, paste
         await yieldUntil { controller.stage == .idle }
         XCTAssertEqual(inserter.pasted, ["- a\n- b"])
         XCTAssertTrue(inserter.copied.isEmpty)
 
-        controller.replace()   // one-shot: stage is .idle, no second paste
+        controller.replace() // one-shot: stage is .idle, no second paste
         await Task.yield()
         XCTAssertEqual(inserter.pasted.count, 1)
 
@@ -555,7 +555,7 @@ final class SelectionTransformControllerTests: XCTestCase {
         let (controller, _, transcriber, _, selection, generative) = makeController()
         selection.text = "hello"
         generative.available = true
-        generative.output = "hello"   // identical echo
+        generative.output = "hello" // identical echo
 
         controller.begin()
         transcriber.transcript = "make it more formal"
@@ -641,10 +641,10 @@ final class SelectionTransformControllerTests: XCTestCase {
         controller.begin()
         transcriber.transcript = "make it more formal"
         controller.endListening()
-        await yieldUntil { generative.gate != nil }   // parked inside transform()
+        await yieldUntil { generative.gate != nil } // parked inside transform()
 
-        controller.cancel()                            // bumps the generation
-        generative.gate?.resume()                      // stale result arrives late
+        controller.cancel() // bumps the generation
+        generative.gate?.resume() // stale result arrives late
         await Task.yield()
         await Task.yield()
 
@@ -710,7 +710,7 @@ final class SelectionTransformControllerTests: XCTestCase {
         XCTAssertEqual(active, [true, false],
                        "try again must disarm Escape so it isn't swallowed system-wide")
 
-        controller.begin()   // re-hold on the retained selection
+        controller.begin() // re-hold on the retained selection
         XCTAssertEqual(active, [true, false, true], "re-listening re-arms Escape")
     }
 

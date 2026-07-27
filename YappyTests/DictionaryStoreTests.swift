@@ -180,10 +180,10 @@ final class DictionaryStoreTests: XCTestCase {
 
     func testBuildBoostTermsDropsShortTerms() {
         let terms = [
-            DictionaryTerm(text: "Go"),        // 2 chars — dropped
-            DictionaryTerm(text: "  R  "),     // 1 char after trim — dropped
-            DictionaryTerm(text: "Vim"),       // 3 chars — kept
-            DictionaryTerm(text: "Kubernetes"), // kept
+            DictionaryTerm(text: "Go"), // 2 chars — dropped
+            DictionaryTerm(text: "  R  "), // 1 char after trim — dropped
+            DictionaryTerm(text: "Vim"), // 3 chars — kept
+            DictionaryTerm(text: "Kubernetes") // kept
         ]
         let built = ParakeetTranscriptionService.buildBoostTerms(from: terms)
         XCTAssertEqual(built.map(\.text), ["Vim", "Kubernetes"])

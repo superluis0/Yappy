@@ -32,7 +32,7 @@ enum SpokenPunctuationFormatter {
         "hyphen": "-",
         "dash": "-",
         "apostrophe": "'",
-        "ellipsis": "…",
+        "ellipsis": "…"
     ]
 
     /// First word → (second word → symbol), for two-word marks. Quotes and the
@@ -47,7 +47,7 @@ enum SpokenPunctuationFormatter {
         "closed": ["paren": ")", "parenthesis": ")", "quote": "”"],
         "end": ["quote": "”"],
         "forward": ["slash": "/"],
-        "em": ["dash": "—"],
+        "em": ["dash": "—"]
     ]
 
     /// Cheap substrings that gate the whole pass.
@@ -55,7 +55,7 @@ enum SpokenPunctuationFormatter {
         "comma", "period", "colon", "semicolon", "hyphen", "dash",
         "question", "exclamation", "full stop", "paren", "bracket",
         "apostrophe", "ellipsis", "open quote", "close quote", "end quote",
-        "forward slash", "em dash",
+        "forward slash", "em dash"
     ]
 
     /// Marks that hug the preceding word and take a space after.
@@ -159,7 +159,7 @@ enum SpokenPunctuationFormatter {
     private static let nounDeterminers: Set<String> = [
         "a", "an", "the",
         "my", "your", "his", "her", "its", "our", "their",
-        "each", "every", "another",
+        "each", "every", "another"
     ]
 
     /// True when a single-word mark at `index` is preceded by a determiner and so
@@ -200,5 +200,4 @@ enum SpokenPunctuationFormatter {
             gapAction = .removeLeading
         }
     }
-
 }

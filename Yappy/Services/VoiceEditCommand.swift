@@ -8,14 +8,14 @@ import Foundation
 /// A spoken instruction to edit the text Yappy just inserted — said as its own
 /// utterance after a dictation ("scratch that", "all caps that").
 enum VoiceEditCommand: Equatable {
-    case deleteLast          // remove the whole last insertion
+    case deleteLast // remove the whole last insertion
     case deleteLastWord
     case deleteLastSentence
     case deleteLastLine
-    case capitalizeThat      // title-case the last insertion
+    case capitalizeThat // title-case the last insertion
     case allCapsThat
     case lowercaseThat
-    case useRawTranscript    // revert the last insertion to the pre-cleanup words
+    case useRawTranscript // revert the last insertion to the pre-cleanup words
 }
 
 /// Classifies a *whole utterance* as an edit command, or returns nil so the
@@ -60,7 +60,7 @@ enum VoiceEditCommandParser {
         "use what i said": .useRawTranscript,
         "use what i actually said": .useRawTranscript,
         "undo the cleanup": .useRawTranscript,
-        "undo that cleanup": .useRawTranscript,
+        "undo that cleanup": .useRawTranscript
     ]
 
     static func parse(_ raw: String) -> VoiceEditCommand? {
@@ -129,11 +129,11 @@ enum TextEditMath {
     static func trailingWordLength(of text: String) -> Int {
         let chars = Array(text)
         var i = chars.count
-        while i > 0, chars[i - 1].isWhitespace { i -= 1 }          // trailing whitespace
+        while i > 0, chars[i - 1].isWhitespace { i -= 1 } // trailing whitespace
         let afterWord = i
-        while i > 0, !chars[i - 1].isWhitespace { i -= 1 }          // the word itself
-        guard afterWord != i else { return chars.count - i }        // (no word found)
-        while i > 0, chars[i - 1].isWhitespace { i -= 1 }           // separating whitespace
+        while i > 0, !chars[i - 1].isWhitespace { i -= 1 } // the word itself
+        guard afterWord != i else { return chars.count - i } // (no word found)
+        while i > 0, chars[i - 1].isWhitespace { i -= 1 } // separating whitespace
         return chars.count - i
     }
 
@@ -141,7 +141,7 @@ enum TextEditMath {
     /// terminator, the whole text is one sentence.
     static func trailingSentenceLength(of text: String) -> Int {
         let chars = Array(text)
-        var boundary: Int? = nil   // index of the terminator ending the PREVIOUS sentence
+        var boundary: Int? // index of the terminator ending the PREVIOUS sentence
         for (k, ch) in chars.enumerated() where terminators.contains(ch) {
             let hasContentAfter = chars[(k + 1)...].contains {
                 !$0.isWhitespace && !terminators.contains($0)

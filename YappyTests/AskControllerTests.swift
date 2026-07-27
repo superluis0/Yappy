@@ -500,8 +500,8 @@ final class AskControllerTests: XCTestCase {
             answer: "Previous answer."
         )
 
-        controller.beginListening()   // borrows the completed card for a follow-up
-        controller.cancelCapture()    // silence — nothing was asked
+        controller.beginListening() // borrows the completed card for a follow-up
+        controller.cancelCapture() // silence — nothing was asked
 
         XCTAssertEqual(controller.run?.status, .completed)
         XCTAssertEqual(controller.run?.rawTranscript, "Original question")
@@ -2092,7 +2092,6 @@ final class AskControllerTests: XCTestCase {
         controller.shutdown()
         XCTAssertEqual(purgeCount, 1)
     }
-
 }
 
 // MARK: - TTS first-chunk pad

@@ -15,7 +15,7 @@ final class GrokAskClientTests: XCTestCase {
             "401 Unauthorized",
             "token expired",
             "Your session has expired",
-            "invalid credentials",
+            "invalid credentials"
         ] {
             XCTAssertTrue(isAuthFailure(message), message)
         }
@@ -28,7 +28,7 @@ final class GrokAskClientTests: XCTestCase {
             "your free trial expired yesterday, upgrade to continue",
             "the page returned 401 in the body of the fetched article",
             "tool output: user login page HTML follows",
-            "maximum context tokens reached",
+            "maximum context tokens reached"
         ] {
             XCTAssertFalse(isAuthFailure(message), message)
         }
@@ -132,7 +132,7 @@ final class GrokAskClientTests: XCTestCase {
     private let standardOptions: [[String: Any]] = [
         ["optionId": "allow-always", "kind": "allow_always", "name": "Always Allow"],
         ["optionId": "allow-once", "kind": "allow_once", "name": "Allow"],
-        ["optionId": "reject-once", "kind": "reject_once", "name": "Reject"],
+        ["optionId": "reject-once", "kind": "reject_once", "name": "Reject"]
     ]
 
     func testPermissionApprovesSearchToolWithOncePreferred() {

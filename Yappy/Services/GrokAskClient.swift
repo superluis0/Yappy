@@ -48,7 +48,7 @@ final class GrokAskClient: @unchecked Sendable {
             "\(home)/.grok/bin/grok",
             "\(home)/.npm-global/bin/grok",
             "/opt/homebrew/bin/grok",
-            "/usr/local/bin/grok",
+            "/usr/local/bin/grok"
         ]
         return candidates.first { FileManager.default.isExecutableFile(atPath: $0) }
     }
@@ -211,7 +211,7 @@ final class GrokAskClient: @unchecked Sendable {
         return [
             "HOME": home.path,
             "TMPDIR": NSTemporaryDirectory(),
-            "PATH": "\(realHome)/.local/bin:\(realHome)/.npm-global/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin",
+            "PATH": "\(realHome)/.local/bin:\(realHome)/.npm-global/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
         ]
     }
 
@@ -237,7 +237,7 @@ final class GrokAskClient: @unchecked Sendable {
                 "--prompt-file", promptFile.path,
                 "--output-format", "streaming-json",
                 "--cwd", home.path,
-                "--permission-mode", "plan",
+                "--permission-mode", "plan"
             ]
         } else {
             arguments = [
@@ -246,7 +246,7 @@ final class GrokAskClient: @unchecked Sendable {
                 "--cwd", home.path,
                 "--permission-mode", "plan",
                 "--effort", request.effort,
-                "--no-plan", "--no-subagents", "--no-memory",
+                "--no-plan", "--no-subagents", "--no-memory"
             ]
             if let sys = request.systemPrompt?.trimmingCharacters(in: .whitespacesAndNewlines),
                !sys.isEmpty {

@@ -13,22 +13,22 @@ enum StatFraming {
     private struct Tier { let floor: Int; let phrase: String }
 
     private static let wordTiers: [Tier] = [
-        Tier(floor: 1_000,   phrase: "about a short story's worth"),
-        Tier(floor: 5_000,   phrase: "a long article's worth"),
-        Tier(floor: 15_000,  phrase: "a novella's worth"),
-        Tier(floor: 40_000,  phrase: "a short novel's worth"),
+        Tier(floor: 1_000, phrase: "about a short story's worth"),
+        Tier(floor: 5_000, phrase: "a long article's worth"),
+        Tier(floor: 15_000, phrase: "a novella's worth"),
+        Tier(floor: 40_000, phrase: "a short novel's worth"),
         Tier(floor: 100_000, phrase: "a full novel's worth"),
         Tier(floor: 200_000, phrase: "a couple of novels' worth"),
         Tier(floor: 350_000, phrase: "a trilogy's worth"),
-        Tier(floor: 600_000, phrase: "War and Peace, and then some"),
+        Tier(floor: 600_000, phrase: "War and Peace, and then some")
     ]
 
     private static let timeTiers: [Tier] = [
-        Tier(floor: 15,  phrase: "about a coffee break"),
-        Tier(floor: 60,  phrase: "an hour of your day back"),
+        Tier(floor: 15, phrase: "about a coffee break"),
+        Tier(floor: 60, phrase: "an hour of your day back"),
         Tier(floor: 240, phrase: "half a workday saved"),
         Tier(floor: 480, phrase: "a full workday saved"),
-        Tier(floor: 2_400, phrase: "a full workweek saved"),
+        Tier(floor: 2_400, phrase: "a full workweek saved")
     ]
 
     /// A typical novel, for the unbounded rung past the named tiers.

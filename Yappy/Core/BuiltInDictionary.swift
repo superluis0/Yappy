@@ -52,7 +52,7 @@ enum BuiltInDictionary {
         term("WebSocket", ["web socket"]),
         term("localhost", ["local host"]),
         term("Kotlin", ["cotlin"]),
-        term("Django", ["jango"]),
+        term("Django", ["jango"])
     ]
 
     private static func term(_ text: String, _ aliases: [String]) -> DictionaryTerm {

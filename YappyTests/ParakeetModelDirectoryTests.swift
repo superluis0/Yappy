@@ -14,7 +14,7 @@ final class ParakeetModelDirectoryTests: XCTestCase {
         "JointDecision.mlmodelc",
         "Preprocessor.mlmodelc",
         "config.json",
-        "parakeet_vocab.json",
+        "parakeet_vocab.json"
     ]
 
     private var tempDir: URL!

@@ -21,30 +21,30 @@ enum TTSTextNormalizer {
         // ordinals, which only recognize full month names. R18 follows so ISO
         // dates are rewritten before any dash rule can touch them.
         output = applyCalendarAbbreviations(output) // R13
-        output = applyISODates(output)              // R18
-        output = applyYearRanges(output)          // R1
-        output = applyNumericRanges(output)        // R2
+        output = applyISODates(output) // R18
+        output = applyYearRanges(output) // R1
+        output = applyNumericRanges(output) // R2
         output = output.replacingOccurrences(of: rejectedYearRangeMarker, with: "")
-        output = applyTimes(output)                // R3
-        output = applyApproximateTilde(output)     // R4
-        output = applyDegrees(output)              // R5
-        output = applyLeadingMinus(output)          // R17 (after ranges + degrees)
-        output = applyRomanNumerals(output)        // R6
-        output = applyFractions(output)            // R7
-        output = applyUnitAbbreviations(output)    // R8
-        output = applyMagnitudeSuffixes(output)    // R9
-        output = applyDateOrdinals(output)         // R10
-        output = applyPlaceAbbreviations(output)    // R19 (St./Mt./Ft.)
-        output = applyShorthandWords(output)        // R21 (w/, w/o, approx.)
-        output = applyMultiplierX(output)           // R23 (2x, 1920x1080)
-        output = applyNumberSign(output)            // R25 (#1)
-        output = applyWordRangeDash(output)         // R26 (Boston–NYC)
-        output = applyComparisonSymbols(output)     // R16 (> < ≥ ≤)
-        output = applyMarkdownResidue(output)      // R11
-        output = applyVersusAbbreviation(output)   // R12
-        output = applySpacedSlashPause(output)     // R14
-        output = applyLatinAbbreviations(output)   // R15
-        output = applyEmojiStrip(output)            // R22 (last — cleans gaps)
+        output = applyTimes(output) // R3
+        output = applyApproximateTilde(output) // R4
+        output = applyDegrees(output) // R5
+        output = applyLeadingMinus(output) // R17 (after ranges + degrees)
+        output = applyRomanNumerals(output) // R6
+        output = applyFractions(output) // R7
+        output = applyUnitAbbreviations(output) // R8
+        output = applyMagnitudeSuffixes(output) // R9
+        output = applyDateOrdinals(output) // R10
+        output = applyPlaceAbbreviations(output) // R19 (St./Mt./Ft.)
+        output = applyShorthandWords(output) // R21 (w/, w/o, approx.)
+        output = applyMultiplierX(output) // R23 (2x, 1920x1080)
+        output = applyNumberSign(output) // R25 (#1)
+        output = applyWordRangeDash(output) // R26 (Boston–NYC)
+        output = applyComparisonSymbols(output) // R16 (> < ≥ ≤)
+        output = applyMarkdownResidue(output) // R11
+        output = applyVersusAbbreviation(output) // R12
+        output = applySpacedSlashPause(output) // R14
+        output = applyLatinAbbreviations(output) // R15
+        output = applyEmojiStrip(output) // R22 (last — cleans gaps)
         return output
     }
 
@@ -223,7 +223,7 @@ enum TTSTextNormalizer {
             ("XX", "20"), ("XI", "11"),
             ("VIII", "8"), ("VII", "7"), ("VI", "6"),
             ("IV", "4"), ("IX", "9"),
-            ("III", "3"), ("II", "2"),
+            ("III", "3"), ("II", "2")
         ]
         for (roman, digits) in numerals {
             // ICU (NSRegularExpression) lookbehind requires a bounded length,
@@ -246,7 +246,7 @@ enum TTSTextNormalizer {
             ("1/3", "one third"),
             ("2/3", "two thirds"),
             ("1/4", "one quarter"),
-            ("3/4", "three quarters"),
+            ("3/4", "three quarters")
         ]
         var output = text
         for (fraction, words) in fractions {
@@ -287,7 +287,7 @@ enum TTSTextNormalizer {
             ("KB", "kilobytes"),
             ("MB", "megabytes"),
             ("GB", "gigabytes"),
-            ("TB", "terabytes"),
+            ("TB", "terabytes")
         ]
         var output = text
         for (abbreviation, expansion) in units {
@@ -312,7 +312,7 @@ enum TTSTextNormalizer {
             ("B", " billion"),
             ("T", " trillion"),
             ("bn", " billion"),
-            ("tn", " trillion"),
+            ("tn", " trillion")
         ]
         for (suffix, expansion) in suffixes {
             let escaped = NSRegularExpression.escapedPattern(for: suffix)
@@ -408,7 +408,7 @@ enum TTSTextNormalizer {
             16: "sixteenth", 17: "seventeenth", 18: "eighteenth", 19: "nineteenth", 20: "twentieth",
             21: "twenty-first", 22: "twenty-second", 23: "twenty-third", 24: "twenty-fourth", 25: "twenty-fifth",
             26: "twenty-sixth", 27: "twenty-seventh", 28: "twenty-eighth", 29: "twenty-ninth", 30: "thirtieth",
-            31: "thirty-first",
+            31: "thirty-first"
         ]
         return ordinals[n]
     }
@@ -419,14 +419,14 @@ enum TTSTextNormalizer {
         "jan": "January", "feb": "February", "mar": "March", "apr": "April",
         "jun": "June", "jul": "July", "aug": "August",
         "sep": "September", "sept": "September",
-        "oct": "October", "nov": "November", "dec": "December",
+        "oct": "October", "nov": "November", "dec": "December"
     ]
 
     private static let weekdayExpansions: [String: String] = [
         "mon": "Monday", "tue": "Tuesday", "tues": "Tuesday",
         "wed": "Wednesday", "weds": "Wednesday",
         "thu": "Thursday", "thur": "Thursday", "thurs": "Thursday",
-        "fri": "Friday", "sat": "Saturday", "sun": "Sunday",
+        "fri": "Friday", "sat": "Saturday", "sun": "Sunday"
     ]
 
     /// "Jul" reads as "jool", "Tue" as "too", "Fri–Sun" as "fry sun".
@@ -541,7 +541,7 @@ enum TTSTextNormalizer {
 
     private static let monthNames = [
         "January", "February", "March", "April", "May", "June",
-        "July", "August", "September", "October", "November", "December",
+        "July", "August", "September", "October", "November", "December"
     ]
 
     /// "2026-07-14" is read as a garbled digit run ("twenty twenty six-zero

@@ -79,7 +79,7 @@ final class CleanupCoordinator {
         intensity: CleanupIntensity? = nil,
         knownTerms: [String] = []
     ) async -> String {
-        guard (cleanupEnabled ?? settings.cleanupEnabled), !text.isEmpty else { return text }
+        guard cleanupEnabled ?? settings.cleanupEnabled, !text.isEmpty else { return text }
         guard tone != .verbatim else { return text }
 
         // Tiny, structurally simple utterances have nothing useful for the model
@@ -310,7 +310,7 @@ final class CleanupCoordinator {
         let singles: Set<String> = [
             "um", "uh", "er", "erm", "umm", "uhh", "uhm", "hmm", "ah", "mm", "mhm",
             "like", "well", "so", "actually", "basically", "literally", "anyway",
-            "kinda", "sorta",
+            "kinda", "sorta"
         ]
         let pairs: [[String]] = [["you", "know"], ["i", "mean"], ["kind", "of"], ["sort", "of"]]
         var i = 0

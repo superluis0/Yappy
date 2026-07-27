@@ -32,13 +32,13 @@ enum SpokenCommandFormatter {
         (["new", "line"], "\n"),
         (["next", "line"], "\n"),
         (["line", "break"], "\n"),
-        (["insert", "line"], "\n"),
+        (["insert", "line"], "\n")
     ].sorted { $0.words.count > $1.words.count }
 
     /// Cheap substring gate: skip tokenizing entirely unless a phrase could be present.
     private static let triggers = [
         "new line", "next line", "line break", "insert line",
-        "new paragraph", "next paragraph", "skip a line",
+        "new paragraph", "next paragraph", "skip a line"
     ]
 
     /// Punctuation that can anchor a command boundary.
@@ -171,5 +171,4 @@ enum SpokenCommandFormatter {
         }
         return String(result)
     }
-
 }

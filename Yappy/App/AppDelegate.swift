@@ -518,8 +518,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func startTaps() -> Bool {
         let dictationStarted = hotkeyManager.start()
         scratchpadHotkey.start() // idempotent; summons the floating notepad (⌥⇧S)
-        updateAskHotkeyArming()  // arms the Fn tap only when unlocked && enabled
-        updateVoiceEditHotkeyArming()  // arms the Right Option tap only when enabled
+        updateAskHotkeyArming() // arms the Fn tap only when unlocked && enabled
+        updateVoiceEditHotkeyArming() // arms the Right Option tap only when enabled
         return dictationStarted
     }
 
@@ -2096,7 +2096,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         voiceEditController.onActiveChanged = { [weak self] active in
             guard let self else { return }
             if active {
-                self.escapeInterceptor.start()   // Esc cancels at every stage
+                self.escapeInterceptor.start() // Esc cancels at every stage
             } else if !self.askRecording, !self.askController.isBusy,
                       !self.appState.isRecording, !self.appState.isProcessing {
                 self.escapeInterceptor.stop()
@@ -2118,7 +2118,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             voiceEditHotkey.stop()
             return
         }
-        voiceEditPanelController.prewarm()  // builds the panel + subscribes to the card state
+        voiceEditPanelController.prewarm() // builds the panel + subscribes to the card state
         voiceEditHotkey.start()
     }
 
@@ -2179,7 +2179,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Begins the actual Ask capture session. Precondition: the speech model is
     /// `.ready` (the audio engine must never run concurrently with a model load).
     private func beginAskRecording() {
-        askController.beginListening()  // shows the Ask pill + warms Codex
+        askController.beginListening() // shows the Ask pill + warms Codex
         askRecording = true
         guard audioRecorder.startRecording() else {
             askRecording = false
@@ -2194,7 +2194,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         playFeedback(start: true)
         armMaxDurationTimer { [weak self] in self?.finishAsk() }
-        escapeInterceptor.start()  // stays live through the whole turn (see bindStateToMenuBar)
+        escapeInterceptor.start() // stays live through the whole turn (see bindStateToMenuBar)
     }
 
     /// Fn released — transcribe the captured audio and hand the question to the
@@ -2256,7 +2256,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             maxDurationTimer?.invalidate()
         }
         askProcessingTask?.cancel()
-        askController.abort()  // interrupts the turn (if any) + cancels the run
+        askController.abort() // interrupts the turn (if any) + cancels the run
         // The Escape interceptor is torn down by the askController.$run sink once
         // the run reaches a terminal state.
     }
@@ -2483,7 +2483,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     dot.widthAnchor.constraint(equalToConstant: 7),
                     dot.heightAnchor.constraint(equalToConstant: 7),
                     dot.trailingAnchor.constraint(equalTo: button.trailingAnchor, constant: -1),
-                    dot.topAnchor.constraint(equalTo: button.topAnchor, constant: 2),
+                    dot.topAnchor.constraint(equalTo: button.topAnchor, constant: 2)
                 ])
                 updateBadgeView = dot
             }
@@ -2590,9 +2590,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private enum MenuBarGlyph {
-        case ready       // outline speech bubble + waveform (template)
-        case recording   // solid orange bubble + cutout waveform
-        case processing  // filled bubble + cutout waveform (template)
+        case ready // outline speech bubble + waveform (template)
+        case recording // solid orange bubble + cutout waveform
+        case processing // filled bubble + cutout waveform (template)
     }
 
     private func updateMenuBarIcon() {
@@ -2634,7 +2634,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// instead, echoing the pill's breathing glow. Cheap to swap, like the old
     /// bar frames.
     private static let recordingFrames: [NSImage] = [
-        2.3, 2.6, 2.9, 2.6, 2.3,
+        2.3, 2.6, 2.9, 2.6, 2.3
     ].map { yIcon(.recording, strokeWidth: $0) }
 
     private func startMenuBarAnimation() {

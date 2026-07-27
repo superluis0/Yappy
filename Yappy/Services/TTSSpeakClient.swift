@@ -94,7 +94,7 @@ final class TTSSpeakClient: @unchecked Sendable {
             "/usr/local/bin/python3",
             "/opt/homebrew/bin/python3",
             "\(home)/.local/bin/python3",
-            "/usr/bin/python3",
+            "/usr/bin/python3"
         ]
     }
 
@@ -107,7 +107,7 @@ final class TTSSpeakClient: @unchecked Sendable {
         return [
             "HOME": realHome,
             "TMPDIR": NSTemporaryDirectory(),
-            "PATH": "\(realHome)/.local/bin:\(realHome)/.npm-global/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin",
+            "PATH": "\(realHome)/.local/bin:\(realHome)/.npm-global/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
         ]
     }
 
@@ -145,7 +145,7 @@ final class TTSSpeakClient: @unchecked Sendable {
             if done.wait(timeout: .now() + 0.5) == .timedOut {
                 kill(process.processIdentifier, SIGKILL)
             }
-            return nil  // indeterminate — a slow cold start, not "not installed"
+            return nil // indeterminate — a slow cold start, not "not installed"
         }
 
         return process.terminationStatus == 0
@@ -385,7 +385,7 @@ final class TTSSpeakClient: @unchecked Sendable {
             "voice": voice,
             "speed": speed,
             "out": outputURL.path,
-            "pad_ms": padStartMs,
+            "pad_ms": padStartMs
         ]
 
         let timeout = max(20, Double(text.count) * 0.06)

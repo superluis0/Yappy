@@ -45,7 +45,7 @@ enum AppCategory: String, CaseIterable, Codable {
 /// `.casual` — excited was informal-leaning and did nothing distinct, so `.casual`
 /// is the closest surviving behavior — rather than throwing and corrupting the load.
 enum ToneStyle: String, CaseIterable, Codable {
-    case verbatim   // minimal cleanup, preserve as-is (good for code)
+    case verbatim // minimal cleanup, preserve as-is (good for code)
     case formal
     case casual
 
@@ -61,7 +61,7 @@ enum ToneStyle: String, CaseIterable, Codable {
     /// predates a case removal non-throwing. Currently maps the removed `"excited"`
     /// to `.casual`.
     private static let legacyRawValues: [String: ToneStyle] = [
-        "excited": .casual,
+        "excited": .casual
     ]
 
     init(from decoder: Decoder) throws {
@@ -161,7 +161,7 @@ enum ToneStyle: String, CaseIterable, Codable {
         "there's": "there is",
         "what's": "what is",
         "who's": "who is",
-        "let's": "let us",
+        "let's": "let us"
     ]
 
     /// Apply the case of `source`'s first letter to `expansion`. The whitelist stores
@@ -190,7 +190,7 @@ enum ToneStyle: String, CaseIterable, Codable {
     /// "Don't" plus the trailing ".".
     private static func isWordScalar(_ scalar: Unicode.Scalar) -> Bool {
         if CharacterSet.alphanumerics.contains(scalar) { return true }
-        return scalar == "'" || scalar == "\u{2019}"  // ' and ’
+        return scalar == "'" || scalar == "\u{2019}" // ' and ’
     }
 
     /// Expand whitelisted contractions, then ensure terminal punctuation. Walks the
@@ -278,7 +278,7 @@ enum AppContextClassifier {
         "com.jetbrains.intellij": .code,
         "com.jetbrains.pycharm": .code,
         "com.sublimetext.4": .code,
-        "com.todesktop.230313mzl4w4u92": .code, // Cursor
+        "com.todesktop.230313mzl4w4u92": .code // Cursor
     ]
 
     static func category(forBundleID bundleID: String?) -> AppCategory {
@@ -291,11 +291,11 @@ enum AppContextClassifier {
 /// formatting: a single-line or search field can't hold line breaks or
 /// paragraphs, so dictated structure is flattened before it's inserted.
 enum FocusedFieldKind: String {
-    case singleLine   // AXTextField — a one-line input (URL bar, form field)
-    case multiLine    // AXTextArea — a multi-line editor or composer
-    case search       // AXSearchField subrole — Spotlight, a search box
-    case secure       // AXSecureTextField — a password / secret field
-    case unknown      // couldn't determine (no focus, opaque app, not trusted)
+    case singleLine // AXTextField — a one-line input (URL bar, form field)
+    case multiLine // AXTextArea — a multi-line editor or composer
+    case search // AXSearchField subrole — Spotlight, a search box
+    case secure // AXSecureTextField — a password / secret field
+    case unknown // couldn't determine (no focus, opaque app, not trusted)
 }
 
 /// Reads the accessibility role/subrole of the focused element to classify the

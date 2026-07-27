@@ -64,7 +64,7 @@ enum CommandCatalog {
                               isSpoken: false),
                 CommandEntry("Press Esc",
                               effect: "Cancels the dictation before it lands — works while recording or while it's being polished.",
-                              isSpoken: false),
+                              isSpoken: false)
             ]
         ),
         CommandSection(
@@ -88,7 +88,7 @@ enum CommandCatalog {
                 CommandEntry("open bracket", effect: "→ ["),
                 CommandEntry("close bracket", effect: "→ ]"),
                 CommandEntry("forward slash", effect: "→ /"),
-                CommandEntry("em dash", effect: "→ —"),
+                CommandEntry("em dash", effect: "→ —")
             ]
         ),
         CommandSection(
@@ -99,7 +99,7 @@ enum CommandCatalog {
                 CommandEntry("new line",
                               effect: "Inserts a line break (also \u{201c}next line\u{201d}, \u{201c}line break\u{201d}, \u{201c}insert line\u{201d})"),
                 CommandEntry("new paragraph",
-                              effect: "Inserts a paragraph break (also \u{201c}next paragraph\u{201d}, \u{201c}skip a line\u{201d})"),
+                              effect: "Inserts a paragraph break (also \u{201c}next paragraph\u{201d}, \u{201c}skip a line\u{201d})")
             ]
         ),
         CommandSection(
@@ -109,7 +109,7 @@ enum CommandCatalog {
             entries: [
                 CommandEntry("eleven point six",
                               effect: "Spoken numbers become digits",
-                              example: "→ \u{201c}11.6\u{201d}"),
+                              example: "→ \u{201c}11.6\u{201d}")
             ]
         ),
         CommandSection(
@@ -122,7 +122,7 @@ enum CommandCatalog {
                               example: "→ \u{201c}1. Milk\n2. Eggs\n3. Bread\u{201d}"),
                 CommandEntry("bullet milk bullet eggs bullet bread",
                               effect: "Two or more \u{201c}bullet\u{201d} items become a bulleted list",
-                              example: "→ \u{201c}- Milk\n- Eggs\n- Bread\u{201d}"),
+                              example: "→ \u{201c}- Milk\n- Eggs\n- Bread\u{201d}")
             ]
         ),
         CommandSection(
@@ -145,7 +145,7 @@ enum CommandCatalog {
                 CommandEntry("lowercase that",
                               effect: "Lowercases the last dictation (also \u{201c}lowercase this\u{201d}, \u{201c}make that lowercase\u{201d})"),
                 CommandEntry("use what i said",
-                              effect: "Reverts to the pre-cleanup words (also \u{201c}use what i actually said\u{201d}, \u{201c}undo the cleanup\u{201d}, \u{201c}undo that cleanup\u{201d})"),
+                              effect: "Reverts to the pre-cleanup words (also \u{201c}use what i actually said\u{201d}, \u{201c}undo the cleanup\u{201d}, \u{201c}undo that cleanup\u{201d})")
             ]
         ),
         CommandSection(
@@ -161,7 +161,7 @@ enum CommandCatalog {
                 CommandEntry("open scratchpad",
                               effect: "Opens the floating scratchpad (also \u{201c}show scratchpad\u{201d}, \u{201c}open notes\u{201d}, \u{201c}show notes\u{201d})"),
                 CommandEntry("new note",
-                              effect: "Starts a fresh scratchpad note (also \u{201c}new scratchpad note\u{201d}, \u{201c}create a note\u{201d}, \u{201c}create a new note\u{201d})"),
+                              effect: "Starts a fresh scratchpad note (also \u{201c}new scratchpad note\u{201d}, \u{201c}create a note\u{201d}, \u{201c}create a new note\u{201d})")
             ]
         ),
         CommandSection(
@@ -170,7 +170,7 @@ enum CommandCatalog {
             settingsKeyPath: nil,
             entries: [
                 CommandEntry("press enter",
-                              effect: "Sends Return after the dictation lands (also \u{201c}press return\u{201d}, \u{201c}hit enter\u{201d}, \u{201c}hit return\u{201d})"),
+                              effect: "Sends Return after the dictation lands (also \u{201c}press return\u{201d}, \u{201c}hit enter\u{201d}, \u{201c}hit return\u{201d})")
             ]
         ),
         CommandSection(
@@ -194,8 +194,8 @@ enum CommandCatalog {
                               effect: "Stops the read-aloud (also \u{201c}stop reading\u{201d}, \u{201c}stop speaking\u{201d})"),
                 CommandEntry("think harder",
                               effect: "Prefix that asks for a slower, more thorough answer (also \u{201c}think hard\u{201d})",
-                              example: "\u{201c}think harder, what's the fastest sort for this?\u{201d}"),
+                              example: "\u{201c}think harder, what's the fastest sort for this?\u{201d}")
             ]
-        ),
+        )
     ]
 }

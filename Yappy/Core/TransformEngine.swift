@@ -20,7 +20,7 @@ import Foundation
 enum TransformOp: Equatable {
     case bullets
     case numberedList
-    case joinLines          // collapse to a single line / paragraph
+    case joinLines // collapse to a single line / paragraph
     case uppercase
     case lowercase
     case titleCase
@@ -205,37 +205,37 @@ enum TransformEngine {
 
     private static let numberedNeedles = [
         "numbered list", "number list", "ordered list", "numbered",
-        "number these", "number this", "as numbers",
+        "number these", "number this", "as numbers"
     ]
     private static let bulletNeedles = [
         "bullet", "a list", "list this", "list these",
-        "into a list", "as a list", "in a list", "make a list",
+        "into a list", "as a list", "in a list", "make a list"
     ]
     private static let joinNeedles = [
         "one line", "single line", "on one line",
         "one paragraph", "single paragraph", "into one paragraph", "as one paragraph",
         "join these", "join the line", "join lines",
-        "merge these", "merge the line", "merge lines", "combine into one",
+        "merge these", "merge the line", "merge lines", "combine into one"
     ]
     private static let uppercaseNeedles = [
         "uppercase", "upper case", "all caps", "capital letters",
-        "in caps", "to caps", "make it caps", "make this caps",
+        "in caps", "to caps", "make it caps", "make this caps"
     ]
     private static let lowercaseNeedles = [
-        "lowercase", "lower case", "no caps", "all lower",
+        "lowercase", "lower case", "no caps", "all lower"
     ]
     private static let titleCaseNeedles = [
         "title case", "titlecase", "capitalize", "capitalise",
-        "capital case", "start case",
+        "capital case", "start case"
     ]
     private static let fillerNeedles = [
         "filler", "remove the ums", "ums and uhs", "remove ums",
-        "take out the ums", "get rid of the ums",
+        "take out the ums", "get rid of the ums"
     ]
 
     private static let preamblePrefixes = [
         "here is", "here's", "here are", "here you go",
         "sure, here", "sure! here", "sure here",
-        "certainly, here", "certainly here", "okay, here", "ok, here",
+        "certainly, here", "certainly here", "okay, here", "ok, here"
     ]
 }

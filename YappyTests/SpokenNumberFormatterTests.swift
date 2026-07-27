@@ -343,5 +343,4 @@ final class SpokenNumberFormatterTests: XCTestCase {
         // the cardinal guard matches that established behavior.
         XCTAssertEqual(f("first of all"), "first of all")
     }
-
 }

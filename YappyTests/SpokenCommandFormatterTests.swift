@@ -91,7 +91,7 @@ final class SpokenCommandFormatterTests: XCTestCase {
             ("name, insert line, address", "\n"),
             ("done. New paragraph. Next topic", "\n\n"),
             ("done. Next paragraph. Next topic", "\n\n"),
-            ("intro. Skip a line. Body", "\n\n"),
+            ("intro. Skip a line. Body", "\n\n")
         ]
         for item in cases {
             let result = f(item.input)

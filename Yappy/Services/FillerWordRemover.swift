@@ -134,5 +134,4 @@ enum FillerWordRemover {
         }
         return next.lowercased() == "huh"
     }
-
 }

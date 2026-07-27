@@ -61,7 +61,7 @@ final class AskHotkeyOptionTests: XCTestCase {
             (.fnGlobe, 63, fnFlags),
             (.rightControl, 62, rightControlFlags),
             (.rightShift, 60, rightShiftFlags),
-            (.rightOption, 61, rightOptionFlags),
+            (.rightOption, 61, rightOptionFlags)
         ]
         for (option, keycode, downFlags) in cases {
             XCTAssertEqual(option.downState(keycode: keycode, flags: downFlags), true,

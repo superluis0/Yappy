@@ -22,9 +22,9 @@ protocol CodexAsking: AnyObject {
 struct GrokAskRequest: Equatable, Sendable {
     var prompt: String
     var model: String
-    var effort: String = "low"          // "low" | "high"
-    var systemPrompt: String? = nil     // → --system-prompt-override when non-nil
-    var resumeSessionID: String? = nil  // reserved for a later stage; unused today
+    var effort: String = "low" // "low" | "high"
+    var systemPrompt: String? // → --system-prompt-override when non-nil
+    var resumeSessionID: String? // reserved for a later stage; unused today
 }
 
 protocol GrokAsking: AnyObject {

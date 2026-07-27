@@ -26,7 +26,7 @@ enum ContinuationCasing {
     static func continuesSentence(after preceding: String) -> Bool {
         var trailing = Substring(preceding)
         while let last = trailing.last, last.isWhitespace {
-            if last.isNewline { return false }   // new line = new block, keep the capital
+            if last.isNewline { return false } // new line = new block, keep the capital
             trailing = trailing.dropLast()
         }
         guard let last = trailing.last else { return false }
@@ -49,7 +49,7 @@ enum ContinuationCasing {
         "about", "than", "as", "per", "via", "upon", "during",
         "between", "among", "toward", "towards", "versus",
         // possessive determiners
-        "my", "your", "their", "our",
+        "my", "your", "their", "our"
     ]
 
     /// True when a previous insertion's text could be the LEFT half of a
@@ -67,7 +67,7 @@ enum ContinuationCasing {
     private static let standaloneReplyWords: Set<String> = [
         "no", "nope", "yes", "yeah", "yep", "okay", "ok", "sure",
         "thanks", "hey", "hi", "hello", "wait", "actually", "anyway",
-        "scratch", "never",
+        "scratch", "never"
     ]
 
     /// True when `text` reads as the start of a standalone reply/pivot rather
@@ -86,7 +86,7 @@ enum ContinuationCasing {
     static func endsWithMidSentencePeriod(_ text: String) -> Bool {
         guard text.hasSuffix(".") else { return false }
         let beforePeriod = text.dropLast()
-        guard !beforePeriod.hasSuffix(".") else { return false }   // ellipsis / ".."
+        guard !beforePeriod.hasSuffix(".") else { return false } // ellipsis / ".."
         let wordStart = beforePeriod.lastIndex(where: { !$0.isLetter })
             .map { beforePeriod.index(after: $0) } ?? beforePeriod.startIndex
         let word = beforePeriod[wordStart...]
@@ -319,7 +319,7 @@ final class TextInserter {
     /// For AX-capable apps, poll for the pasted text to appear before restoring.
     /// Bounded so we always restore eventually even if the read never confirms.
     private let restorePollInterval: TimeInterval = 0.05
-    private let maxRestorePolls = 24   // ~1.2 s ceiling at 0.05 s spacing
+    private let maxRestorePolls = 24 // ~1.2 s ceiling at 0.05 s spacing
 
     // MARK: - Public
 
@@ -380,7 +380,7 @@ final class TextInserter {
         if allowLeadingSpace,
            !ContinuationCasing.startsAsStandaloneReply(text),
            canRepairMidSentencePeriod(window: window, requireMidSentenceWord: !joinContinuation) {
-            postKey(0x33)   // backspace over our own spurious period
+            postKey(0x33) // backspace over our own spurious period
             if let last = lastInsertedText {
                 let trimmed = String(last.dropLast())
                 lastInsertedText = trimmed
@@ -430,6 +430,10 @@ final class TextInserter {
         ) == .success, let focusedObj else {
             return InsertContext(fieldKind: .unknown, precedingWindow: .unknown)
         }
+        // The Accessibility C API returns CFTypeRef?; the type is guaranteed by its
+        // contract once the .success check above passes. Optional-casting would add a
+        // dead branch that can never run.
+        // swiftlint:disable:next force_cast
         let element = focusedObj as! AXUIElement
 
         let attributes = [kAXRoleAttribute, kAXSubroleAttribute,
@@ -449,6 +453,10 @@ final class TextInserter {
             return InsertContext(fieldKind: fieldKind, precedingWindow: .unknown)
         }
         var caret = CFRange()
+        // The Accessibility C API returns CFTypeRef?; the type is guaranteed by its
+        // contract once the .success check above passes. Optional-casting would add a
+        // dead branch that can never run.
+        // swiftlint:disable:next force_cast
         guard AXValueGetValue(values[2] as! AXValue, .cfRange, &caret) else {
             return InsertContext(fieldKind: fieldKind, precedingWindow: .unknown)
         }
@@ -608,9 +616,9 @@ final class TextInserter {
 
         switch precedingContext() {
         case .startOfField:
-            return false                                   // our text can't precede a start caret
+            return false // our text can't precede a start caret
         case .character(let actual):
-            guard actual == expectedTrailing else { return false }  // caret moved
+            guard actual == expectedTrailing else { return false } // caret moved
         case .unknown:
             // Opaque app: the time window alone can't see a moved caret. If the
             // user typed/clicked/switched apps since we inserted, refuse rather
@@ -670,6 +678,10 @@ final class TextInserter {
               let readbackValue = readbackObj,
               CFGetTypeID(readbackValue) == AXValueGetTypeID() else { return false }
         var actual = CFRange()
+        // The Accessibility C API returns CFTypeRef?; the type is guaranteed by its
+        // contract once the .success check above passes. Optional-casting would add a
+        // dead branch that can never run.
+        // swiftlint:disable:next force_cast
         guard AXValueGetValue(readbackValue as! AXValue, .cfRange, &actual) else { return false }
 
         return actual.location == target.location && actual.length == target.length
@@ -678,9 +690,9 @@ final class TextInserter {
     // MARK: - Preceding-context Decisions (spacing + continuation casing)
 
     private enum PrecedingContext {
-        case startOfField          // caret at the very start — no space
-        case character(Character)  // the char immediately before the caret
-        case unknown               // app doesn't expose its text to AX
+        case startOfField // caret at the very start — no space
+        case character(Character) // the char immediately before the caret
+        case unknown // app doesn't expose its text to AX
     }
 
     /// A short stretch of text immediately before the caret — one AX read shared
@@ -688,7 +700,7 @@ final class TextInserter {
     /// casing decision (its last non-space character).
     fileprivate enum PrecedingWindow {
         case startOfField
-        case text(String)          // 1...windowLength chars ending at the caret
+        case text(String) // 1...windowLength chars ending at the caret
         case unknown
     }
 
@@ -818,12 +830,20 @@ final class TextInserter {
         var focusedObj: CFTypeRef?
         guard AXUIElementCopyAttributeValue(system, kAXFocusedUIElementAttribute as CFString, &focusedObj) == .success,
               let focused = focusedObj else { return nil }
+        // The Accessibility C API returns CFTypeRef?; the type is guaranteed by its
+        // contract once the .success check above passes. Optional-casting would add a
+        // dead branch that can never run.
+        // swiftlint:disable:next force_cast
         let element = focused as! AXUIElement
 
         var rangeObj: CFTypeRef?
         guard AXUIElementCopyAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, &rangeObj) == .success,
               let rangeValue = rangeObj, CFGetTypeID(rangeValue) == AXValueGetTypeID() else { return nil }
         var caret = CFRange()
+        // The Accessibility C API returns CFTypeRef?; the type is guaranteed by its
+        // contract once the .success check above passes. Optional-casting would add a
+        // dead branch that can never run.
+        // swiftlint:disable:next force_cast
         guard AXValueGetValue(rangeValue as! AXValue, .cfRange, &caret) else { return nil }
         return (element, caret)
     }
@@ -902,9 +922,9 @@ final class TextInserter {
 
     /// Whether the frontmost app has finished consuming the synthetic paste.
     private enum PasteConfirmation {
-        case confirmed   // the pasted text is now present at the caret
-        case notYet      // AX-capable app, but the text hasn't landed yet
-        case opaque      // app doesn't expose its text — can't confirm via AX
+        case confirmed // the pasted text is now present at the caret
+        case notYet // AX-capable app, but the text hasn't landed yet
+        case opaque // app doesn't expose its text — can't confirm via AX
     }
 
     /// Restores the user's clipboard once the paste has been consumed, rather

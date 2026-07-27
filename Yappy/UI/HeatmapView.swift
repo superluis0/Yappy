@@ -14,8 +14,8 @@ struct HeatmapView: View {
     private let cell: CGFloat = 16
     private let labelWidth: CGFloat = 34
 
-    @State private var hoveredWeekday: Int? = nil
-    @State private var hoveredHour: Int? = nil
+    @State private var hoveredWeekday: Int?
+    @State private var hoveredHour: Int?
     @State private var cellsAppeared = false
 
     /// Rows are precomputed and cached by HistoryStore (recomputed only when

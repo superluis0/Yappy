@@ -179,7 +179,7 @@ enum AskCardCommand: Equatable {
         "read the answer": .speak,
         "stop talking": .stopSpeaking,
         "stop reading": .stopSpeaking,
-        "stop speaking": .stopSpeaking,
+        "stop speaking": .stopSpeaking
     ]
 
     static func parse(_ transcript: String) -> AskCardCommand? {
@@ -686,7 +686,7 @@ final class AskController: ObservableObject {
     func prewarm() {
         switch backend {
         case .codex: Task { await codexClient.prewarm() }
-        case .grok:  Task { await grokClient.prewarm() }
+        case .grok: Task { await grokClient.prewarm() }
         }
     }
 
@@ -1637,7 +1637,7 @@ final class AskController: ObservableObject {
     /// fetches are the only tools an Ask turn is allowed to touch.
     nonisolated private static func isResearchTool(_ title: String) -> Bool {
         let lowered = title.lowercased()
-        return ResearchToolKeywords.contains { lowered.contains($0) }
+        return researchToolKeywords.contains { lowered.contains($0) }
     }
 
     private static func grokToolStep(title: String, completed: Bool) -> (AskRunStepKind, String) {
@@ -1832,7 +1832,7 @@ final class AskController: ObservableObject {
             let length = (finished.result ?? finished.answerText ?? "").count
             seconds = min(90, 10 + Double(length) * 0.045)
         } else {
-            seconds = 6  // cancelled / failed: enough to register, then gone
+            seconds = 6 // cancelled / failed: enough to register, then gone
         }
         Task { @MainActor [weak self, runID = finished.id] in
             try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))

@@ -37,8 +37,8 @@ enum Constants {
     /// A clip must clear both of these to count as speech; below them it's
     /// treated as silence and discarded, so a near-instant key tap (or a stray
     /// click) can't make the model hallucinate filler words ("Mm-hmm", "Okay").
-    static let speechRMSFloor: Float = 0.005      // ≈ -46 dBFS average level
-    static let speechVoiceFloor: Float = 0.02     // per-sample amplitude counted as "voiced"
+    static let speechRMSFloor: Float = 0.005 // ≈ -46 dBFS average level
+    static let speechVoiceFloor: Float = 0.02 // per-sample amplitude counted as "voiced"
 
     /// Minimum *duration* of voiced samples for a clip to count as speech,
     /// measured as an absolute floor rather than a fraction of the clip. A

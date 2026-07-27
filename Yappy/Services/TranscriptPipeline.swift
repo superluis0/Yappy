@@ -63,7 +63,7 @@ struct TranscriptPipeline {
     /// Matched case-insensitively at the start of the utterance only.
     private static let verbatimPrefixes = [
         "type literally",
-        "type exactly",
+        "type exactly"
     ]
 
     /// If `raw` begins with a whole-prefix verbatim escape ("type literally" /

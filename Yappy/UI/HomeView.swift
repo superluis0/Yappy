@@ -254,7 +254,7 @@ struct HomeView: View {
                 done: settings.hasOpenedScratchpad,
                 destination: nil,
                 action: openScratchpad
-            ),
+            )
         ]
     }
 
@@ -768,8 +768,7 @@ struct HomeView: View {
         VStack(alignment: .leading, spacing: 6) {
             Button {
                 withAnimation(.easeOut(duration: 0.18)) {
-                    if expanded { revealedRawIDs.remove(entry.id) }
-                    else { revealedRawIDs.insert(entry.id) }
+                    if expanded { revealedRawIDs.remove(entry.id) } else { revealedRawIDs.insert(entry.id) }
                 }
             } label: {
                 HStack(spacing: 4) {

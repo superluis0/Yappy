@@ -558,7 +558,7 @@ extension FoundationModelsCleanupProvider {
     /// `hasCorrectionSignal` (containment) and `indexAfterLastCorrectionSignal`
     /// (position), so the two can never drift apart.
     static let correctionSignalPhrases = [
-        " no wait", " i mean ", " i meant ", " make that ", " scratch that ", " actually ",
+        " no wait", " i mean ", " i meant ", " make that ", " scratch that ", " actually "
     ]
 
     /// Whether the transcript contains a spoken self-correction signal. Only then does
@@ -672,7 +672,7 @@ extension FoundationModelsCleanupProvider {
     /// there is no signal. Used by `keptWrongHalf` to split input into before/after.
     private static func indexAfterLastCorrectionSignal(_ text: String) -> String.Index? {
         let padded = " " + text.lowercased() + " "
-        var lastEnd: String.Index? = nil
+        var lastEnd: String.Index?
         for signal in correctionSignalPhrases {
             var searchStart = padded.startIndex
             while let range = padded.range(of: signal, range: searchStart..<padded.endIndex) {
@@ -776,7 +776,7 @@ extension FoundationModelsCleanupProvider {
         let metaSignals = [
             "transcript", "cleaned text", "corrected text", "cleaned version",
             "corrected version", "cleaned up", "cleaned-up", "here is the clean",
-            "here's the clean", "here is the corrected", "here's the corrected",
+            "here's the clean", "here is the corrected", "here's the corrected"
         ]
         guard metaSignals.contains(where: { lower.contains($0) }) else { return text }
         let rest = text[text.index(after: newline)...]
@@ -790,8 +790,7 @@ extension FoundationModelsCleanupProvider {
         var runs = Set<String>()
         var current = ""
         for ch in text {
-            if ch.isNumber { current.append(ch) }
-            else if !current.isEmpty { runs.insert(current); current = "" }
+            if ch.isNumber { current.append(ch) } else if !current.isEmpty { runs.insert(current); current = "" }
         }
         if !current.isEmpty { runs.insert(current) }
         return runs

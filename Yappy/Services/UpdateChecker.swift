@@ -80,7 +80,7 @@ final class UpdateChecker: ObservableObject {
     func startUpdater(autoChecks: Bool = true) {
         guard controller == nil else { return }
         let bridge = SparkleBridge(owner: self)
-        self.bridge = bridge   // retain — the controller holds delegates weakly
+        self.bridge = bridge // retain — the controller holds delegates weakly
         // `userDriverDelegate: bridge` enables gentle reminders: Sparkle won't
         // auto-present its modal on a background check; we surface the update via
         // `available` instead (menu item + badge + banner). The user still installs

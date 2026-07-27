@@ -556,7 +556,7 @@ final class AskAnswerBlocksTests: XCTestCase {
         let steps = [
             "Blah blah. Source:",
             "Blah blah. Source: [",
-            "Blah blah. Source: [X](https://x.com)",
+            "Blah blah. Source: [X](https://x.com)"
         ]
         for step in steps {
             XCTAssertEqual(
@@ -774,7 +774,7 @@ final class AskAnswerBlocksTests: XCTestCase {
             "The shuttle leaves at 7:30 AM from the north terminal with several stops planned along the route for passengers. ",
             "Short intro, more text arrives later and keeps going past sixty eventually. ",
             "## A long heading that clearly exceeds sixty characters of plain text, x",
-            "First closed paragraph ends here.\n\nThe weather forecast across the region this week remains mild overall, with only",
+            "First closed paragraph ends here.\n\nThe weather forecast across the region this week remains mild overall, with only"
         ]
         for fixture in fixtures {
             let legacy = AskAnswerBlock.stableSpeakablePrefix(fromStreaming: fixture)
@@ -1338,7 +1338,7 @@ final class AskAnswerBlocksTests: XCTestCase {
             """
             The report includes ```` beside an unusually detailed explanation for everyone, more text arrives before the real closing pair `` and conclusion. Additional details may apply.
             """
-        ),
+        )
     ]
 
     func testLeadingClauseStreamingPropertyMonotoneAndPrefix() {

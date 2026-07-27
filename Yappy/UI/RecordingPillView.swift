@@ -203,7 +203,7 @@ struct RecordingPillView: View {
             .fill(LinearGradient(
                 colors: [
                     Color(red: 0.13, green: 0.12, blue: 0.12),
-                    Color(red: 0.07, green: 0.06, blue: 0.06),
+                    Color(red: 0.07, green: 0.06, blue: 0.06)
                 ],
                 startPoint: .top, endPoint: .bottom
             ))
@@ -218,7 +218,7 @@ struct RecordingPillView: View {
                         colors: [
                             .white.opacity(0.35),
                             .white.opacity(0.05),
-                            accent.opacity(0.25),
+                            accent.opacity(0.25)
                         ],
                         startPoint: .top, endPoint: .bottom
                     ),

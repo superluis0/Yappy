@@ -27,18 +27,18 @@ enum SpokenListFormatter {
         "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7,
         "eight": 8, "nine": 9, "ten": 10, "eleven": 11, "twelve": 12, "thirteen": 13,
         "fourteen": 14, "fifteen": 15, "sixteen": 16, "seventeen": 17, "eighteen": 18,
-        "nineteen": 19, "twenty": 20,
+        "nineteen": 19, "twenty": 20
     ]
     private static let ordinals: [String: Int] = [
         "first": 1, "second": 2, "third": 3, "fourth": 4, "fifth": 5, "sixth": 6,
         "seventh": 7, "eighth": 8, "ninth": 9, "tenth": 10, "eleventh": 11, "twelfth": 12,
         "thirteenth": 13, "fourteenth": 14, "fifteenth": 15, "sixteenth": 16,
-        "seventeenth": 17, "eighteenth": 18, "nineteenth": 19, "twentieth": 20,
+        "seventeenth": 17, "eighteenth": 18, "nineteenth": 19, "twentieth": 20
     ]
 
     private struct Marker {
         let value: Int
-        let matchStart: Int   // start of the lead-in word, or the counter itself
+        let matchStart: Int // start of the lead-in word, or the counter itself
         let contentStart: Int // first content character after the counter + separators
     }
 
@@ -48,10 +48,13 @@ enum SpokenListFormatter {
     /// times ("1:30") and decimals ("1.5") out.
     private static let markerRegex: NSRegularExpression = {
         let words = (Array(cardinals.keys) + Array(ordinals.keys))
-            .sorted { $0.count > $1.count }   // longest first so "twenty" beats "two"
+            .sorted { $0.count > $1.count } // longest first so "twenty" beats "two"
             .joined(separator: "|")
         let pattern = "(?<![\\w$£€#@])(?:(?:number|step|item|point|part|section)\\s+)?"
             + "(\\d+|\(words))(?=[\\s,)]|[.:](?!\\d))"
+        // Pattern is a compile-time literal: a malformed regex is a programmer error
+        // caught by the first test run, not a runtime condition to recover from.
+        // swiftlint:disable:next force_try
         return try! NSRegularExpression(pattern: pattern, options: [.caseInsensitive])
     }()
 
@@ -160,6 +163,9 @@ enum SpokenListFormatter {
 /// "add a bullet point here" is left alone.
 enum SpokenBulletFormatter {
 
+    // Pattern is a compile-time literal: a malformed regex is a programmer error
+    // caught by the first test run, not a runtime condition to recover from.
+    // swiftlint:disable:next force_try
     private static let markerRegex = try! NSRegularExpression(
         pattern: "(?<![\\p{L}])bullets?(?:\\s+points?)?",
         options: [.caseInsensitive])
@@ -242,5 +248,4 @@ enum SpokenBulletFormatter {
         }
         return result
     }
-
 }

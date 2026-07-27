@@ -93,12 +93,16 @@ enum SpokenNumberFormatter {
 
     // MARK: - Digit-time repair
 
+    // `try!` is safe here: the pattern is a compile-time literal, so a malformed
+    // regex is a programmer error caught by the first test run, not a runtime
+    // condition to recover from. Suppressed on the declaration line itself so
+    // the doc comment below stays attached to it.
     /// "7. 30" or "7.30" followed by a meridiem → "7:30". Anchored on the
     /// meridiem (mirroring the spoken-time rule below, which is also
     /// meridiem-anchored) so genuine decimals ("7.30 inches") never match;
     /// hour restricted to a valid 12-hour clock reading. The meridiem itself
     /// is left exactly as written.
-    private static let digitTimeRegex = try! NSRegularExpression(
+    private static let digitTimeRegex = try! NSRegularExpression( // swiftlint:disable:this force_try
         pattern: #"\b(1[0-2]|0?[1-9])\.\s?([0-5][0-9])(?=\s?[AaPp]\.?[Mm]\b)"#
     )
 
@@ -137,13 +141,13 @@ enum SpokenNumberFormatter {
     // MARK: - Run Conversion
 
     private enum RunKind {
-        case integer(Int)      // single cardinal — eligible for %, currency, time hour
-        case pair(Int, Int)    // exactly two cardinals — time candidate ("three thirty")
-        case decimal           // "point" form — eligible for %
-        case year              // "twenty twenty six"
-        case digitRun          // "five five five …"
-        case ordinal           // "23rd" — takes no suffixes
-        case multiple          // 3+ independent cardinals
+        case integer(Int) // single cardinal — eligible for %, currency, time hour
+        case pair(Int, Int) // exactly two cardinals — time candidate ("three thirty")
+        case decimal // "point" form — eligible for %
+        case year // "twenty twenty six"
+        case digitRun // "five five five …"
+        case ordinal // "23rd" — takes no suffixes
+        case multiple // 3+ independent cardinals
     }
 
     private struct ConvertedRun {
@@ -182,7 +186,7 @@ enum SpokenNumberFormatter {
         // Year: "nineteen ninety nine" → 1999, "twenty twenty six" → 2026.
         // Restricted to 19xx/20xx so "eleven twenty" stays "11 20".
         if components.count == 2,
-           (components[0] == 19 || components[0] == 20),
+           components[0] == 19 || components[0] == 20,
            (10...99).contains(components[1]) {
             return ConvertedRun(rendered: String(components[0] * 100 + components[1]), kind: .year)
         }
@@ -377,9 +381,9 @@ enum SpokenNumberFormatter {
     /// Returns nil when no valid cardinal starts there (e.g. a bare scale word).
     private static func parseStrictCardinal(_ words: [String], from start: Int) -> (value: Int, consumed: Int)? {
         var i = start
-        var total = 0              // completed scale groups (thousand/million/billion)
-        var hundreds = 0           // completed hundreds within the current group
-        var sub = 0                // current sub-hundred accumulator
+        var total = 0 // completed scale groups (thousand/million/billion)
+        var hundreds = 0 // completed hundreds within the current group
+        var sub = 0 // current sub-hundred accumulator
         var subLastWasTens = false
         var usedHundred = false
         var lastScale = Int.max
@@ -466,7 +470,7 @@ enum SpokenNumberFormatter {
 
     private static let singleDigits: [String: Int] = [
         "zero": 0, "one": 1, "two": 2, "three": 3, "four": 4,
-        "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9,
+        "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9
     ]
 
     private static let smallNumbers: [String: Int] = [
@@ -475,15 +479,15 @@ enum SpokenNumberFormatter {
         "eleven": 11, "twelve": 12, "thirteen": 13, "fourteen": 14, "fifteen": 15,
         "sixteen": 16, "seventeen": 17, "eighteen": 18, "nineteen": 19,
         "twenty": 20, "thirty": 30, "forty": 40, "fifty": 50, "sixty": 60,
-        "seventy": 70, "eighty": 80, "ninety": 90,
+        "seventy": 70, "eighty": 80, "ninety": 90
     ]
 
     private static let tensWords: Set<String> = [
-        "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety",
+        "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"
     ]
 
     private static let scales: [String: Int] = [
-        "hundred": 100, "thousand": 1000, "million": 1_000_000, "billion": 1_000_000_000,
+        "hundred": 100, "thousand": 1000, "million": 1_000_000, "billion": 1_000_000_000
     ]
 
     /// Ordinal word → numeric value. Values 1–12 never convert standalone
@@ -495,21 +499,19 @@ enum SpokenNumberFormatter {
         "fifteenth": 15, "sixteenth": 16, "seventeenth": 17, "eighteenth": 18,
         "nineteenth": 19, "twentieth": 20, "thirtieth": 30, "fortieth": 40,
         "fiftieth": 50, "sixtieth": 60, "seventieth": 70, "eightieth": 80,
-        "ninetieth": 90, "hundredth": 100, "thousandth": 1000, "millionth": 1_000_000,
+        "ninetieth": 90, "hundredth": 100, "thousandth": 1000, "millionth": 1_000_000
     ]
 
     private static let currencySymbols: [String: String] = [
         "dollar": "$", "dollars": "$",
         "euro": "€", "euros": "€",
-        "pound": "£", "pounds": "£",
+        "pound": "£", "pounds": "£"
     ]
 
     private static func isNumberWord(_ word: String) -> Bool {
         word == "zero" || smallNumbers[word] != nil || scales[word] != nil
     }
 
-    /// Words that may begin a run: any number word, or an ordinal (conversion
-    /// rules decide later whether a standalone ordinal actually converts).
     // MARK: - Prose guard (small numbers stay spelled out)
 
     /// Words that make the following number a count or measurement, where
@@ -528,7 +530,7 @@ enum SpokenNumberFormatter {
         "degree", "degrees", "volt", "volts", "watt", "watts", "amp", "amps",
         "hertz", "megahertz", "gigahertz", "mph", "kph",
         "byte", "bytes", "kilobyte", "kilobytes", "megabyte", "megabytes",
-        "gigabyte", "gigabytes", "terabyte", "terabytes", "pixel", "pixels",
+        "gigabyte", "gigabytes", "terabyte", "terabytes", "pixel", "pixels"
     ]
 
     /// Words that introduce a numbered thing, where digits are what the user
@@ -538,7 +540,7 @@ enum SpokenNumberFormatter {
         "phase", "round", "level", "version", "grade", "room", "apartment",
         "apt", "unit", "figure", "table", "exhibit", "question", "problem",
         "track", "episode", "season", "volume", "floor", "gate", "seat", "row",
-        "tier", "rank", "option", "slide", "note", "week",
+        "tier", "rank", "option", "slide", "note", "week"
     ]
 
     /// True when a converted run should be left as the user spoke it.

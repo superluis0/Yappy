@@ -17,7 +17,7 @@ import Combine
 enum WhatsNew {
     /// One bullet in the What's New card.
     struct Highlight: Identifiable, Equatable {
-        let icon: String      // SF Symbol name
+        let icon: String // SF Symbol name
         let title: String
         let detail: String
         var id: String { title }
@@ -63,7 +63,7 @@ enum WhatsNew {
                           detail: "Quitting Yappy now purges the working files its Answers backends leave behind, and a new Storage panel in Settings shows exactly what is on disk and where, so nothing lingers unseen."),
                 Highlight(icon: "slider.horizontal.3",
                           title: "A calmer Settings",
-                          detail: "Sections collapse, dividers and stray tints are gone, and related options group under a single quiet rail — the same settings, far less noise."),
+                          detail: "Sections collapse, dividers and stray tints are gone, and related options group under a single quiet rail — the same settings, far less noise.")
             ]),
         "3.0.0": Entry(
             version: "3.0.0",
@@ -86,7 +86,7 @@ enum WhatsNew {
                           detail: "If text can’t insert, the mic goes quiet, or a backend signs out, Yappy says so on the pill — with a tap-to-recover action — instead of failing silently."),
                 Highlight(icon: "keyboard",
                           title: "Pick your Ask key",
-                          detail: "Answers can now live on Right Control, Right Shift, or Right Option — for keyboards where the Fn/Globe key never reaches macOS. Fn stays the default."),
+                          detail: "Answers can now live on Right Control, Right Shift, or Right Option — for keyboards where the Fn/Globe key never reaches macOS. Fn stays the default.")
             ]),
         "2.8.0": Entry(
             version: "2.8.0",
@@ -103,7 +103,7 @@ enum WhatsNew {
                           detail: "Password and other secure inputs now skip AI cleanup and history entirely — dictate into them with confidence."),
                 Highlight(icon: "speaker.wave.2.fill",
                           title: "Answers aloud, minus the footnotes",
-                          detail: "Read-aloud now skips citation links and source lists, so you hear the answer, not the bibliography."),
+                          detail: "Read-aloud now skips citation links and source lists, so you hear the answer, not the bibliography.")
             ]),
         "2.6": Entry(
             version: "2.6",
@@ -117,7 +117,7 @@ enum WhatsNew {
                           detail: "The voice runs entirely on-device — nothing spoken aloud ever leaves your computer. Optional: install mlx-audio once and it lights up green in Settings."),
                 Highlight(icon: "waveform",
                           title: "Eight voices, American and British",
-                          detail: "Pick from eight on-device voices across American and British accents, and choose whether to speak on request or read every answer automatically as it finishes."),
+                          detail: "Pick from eight on-device voices across American and British accents, and choose whether to speak on request or read every answer automatically as it finishes.")
             ]),
         "2.5": Entry(
             version: "2.5",
@@ -134,7 +134,7 @@ enum WhatsNew {
                           detail: "Say “insert that” to drop the answer at your cursor, “copy that”, “pin that” — or just hold Fn mid-answer to interrupt and redirect."),
                 Highlight(icon: "lock.shield",
                           title: "Dictation stays 100% on-device",
-                          detail: "Nothing about dictation changed: audio never leaves your Mac. Answers sends only your typed-out question, only when you turn it on."),
+                          detail: "Nothing about dictation changed: audio never leaves your Mac. Answers sends only your typed-out question, only when you turn it on.")
             ]),
         "2.1": Entry(
             version: "2.1",
@@ -151,7 +151,7 @@ enum WhatsNew {
                           detail: "Say “comma”, “question mark”, or count off “one… two… three…” to get real punctuation and numbered lists."),
                 Highlight(icon: "note.text",
                           title: "Scratchpad",
-                          detail: "Dictate into a floating scratchpad anytime with ⌥⇧S."),
+                          detail: "Dictate into a floating scratchpad anytime with ⌥⇧S.")
             ]),
         "2.2": Entry(
             version: "2.2",
@@ -165,7 +165,7 @@ enum WhatsNew {
                           detail: "The first press after opening Yappy starts recording right away — the audio engine and speech model warm up ahead of time."),
                 Highlight(icon: "checkmark.bubble",
                           title: "Sharper cleanup",
-                          detail: "Dictating a question now types the question instead of answering it, and on-device cleanup is quicker and more reliable."),
+                          detail: "Dictating a question now types the question instead of answering it, and on-device cleanup is quicker and more reliable.")
             ]),
         "2.4": Entry(
             version: "2.4",
@@ -182,7 +182,7 @@ enum WhatsNew {
                           detail: "Every dictation keeps what you actually said — reveal or copy it in History, or say “use what I said” to swap it back in place."),
                 Highlight(icon: "escape",
                           title: "Escape, polish, and real tone",
-                          detail: "Esc now aborts before text lands, the pill shows when cleanup is polishing, and Formal/Casual tones genuinely shape the result."),
+                          detail: "Esc now aborts before text lands, the pill shows when cleanup is polishing, and Formal/Casual tones genuinely shape the result.")
             ]),
         "2.3": Entry(
             version: "2.3",
@@ -199,8 +199,8 @@ enum WhatsNew {
                           detail: "Hold Right Control to dictate, in addition to Right Command and Right Option — pick your key in Settings."),
                 Highlight(icon: "checkmark.bubble",
                           title: "Sharper self-correction",
-                          detail: "“I’ll have the chicken, actually the salmon” now lands as just “the salmon”, even without a pause."),
-            ]),
+                          detail: "“I’ll have the chicken, actually the salmon” now lands as just “the salmon”, even without a pause.")
+            ])
     ]
 
     /// The running version's release notes, if any — for re-viewing the card on

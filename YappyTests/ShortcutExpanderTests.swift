@@ -67,7 +67,7 @@ final class ShortcutExpanderTests: XCTestCase {
     func testMultipleInlineShortcuts() {
         let exp = expander([
             VoiceShortcut(trigger: "my email", expansion: "me@example.com"),
-            VoiceShortcut(trigger: "my site", expansion: "example.com"),
+            VoiceShortcut(trigger: "my site", expansion: "example.com")
         ])
         XCTAssertEqual(exp.expand("see my site or my email"),
                        "see example.com or me@example.com")

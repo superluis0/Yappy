@@ -575,7 +575,7 @@ struct AskAnswerContent: View {
     var accent: Color
     var textPrimary: Color
     var textSecondary: Color
-    var textTertiary: Color? = nil
+    var textTertiary: Color?
 
     private var tertiary: Color { textTertiary ?? textSecondary.opacity(0.6) }
 
@@ -853,7 +853,7 @@ private struct ActionRow: View {
 
     private static let thinkingWords = [
         "Thinking", "Pondering", "Reasoning", "Considering",
-        "Connecting the dots", "Weighing sources", "Mulling it over",
+        "Connecting the dots", "Weighing sources", "Mulling it over"
     ]
 
     var body: some View {

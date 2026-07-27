@@ -31,7 +31,7 @@ final class AskRuntimeStorageTests: XCTestCase {
                 "goals_1.sqlite-shm",
                 "memories_1.sqlite",
                 "memories_1.sqlite-wal",
-                "memories_1.sqlite-shm",
+                "memories_1.sqlite-shm"
             ]
         )
         XCTAssertEqual(
@@ -40,7 +40,7 @@ final class AskRuntimeStorageTests: XCTestCase {
                 ".grok/sessions",
                 ".grok/active_sessions.json",
                 ".grok/active_sessions.lock",
-                ".grok/logs",
+                ".grok/logs"
             ]
         )
     }
@@ -128,14 +128,14 @@ final class AskRuntimeStorageTests: XCTestCase {
                 "goals_1.sqlite-shm",
                 "memories_1.sqlite",
                 "memories_1.sqlite-wal",
-                "memories_1.sqlite-shm",
+                "memories_1.sqlite-shm"
             ]
             survivorPaths = [
                 "auth.json",
                 "config.toml",
                 "bundled/asset.bin",
                 "plugins/p.bin",
-                "cache/c.json",
+                "cache/c.json"
             ]
         case .grok:
             markerPaths = [
@@ -143,14 +143,14 @@ final class AskRuntimeStorageTests: XCTestCase {
                 ".grok/sessions/question%20with%20spaces/session-id/prompt_history.jsonl",
                 ".grok/active_sessions.json",
                 ".grok/active_sessions.lock",
-                ".grok/logs/runtime.log",
+                ".grok/logs/runtime.log"
             ]
             survivorPaths = [
                 ".grok/auth.json",
                 ".grok/config.toml",
                 "bundled/asset.bin",
                 "plugins/p.bin",
-                "cache/c.json",
+                "cache/c.json"
             ]
         }
 
@@ -172,7 +172,7 @@ final class AskRuntimeStorageTests: XCTestCase {
                 survivorData[relativePath] = data
             }
         }
-        
+
         return Fixture(
             home: home,
             markerPaths: markerPaths,
@@ -181,7 +181,6 @@ final class AskRuntimeStorageTests: XCTestCase {
             survivorData: survivorData
         )
     }
-
 
     // MARK: - Spoken-answer audio (the only audio Yappy writes)
 

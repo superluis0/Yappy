@@ -33,7 +33,7 @@ final class YappyUITests: XCTestCase {
             ("Dictionary", "dictionary"),
             ("Modes", "modes"),
             ("Answers", "answers"),
-            ("Settings", "settings"),
+            ("Settings", "settings")
         ]
 
         for (title, identifierSuffix) in destinations {
@@ -66,7 +66,7 @@ final class YappyUITests: XCTestCase {
             "History & privacy",
             "Software update",
             "Permissions",
-            "Answers",
+            "Answers"
         ] {
             let header = settingsScreen.descendants(matching: .any)[title]
             XCTAssertTrue(

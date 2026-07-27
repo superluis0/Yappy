@@ -1,21 +1,24 @@
-# SwiftFormat Configuration for Yappy
+# SwiftFormat configuration for Yappy
+#
+# FORMAT: this file uses SwiftFormat's own `--flag value` syntax, one per line.
+# It is NOT YAML. A previous version was written as YAML (`indent: "    "`,
+# `wrapArguments: false`, …) with 7 of its 8 keys not being real SwiftFormat
+# options at all. SwiftFormat rejected it outright ("Unknown option 'version:'")
+# and, because the CI step was `continue-on-error`, that failure was invisible —
+# so the formatter never actually ran on this codebase.
+#
+# RULE SCOPE: `--rules` opts IN to an explicit set instead of running
+# SwiftFormat's full default suite. The default suite wants to reformat 128 of
+# 134 files — a whole-codebase rewrite that would erase `git blame` for marginal
+# benefit. The set below is whitespace hygiene only: behaviour-neutral and
+# reviewable. Widen it deliberately, one rule at a time, rather than by deleting
+# this line.
 
-version: 5.9
+--swiftversion 5.9
+--indent 4
 
-# Indentation (4 spaces - matches existing code)
-indent: "    "
+--rules trailingSpace,consecutiveBlankLines,consecutiveSpaces,linebreakAtEndOfFile,blankLinesAtEndOfScope
 
-# Argument wrapping
-wrapArguments: false
-
-# Comment placement
-wrapSingleCommentsToTop: false
-
-# Use standard indentation and line breaks
-indentCase: true
-indentParentheses: true
-
-# Other standard formatting
-spacesAroundOperators: infix
-spacesAroundRangeFormation: true
-wrapMultilineStatementBrackets: true
+# One-off build utilities and generated output — not app code. Mirrors the
+# `excluded:` list in .swiftlint.yml; keep the two in sync.
+--exclude Scripts,dist,.derivedData,.build-home,DerivedData

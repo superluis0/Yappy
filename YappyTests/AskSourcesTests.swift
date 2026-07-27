@@ -87,5 +87,4 @@ final class AskSourcesTests: XCTestCase {
         let sources = AskSources.extract(from: "See [a](http://insecure.example/x) and https://ok.dev/b")
         XCTAssertEqual(sources.map(\.host), ["ok.dev"])
     }
-
 }

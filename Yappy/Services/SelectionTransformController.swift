@@ -96,13 +96,13 @@ final class SelectionTransformController: ObservableObject {
 
     /// The single source of truth for what the preview card shows.
     enum Stage: Equatable {
-        case idle          // nothing on screen
-        case capturing     // grabbing the selection (transient)
-        case listening     // recording the spoken instruction
-        case transforming  // transcribing + applying the transform
-        case preview       // before/after shown, awaiting Replace / Try again
-        case replacing     // pasting the result back
-        case cancelled     // dismissed without replacing (card hidden)
+        case idle // nothing on screen
+        case capturing // grabbing the selection (transient)
+        case listening // recording the spoken instruction
+        case transforming // transcribing + applying the transform
+        case preview // before/after shown, awaiting Replace / Try again
+        case replacing // pasting the result back
+        case cancelled // dismissed without replacing (card hidden)
     }
 
     // MARK: Published state (drives SelectionTransformView)
@@ -596,6 +596,10 @@ final class VoiceEditSelectionReader: VoiceEditSelecting {
         var focusedObject: CFTypeRef?
         guard AXUIElementCopyAttributeValue(system, kAXFocusedUIElementAttribute as CFString, &focusedObject) == .success,
               let focused = focusedObject else { return nil }
+        // The Accessibility C API returns CFTypeRef?; the type is guaranteed by its
+        // contract once the .success check above passes. Optional-casting would add a
+        // dead branch that can never run.
+        // swiftlint:disable:next force_cast
         let element = focused as! AXUIElement
 
         var valueObject: CFTypeRef?

@@ -202,10 +202,10 @@ final class AskHotkey: @unchecked Sendable {
 
         DispatchQueue.main.async { [weak self] in
             switch action {
-            case .start:  self?.onStart?()
-            case .stop:   self?.onStop?()
+            case .start: self?.onStart?()
+            case .stop: self?.onStop?()
             case .cancel: self?.onCancel?()
-            case .none:   break
+            case .none: break
             }
         }
     }

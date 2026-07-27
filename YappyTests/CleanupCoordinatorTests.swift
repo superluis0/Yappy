@@ -112,7 +112,7 @@ final class CleanupCoordinatorTests: XCTestCase {
         provider.batchedResult = .some(["only-one"])
         provider.singleLineMap = [
             "one": "ONE",
-            "two": "TWO",
+            "two": "TWO"
         ]
         let coordinator = CleanupCoordinator(settings: settings, provider: provider)
 
@@ -150,7 +150,7 @@ final class CleanupCoordinatorTests: XCTestCase {
         provider.batchedResult = .some(nil)
         provider.singleLineMap = [
             "keep me": "keep me",
-            "change me": "CHANGED",
+            "change me": "CHANGED"
         ]
         let coordinator = CleanupCoordinator(settings: settings, provider: provider)
 
@@ -237,7 +237,7 @@ final class CleanupCoordinatorTests: XCTestCase {
         for (input, gold) in [
             ("sounds good", "Sounds good."),
             ("no", "No."),
-            ("word count", "Word count."),
+            ("word count", "Word count.")
         ] {
             let out = await coordinator.cleanup(
                 input, tone: .formal, backtrack: false, cleanupEnabled: true
@@ -435,7 +435,7 @@ final class CleanupCoordinatorTests: XCTestCase {
             .init(text: "1. first item", tone: .casual, backtrack: true, expected: false),
             .init(text: "one two three four", tone: .casual, backtrack: true, expected: false),
             .init(text: "hello world", tone: .verbatim, backtrack: true, expected: false),
-            .init(text: "", tone: .casual, backtrack: true, expected: false),
+            .init(text: "", tone: .casual, backtrack: true, expected: false)
         ]
 
         for item in cases {
@@ -546,5 +546,4 @@ final class CleanupCoordinatorTests: XCTestCase {
         )
         XCTAssertEqual(fake.lastKnownTerms, ["Yappy"])
     }
-
 }

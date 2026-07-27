@@ -44,7 +44,7 @@ final class HeatmapModelTests: XCTestCase {
     func testRowsOrderedByFirstWeekday() {
         let result = rows([])
         XCTAssertEqual(result.first?.weekday, 1) // Sunday first
-        XCTAssertEqual(result.last?.weekday, 7)  // Saturday last
+        XCTAssertEqual(result.last?.weekday, 7) // Saturday last
 
         var monday = calendar!
         monday.firstWeekday = 2
@@ -63,7 +63,7 @@ final class HeatmapModelTests: XCTestCase {
         let result = rows([
             entry(weekday: 1, hour: 9, words: 2),
             entry(weekday: 1, hour: 9, words: 4),
-            entry(weekday: 1, hour: 10),
+            entry(weekday: 1, hour: 10)
         ])
         let sunday = result.first { $0.weekday == 1 }!
         XCTAssertEqual(sunday.hours[9].count, 2)
@@ -86,11 +86,11 @@ final class HeatmapModelTests: XCTestCase {
 
     func testLevelThresholds() {
         XCTAssertEqual(HeatmapModel.level(count: 0, maxCount: 10), 0)
-        XCTAssertEqual(HeatmapModel.level(count: 1, maxCount: 10), 1)   // 10%
-        XCTAssertEqual(HeatmapModel.level(count: 3, maxCount: 10), 2)   // 30%
-        XCTAssertEqual(HeatmapModel.level(count: 6, maxCount: 10), 3)   // 60%
-        XCTAssertEqual(HeatmapModel.level(count: 10, maxCount: 10), 4)  // 100%
-        XCTAssertEqual(HeatmapModel.level(count: 1, maxCount: 0), 1)    // degenerate
+        XCTAssertEqual(HeatmapModel.level(count: 1, maxCount: 10), 1) // 10%
+        XCTAssertEqual(HeatmapModel.level(count: 3, maxCount: 10), 2) // 30%
+        XCTAssertEqual(HeatmapModel.level(count: 6, maxCount: 10), 3) // 60%
+        XCTAssertEqual(HeatmapModel.level(count: 10, maxCount: 10), 4) // 100%
+        XCTAssertEqual(HeatmapModel.level(count: 1, maxCount: 0), 1) // degenerate
     }
 
     // MARK: - Busiest hour / weekday

@@ -156,7 +156,7 @@ final class GrokAgentClient: @unchecked Sendable {
             method: "session/prompt",
             params: [
                 "sessionId": sessionID,
-                "prompt": [["type": "text", "text": promptText]],
+                "prompt": [["type": "text", "text": promptText]]
             ],
             resetsOnActivity: true
         )
@@ -186,7 +186,7 @@ final class GrokAgentClient: @unchecked Sendable {
         let notification: [String: Any] = [
             "jsonrpc": "2.0",
             "method": "session/cancel",
-            "params": ["sessionId": sessionID],
+            "params": ["sessionId": sessionID]
         ]
         do {
             try sendRaw(notification)
@@ -335,7 +335,7 @@ final class GrokAgentClient: @unchecked Sendable {
         child.environment = [
             "HOME": home.path,
             "TMPDIR": NSTemporaryDirectory(),
-            "PATH": "\(realHome)/.local/bin:\(realHome)/.npm-global/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin",
+            "PATH": "\(realHome)/.local/bin:\(realHome)/.npm-global/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
         ]
 
         child.standardInput = inputPipe
@@ -365,7 +365,7 @@ final class GrokAgentClient: @unchecked Sendable {
             method: "initialize",
             params: [
                 "protocolVersion": 1,
-                "clientCapabilities": [:] as [String: Any],
+                "clientCapabilities": [:] as [String: Any]
             ]
         )
         initialized = true
@@ -416,7 +416,7 @@ final class GrokAgentClient: @unchecked Sendable {
             method: "session/new",
             params: [
                 "cwd": home.path,
-                "mcpServers": [] as [Any],
+                "mcpServers": [] as [Any]
             ]
         )
         guard let result = response["result"] as? [String: Any],
@@ -497,7 +497,7 @@ final class GrokAgentClient: @unchecked Sendable {
                 "jsonrpc": "2.0",
                 "id": id,
                 "method": method,
-                "params": params,
+                "params": params
             ]
             do {
                 try sendRaw(object)
@@ -580,7 +580,7 @@ final class GrokAgentClient: @unchecked Sendable {
             "_x.ai/queue/changed",
             "_x.ai/session/prompt_complete",
             "pending_interaction",
-            "interaction_resolved",
+            "interaction_resolved"
         ]
         if ignoredKinds.contains(method) {
             logNotificationOnce(method)
@@ -687,7 +687,7 @@ final class GrokAgentClient: @unchecked Sendable {
         let object: [String: Any] = [
             "jsonrpc": "2.0",
             "id": id,
-            "result": result,
+            "result": result
         ]
         do {
             try sendRaw(object)
@@ -700,7 +700,7 @@ final class GrokAgentClient: @unchecked Sendable {
         let object: [String: Any] = [
             "jsonrpc": "2.0",
             "id": id,
-            "error": ["code": code, "message": message],
+            "error": ["code": code, "message": message]
         ]
         do {
             try sendRaw(object)

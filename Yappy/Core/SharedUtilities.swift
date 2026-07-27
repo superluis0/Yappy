@@ -16,7 +16,7 @@ enum CodexModel {
 }
 
 /// Substrings that identify a Grok tool title as research-only (web / search / fetch).
-let ResearchToolKeywords: Set<String> = ["web", "search", "fetch"]
+let researchToolKeywords: Set<String> = ["web", "search", "fetch"]
 
 // MARK: - NSLock
 

@@ -50,18 +50,24 @@ jobs:
         xcodebuild -project Yappy.xcodeproj -scheme Yappy \
           -destination 'platform=macOS' -only-testing:YappyUITests test
 
-    # Lint and format checks run in REPORT-ONLY mode: continue-on-error keeps them
-    # from ever blocking the build; they surface findings as annotations only.
-    # (The macos runner image ships neither tool, so they are installed here —
-    # previously the Lint step exited 127 and silently did nothing.)
+    # Lint and format checks are BLOCKING as of the lint sweep: both tools exit 0
+    # on the current tree, so any new violation is a real regression rather than
+    # pre-existing noise. Do not add continue-on-error back — that is exactly how
+    # the invalid .swiftformat config went unnoticed for months.
+    #
+    # SwiftLint's `error` thresholds are a debt ratchet set just above today's
+    # worst offender (see .swiftlint.yml); warnings still surface the real signal
+    # without failing the build.
     - name: Install linters
+      # Tolerated: brew exits non-zero when a formula is already present on the
+      # runner image. If a tool is genuinely missing, the step below fails loudly.
       continue-on-error: true
       run: brew install swiftlint swiftformat
 
-    - name: SwiftLint (report-only)
-      continue-on-error: true
+    - name: SwiftLint (blocking)
+      # Not --strict: that promotes warnings to errors, which would fail on the
+      # ~300 known warnings the ratchet deliberately leaves visible.
       run: swiftlint lint --reporter github-actions-logging
 
-    - name: SwiftFormat lint (report-only)
-      continue-on-error: true
-      run: swiftformat --lint .
+    - name: SwiftFormat lint (blocking)
+      run: swiftformat . --lint

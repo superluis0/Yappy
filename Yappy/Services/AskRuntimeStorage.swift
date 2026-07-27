@@ -25,14 +25,14 @@ enum AskRuntimeStorage {
                 "goals_1.sqlite-shm",
                 "memories_1.sqlite",
                 "memories_1.sqlite-wal",
-                "memories_1.sqlite-shm",
+                "memories_1.sqlite-shm"
             ]
         case .grok:
             [
                 ".grok/sessions",
                 ".grok/active_sessions.json",
                 ".grok/active_sessions.lock",
-                ".grok/logs",
+                ".grok/logs"
             ]
         }
     }

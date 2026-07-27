@@ -18,7 +18,7 @@ struct SettingsView: View {
     @ObservedObject var askController: AskController
     /// Optional history store, used only for the "Clear history now" button. When
     /// nil (e.g. a call site that hasn't wired it yet) the button is hidden.
-    var historyStore: HistoryStore? = nil
+    var historyStore: HistoryStore?
     /// Re-shows the "What's New" card; wired by MainWindowView to the presenter.
     var onShowReleaseNotes: () -> Void = {}
     /// Shared sidebar-selection state — lets the collapsed voice-commands
@@ -915,9 +915,9 @@ private struct SettingsSection<Content: View>: View {
 private struct SettingRow<Trailing: View>: View {
     let icon: String
     let title: String
-    var subtitle: String? = nil
+    var subtitle: String?
     var active: Bool = false
-    var iconColor: Color? = nil
+    var iconColor: Color?
     @ViewBuilder var trailing: () -> Trailing
 
     private var highlighted: Bool { active || iconColor != nil }
@@ -950,7 +950,7 @@ private struct SettingRow<Trailing: View>: View {
 private struct SettingToggle: View {
     let icon: String
     let title: String
-    var subtitle: String? = nil
+    var subtitle: String?
     @Binding var isOn: Bool
 
     var body: some View {
@@ -969,7 +969,6 @@ private struct RowDivider: View {
     var body: some View {
         Rectangle().fill(Color.white.opacity(0.07)).frame(height: 1).padding(.leading, 63)
     }
-
 }
 /// Indented container for dependent settings, with a left accent rail.
 /// Rows inside separate by their own padding; no RowDividers.

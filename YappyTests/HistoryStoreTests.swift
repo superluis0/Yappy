@@ -138,7 +138,7 @@ final class HistoryStoreTests: XCTestCase {
         // load must seed the lifetime counters from the visible history.
         let entries = [
             DictationEntry(text: "six words here in this entry", durationSeconds: 6),
-            DictationEntry(text: "two more", durationSeconds: 2),
+            DictationEntry(text: "two more", durationSeconds: 2)
         ]
         let data = try JSONEncoder().encode(entries)
         try data.write(to: fileURL)
@@ -175,7 +175,7 @@ final class HistoryStoreTests: XCTestCase {
         let now = Date()
         let entries = [
             DictationEntry(date: now.addingTimeInterval(-1000 * 86_400), text: "ancient", durationSeconds: 1),
-            DictationEntry(date: now, text: "fresh", durationSeconds: 1),
+            DictationEntry(date: now, text: "fresh", durationSeconds: 1)
         ]
 
         // days <= 0 means keep forever → input returned unchanged.
