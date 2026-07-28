@@ -37,6 +37,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settings: settings, provider: FoundationModelsCleanupProvider())
     private lazy var hotkeyManager = HotkeyManager(mode: settings.hotkeyOption, activation: settings.hotkeyActivation)
     private lazy var escapeInterceptor = EscapeInterceptor()
+    /// Keyboard access to the floating cards' buttons. Their panels must never
+    /// take focus (see SelectionTransformPanelController.makePanel), so the
+    /// chords arrive through a CGEvent tap the same way Escape does.
+    private lazy var cardShortcuts = CardShortcutBinder(
+        ask: askController, voiceEdit: voiceEditController)
     private lazy var pillController = RecordingPillController(appState: appState, settings: settings)
     private lazy var scratchpadController = ScratchpadController(store: notesStore)
     private let scratchpadHotkey = ScratchpadHotkey()
@@ -107,7 +112,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - State
 
-    private var statusItem: NSStatusItem?
+    var statusItem: NSStatusItem? // driven by AppDelegate+MenuBarIcon too
     private var statusMenu: NSMenu?
     private var modeMenuItem: NSMenuItem?
     /// The "Update to Yappy X.Y…" item shown at the top of the menu when an update
@@ -124,8 +129,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Holds the "What's New" card to show once after an update; the main window
     /// presents it. See `WhatsNew`.
     let whatsNewPresenter = WhatsNewPresenter()
-    private var menuBarAnimationTimer: Timer?
-    private var menuBarFrameIndex = 0
+    var menuBarAnimationTimer: Timer? // driven by AppDelegate+MenuBarIcon
+    var menuBarFrameIndex = 0 // driven by AppDelegate+MenuBarIcon
     /// Listen-only global mouse monitor feeding `TextInserter.noteUserInputOccurred()`
     /// — a click moves the caret, so the opaque-app insertion fallbacks must reset.
     private var clickMonitor: Any?
@@ -239,6 +244,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         setupMenuBar()
         bindStateToMenuBar()
+        cardShortcuts.activate()
         bindModelReadyAutostart()
         bindSettings()
         bindAnswerSpeech()
@@ -394,6 +400,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         hotkeyManager.stop()
         escapeInterceptor.stop()
+        cardShortcuts.stop()
         scratchpadHotkey.stop()
         askHotkey.stop()
         // TTS helper down BEFORE the purge: shutdownAndPurgeRuntime() deletes
@@ -1161,8 +1168,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                             raw: expanded, final: finalText
                         )?.components(separatedBy: " and ").first
                         let polishCaption = summaryLead.map {
-                            "Polished \($0) — click to undo"
-                        } ?? "Polished — click to use your exact words"
+                            "Cleanup: \($0) — click to undo"
+                        } ?? "Cleanup — click to undo"
                         self.ifCurrent(generation) {
                             self.appState.showInfo(
                                 polishCaption,
@@ -1242,13 +1249,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Caption shown when speech energy was present but transcription produced
     /// nothing usable. Soft miss — no failure sound.
-    nonisolated static let emptyTranscriptCaption = "Didn't catch that"
+    nonisolated static let emptyTranscriptCaption = "Didn’t catch that"
 
     /// Caption for recoverable insertion failures (click-to-copy affordance).
-    nonisolated static let insertFailureClickToCopyCaption = "Couldn't insert — click to copy"
+    nonisolated static let insertFailureClickToCopyCaption = "Couldn’t insert — click to copy"
 
     /// First recovery action: retry once after the user fixes destination focus.
-    nonisolated static let insertFailureRetryCaption = "Couldn't insert — click to retry"
+    nonisolated static let insertFailureRetryCaption = "Couldn’t insert — click to retry"
 
     /// Maps a dictation-path error to a short pill caption. Pure / unit-testable.
     /// `nonisolated` so unit tests can call it without hopping to MainActor.
@@ -1258,7 +1265,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             case .accessibilityPermissionDenied:
                 return "Enable Accessibility to insert"
             case .eventCreationFailed:
-                return "Couldn't insert — saved to History"
+                return "Couldn’t insert — saved to History"
             }
         }
         return "Transcription failed — try again"
@@ -1821,7 +1828,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let resolved = AnswersVoice(rawValue: voice) else { return }
         previewGeneration += 1
         let generation = previewGeneration
-        let sample = "Hi, I'm \(resolved.spokenName). This is how I read your answers."
+        let sample = "Hi, I’m \(resolved.spokenName). This is how I read your answers."
         askController.previewingVoice = voice
 
         previewPipelineTask = Task { @MainActor [weak self] in
@@ -2386,9 +2393,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let menu = NSMenu()
         statusMenu = menu
         menu.addItem(NSMenuItem(title: "Open Yappy", action: #selector(openMainWindow), keyEquivalent: "o"))
-        menu.addItem(NSMenuItem(title: "Scratchpad (⌥⇧S)", action: #selector(toggleScratchpad), keyEquivalent: ""))
-        menu.addItem(NSMenuItem(title: "Show Last Answer", action: #selector(showLastAskAnswer), keyEquivalent: ""))
-        menu.addItem(NSMenuItem(title: "Configure Answers…", action: #selector(openMainWindow), keyEquivalent: ""))
+        let scratchpadItem = NSMenuItem(title: "Scratchpad", action: #selector(toggleScratchpad), keyEquivalent: "s")
+        scratchpadItem.keyEquivalentModifierMask = [.option, .shift]
+        menu.addItem(scratchpadItem)
+        menu.addItem(NSMenuItem(title: "Show last answer", action: #selector(showLastAskAnswer), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "Configure Answers…", action: #selector(openAnswers), keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: "Commands…", action: #selector(openCommands), keyEquivalent: ""))
         menu.addItem(NSMenuItem.separator())
 
@@ -2398,12 +2407,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         rebuildModeMenu()
 
         menu.addItem(NSMenuItem.separator())
-        let updatesItem = NSMenuItem(title: "Check for Updates…",
+        let updatesItem = NSMenuItem(title: "Check for updates…",
                                      action: #selector(checkForUpdatesClicked),
                                      keyEquivalent: "")
         updatesItem.target = self
         menu.addItem(updatesItem)
-        let whatsNewItem = NSMenuItem(title: "What's New in Yappy", action: #selector(showWhatsNew), keyEquivalent: "")
+        let whatsNewItem = NSMenuItem(title: "What’s new in Yappy", action: #selector(showWhatsNew), keyEquivalent: "")
         whatsNewItem.target = self
         menu.addItem(whatsNewItem)
         menu.addItem(NSMenuItem(title: "About Yappy", action: #selector(showAbout), keyEquivalent: ""))
@@ -2589,12 +2598,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .store(in: &cancellables)
     }
 
-    private enum MenuBarGlyph {
-        case ready // outline speech bubble + waveform (template)
-        case recording // solid orange bubble + cutout waveform
-        case processing // filled bubble + cutout waveform (template)
-    }
-
+    // MenuBarGlyph + the icon renderer and breathe animation live in
+    // AppDelegate+MenuBarIcon.swift (split out when the file-length ratchet
+    // fired; the stored state they drive remains above).
     private func updateMenuBarIcon() {
         if appState.isRecording || askController.isListening {
             startMenuBarAnimation()
@@ -2620,85 +2626,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         statusItem?.button?.image = image
-    }
-
-    // MARK: - Menu Bar Recording Animation
-
-    /// Idle/processing menu-bar glyphs, drawn once and reused on every state
-    /// change rather than redrawn each time (static lets initialize lazily).
-    private static let readyIcon: NSImage = yIcon(.ready)
-    private static let processingIcon: NSImage = yIcon(.processing)
-
-    /// Precomputed frames "breathing" the Y's stroke weight while recording —
-    /// the lettermark has no waveform bars to animate, so the whole glyph pulses
-    /// instead, echoing the pill's breathing glow. Cheap to swap, like the old
-    /// bar frames.
-    private static let recordingFrames: [NSImage] = [
-        2.3, 2.6, 2.9, 2.6, 2.3
-    ].map { yIcon(.recording, strokeWidth: $0) }
-
-    private func startMenuBarAnimation() {
-        guard menuBarAnimationTimer == nil else { return }
-        statusItem?.button?.image = Self.recordingFrames[0]
-        menuBarFrameIndex = 0
-        menuBarAnimationTimer = Timer.scheduledTimer(withTimeInterval: 0.125, repeats: true) { [weak self] _ in
-            guard let self else { return }
-            self.menuBarFrameIndex = (self.menuBarFrameIndex + 1) % Self.recordingFrames.count
-            self.statusItem?.button?.image = Self.recordingFrames[self.menuBarFrameIndex]
-        }
-    }
-
-    private func stopMenuBarAnimation() {
-        menuBarAnimationTimer?.invalidate()
-        menuBarAnimationTimer = nil
-    }
-
-    /// Brand orange used for the recording state (the app's accent color).
-    private static let brandOrange = NSColor(named: "AccentColor")
-        ?? NSColor(red: 1.0, green: 0.42, blue: 0.21, alpha: 1.0)
-
-    /// Draws the Yappy "Y" lettermark for a given state.
-    /// Ready/processing are template images (auto light/dark); recording is solid
-    /// orange. `strokeWidth` drives the recording "breathe" animation frames.
-    private static func yIcon(_ glyph: MenuBarGlyph, strokeWidth: CGFloat = 2.6) -> NSImage {
-        let size = NSSize(width: 18, height: 18)
-        let image = NSImage(size: size, flipped: false) { _ in
-            let path = yPath()
-            path.lineWidth = strokeWidth
-            path.lineCapStyle = .round
-            path.lineJoinStyle = .round
-
-            switch glyph {
-            case .ready:
-                NSColor.black.setStroke()
-            case .processing:
-                // Dimmed, to read as "working" during the brief processing
-                // window (the pill shows the detailed state).
-                NSColor.black.withAlphaComponent(0.4).setStroke()
-            case .recording:
-                brandOrange.setStroke()
-            }
-            path.stroke()
-            return true
-        }
-        image.isTemplate = (glyph != .recording)
-        return image
-    }
-
-    /// The Y lettermark in an 18×18 box: two arms meeting at the fork, stem
-    /// dropping to the baseline. NSImage's unflipped coordinates put y=0 at the
-    /// BOTTOM, so the arms anchor high (y 15.4) and the stem ends low (y 2.6).
-    /// Stroke-based (round caps/joins) so the recording frames can vary weight.
-    private static func yPath() -> NSBezierPath {
-        let path = NSBezierPath()
-        let fork = NSPoint(x: 9.0, y: 9.0)
-        path.move(to: NSPoint(x: 4.4, y: 15.4))
-        path.line(to: fork)
-        path.move(to: NSPoint(x: 13.6, y: 15.4))
-        path.line(to: fork)
-        path.move(to: fork)
-        path.line(to: NSPoint(x: 9.0, y: 2.6))
-        return path
     }
 
     // MARK: - Settings Bindings
@@ -2937,6 +2864,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let view = OnboardingView(
                 transcriptionService: transcriptionService,
                 levelModel: levelModel,
+                settings: settings,
                 appState: appState,
                 requestMicrophone: { await AudioRecorder.requestPermission() },
                 startLevelPreview: { [weak self] in self?.audioRecorder.startLevelPreview() ?? false },
@@ -3048,6 +2976,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func openCommands() {
         mainWindowController.present(selecting: .commands)
+    }
+
+    @objc private func openAnswers() {
+        mainWindowController.present(selecting: .ask)
     }
 
     /// Re-show the "What's New" card on demand (menu bar + Settings → Software Update).

@@ -21,6 +21,7 @@ final class HistoryStoreTests: XCTestCase {
     override func tearDown() {
         try? FileManager.default.removeItem(at: fileURL)
         try? FileManager.default.removeItem(at: statsFileURL)
+        try? FileManager.default.removeItem(at: heatmapFileURL)
         store = nil
         super.tearDown()
     }
@@ -28,6 +29,18 @@ final class HistoryStoreTests: XCTestCase {
     /// The lifetime-stats sidecar the store writes beside its entries file.
     var statsFileURL: URL {
         fileURL.deletingPathExtension().appendingPathExtension("stats.json")
+    }
+
+    /// The lifetime heatmap-tally sidecar.
+    var heatmapFileURL: URL {
+        fileURL.deletingPathExtension().appendingPathExtension("heatmap.json")
+    }
+
+    /// Total dictations currently visible in the store's heatmap rows.
+    private func heatmapTotal() -> Int {
+        store.cachedHeatmapRows.reduce(0) { sum, row in
+            sum + row.hours.reduce(0) { $0 + $1.count }
+        }
     }
 
     func testStartsEmpty() {
@@ -117,6 +130,69 @@ final class HistoryStoreTests: XCTestCase {
 
         XCTAssertEqual(store.entries.count, 1)
         XCTAssertEqual(store.totalWords, 5)
+    }
+
+    // MARK: - Heatmap tally survives list mutations
+    //
+    // The heatmap is a lifetime record of WHEN the user dictates, in its own
+    // sidecar — clearing transcripts must never blank it (live-hit bug,
+    // 2026-07-27: Clear All emptied the Home heatmap).
+
+    func testClearAllKeepsHeatmap() {
+        store.add(DictationEntry(text: "one two three", durationSeconds: 3))
+        store.add(DictationEntry(text: "four five", durationSeconds: 2))
+        store.recomputeDerivedNowForTesting()
+        XCTAssertEqual(heatmapTotal(), 2)
+
+        store.clearAll()
+
+        XCTAssertTrue(store.entries.isEmpty)
+        XCTAssertEqual(heatmapTotal(), 2, "Clear All must not blank the heatmap")
+        XCTAssertTrue(store.hasHeatmapActivity)
+    }
+
+    func testDeleteKeepsHeatmap() {
+        let entry = DictationEntry(text: "delete me now", durationSeconds: 2)
+        store.add(entry)
+        store.delete(entry)
+        XCTAssertEqual(heatmapTotal(), 1, "the dictation happened; deleting its transcript keeps the tally")
+    }
+
+    /// Waits out the utility-queue writes, matching the store's async persist.
+    private func settleIO() {
+        let settled = expectation(description: "io settles")
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.3) { settled.fulfill() }
+        wait(for: [settled], timeout: 2)
+    }
+
+    func testHeatmapTallySurvivesClearAcrossRelaunch() {
+        store.add(DictationEntry(text: "one two three four", durationSeconds: 4))
+        store.clearAll()
+        settleIO()
+
+        let reloaded = HistoryStore(fileURL: fileURL)
+        let total = reloaded.cachedHeatmapRows.reduce(0) { sum, row in
+            sum + row.hours.reduce(0) { $0 + $1.count }
+        }
+        XCTAssertEqual(total, 1)
+        XCTAssertTrue(reloaded.hasHeatmapActivity)
+    }
+
+    func testHeatmapSeedsFromLegacyEntriesWhenSidecarMissing() {
+        // Simulate a pre-sidecar install: entries on disk, no heatmap file.
+        store.add(DictationEntry(text: "legacy words here", durationSeconds: 2))
+        settleIO()
+        try? FileManager.default.removeItem(at: heatmapFileURL)
+
+        let migrated = HistoryStore(fileURL: fileURL)
+        let total = migrated.cachedHeatmapRows.reduce(0) { sum, row in
+            sum + row.hours.reduce(0) { $0 + $1.count }
+        }
+        XCTAssertEqual(total, 1, "missing sidecar must seed from the surviving entries")
+    }
+
+    func testHasHeatmapActivityFalseOnFreshStore() {
+        XCTAssertFalse(store.hasHeatmapActivity)
     }
 
     func testLifetimeStatsSurviveClearAcrossRelaunch() {

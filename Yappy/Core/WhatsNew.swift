@@ -45,6 +45,26 @@ enum WhatsNew {
     /// announcing; upgraders from any earlier version see the entry for the
     /// version they land on.
     static let entries: [String: Entry] = [
+        "3.2.0": Entry(
+            version: "3.2.0",
+            headline: "One app, keyboard to pixel.",
+            highlights: [
+                Highlight(icon: "keyboard",
+                          title: "Answer cards, hands on keys",
+                          detail: "⌘⌥I inserts, ⌘⌥C copies, ⌘⌥S speaks, ⌘⌥R retries, ⌘⌥X dismisses — on the Answers card and the Voice Edit preview, without either ever stealing focus from where you’re typing. Works on any keyboard layout."),
+                Highlight(icon: "chart.bar.fill",
+                          title: "Your activity heatmap is permanent now",
+                          detail: "Clearing dictation history removes your words — not your rhythm. The day-and-hour heatmap is a lifetime tally in its own file (counts only, no text), so Clear History can never blank it again."),
+                Highlight(icon: "paintbrush",
+                          title: "Every screen speaks one language",
+                          detail: "One card style, one section header, one spacing system across all seven screens — plus hover and press feedback where the pointer expects it. The Mode editor sheds its stock grey chrome and finally looks like Yappy."),
+                Highlight(icon: "figure.wave",
+                          title: "Calmer, and properly accessible",
+                          detail: "Reduce Motion is honored everywhere, the heatmap reads as one clean VoiceOver summary instead of 168 mystery tiles, expanding settings glide instead of jumping, and the undo toast announces itself."),
+                Highlight(icon: "text.badge.checkmark",
+                          title: "Copy that tells the truth",
+                          detail: "Model sizes and hotkey names now come from your actual settings, the model status speaks one vocabulary everywhere, sign-in help gives the real command, and an empty search finally says “No matches.”"),
+            ]),
         "3.1.0": Entry(
             version: "3.1.0",
             headline: "Your words, kept exactly as you said them.",
@@ -53,11 +73,11 @@ enum WhatsNew {
                           title: "Spoken words stay words",
                           detail: "“She missed her period”, “add a dash of salt”, “one of these days” — Yappy now tells the difference between a punctuation command and an ordinary noun, so your sentences survive intact. Saying “comma” still types a comma."),
                 Highlight(icon: "character.book.closed.fill",
-                          title: "Your dictionary guides the polish",
+                          title: "Your dictionary guides cleanup",
                           detail: "Terms you have taught Yappy now travel with the cleanup pass, so a name or bit of jargon keeps the exact spelling and capitalization you chose instead of being second-guessed."),
                 Highlight(icon: "arrow.uturn.backward.circle",
                           title: "See what changed",
-                          detail: "When the polish pass edits your text, the pill names what it did — “Polished punctuation”, “Polished capitalization” — and one click puts your original words back."),
+                          detail: "When cleanup edits your text, the pill names what it did — “Cleanup: punctuation”, “Cleanup: capitalization” — and one click puts your original words back."),
                 Highlight(icon: "lock.shield",
                           title: "Answers clean up after themselves",
                           detail: "Quitting Yappy now purges the working files its Answers backends leave behind, and a new Storage panel in Settings shows exactly what is on disk and where, so nothing lingers unseen."),
@@ -74,7 +94,7 @@ enum WhatsNew {
                           detail: "Select text in any app, hold Right Option, and say the change — “make this bullets”, “make it more formal”, “fix the spelling”. A preview card shows exactly what will change before you Replace. On-device, off by default."),
                 Highlight(icon: "bolt.fill",
                           title: "Short dictations land instantly",
-                          detail: "Quick replies skip the heavy polish pass they never needed, and the insert path sheds redundant work — text appears the moment you release the key. A new “How much cleanup” setting also lets you keep every word exactly as you said it."),
+                          detail: "Quick replies skip the heavy cleanup pass they never needed, and the insert path sheds redundant work — text appears the moment you release the key. A new “How much cleanup” setting also lets you keep every word exactly as you said it."),
                 Highlight(icon: "character.book.closed",
                           title: "It learns your words",
                           detail: "Say “scratch that”, fix a word, and Yappy quietly learns the correction as a dictionary alias — undo it with one click on the pill. Low-confidence guesses become suggestions instead, never silent changes."),
@@ -142,7 +162,7 @@ enum WhatsNew {
             highlights: [
                 Highlight(icon: "apple.logo",
                           title: "Apple Intelligence cleanup",
-                          detail: "Polish transcripts on-device with Apple Intelligence — no server, nothing leaves your Mac."),
+                          detail: "Clean up transcripts on-device with Apple Intelligence — no server, nothing leaves your Mac."),
                 Highlight(icon: "arrow.down.circle",
                           title: "Automatic updates",
                           detail: "Yappy now updates itself with one click via a signed, notarized installer."),
@@ -181,8 +201,8 @@ enum WhatsNew {
                           title: "See and revert AI cleanup",
                           detail: "Every dictation keeps what you actually said — reveal or copy it in History, or say “use what I said” to swap it back in place."),
                 Highlight(icon: "escape",
-                          title: "Escape, polish, and real tone",
-                          detail: "Esc now aborts before text lands, the pill shows when cleanup is polishing, and Formal/Casual tones genuinely shape the result.")
+                          title: "Escape, cleanup, and real tone",
+                          detail: "Esc now aborts before text lands, the pill shows when cleanup is running, and Formal/Casual tones genuinely shape the result.")
             ]),
         "2.3": Entry(
             version: "2.3",

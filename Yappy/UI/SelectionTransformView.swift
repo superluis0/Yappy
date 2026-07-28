@@ -220,6 +220,7 @@ struct SelectionTransformView: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Cancel")
+            .accessibilityHint(CardShortcut.dismiss.spokenShortcut)
         }
     }
 
@@ -259,6 +260,7 @@ struct SelectionTransformView: View {
             }
             .buttonStyle(.plain)
             .keyboardShortcut(.defaultAction)
+            .accessibilityHint(CardShortcut.insert.spokenShortcut)
 
             Button { controller.tryAgain() } label: {
                 Text("Try again")
@@ -270,6 +272,7 @@ struct SelectionTransformView: View {
                         .fill(Color.white.opacity(0.08)))
             }
             .buttonStyle(.plain)
+            .accessibilityHint(CardShortcut.retry.spokenShortcut)
 
             Button { controller.cancel() } label: {
                 Text("Cancel")
@@ -281,6 +284,7 @@ struct SelectionTransformView: View {
                         .fill(Color.white.opacity(0.05)))
             }
             .buttonStyle(.plain)
+            .accessibilityHint(CardShortcut.dismiss.spokenShortcut)
         }
     }
 }

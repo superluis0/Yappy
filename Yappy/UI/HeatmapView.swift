@@ -17,6 +17,10 @@ struct HeatmapView: View {
     @State private var hoveredWeekday: Int?
     @State private var hoveredHour: Int?
     @State private var cellsAppeared = false
+    /// Index into `populatedCells` for the VoiceOver adjustable cursor — the
+    /// non-mouse equivalent of hovering a cell.
+    @State private var axCursor = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// Rows are precomputed and cached by HistoryStore (recomputed only when
     /// entries change), so building this view never rescans the full history.
@@ -31,12 +35,50 @@ struct HeatmapView: View {
         return tooltip(row: row, hour: hour)
     }
 
+    /// The cells a VoiceOver user can step through with the adjustable action.
+    private var populatedCells: [(weekday: Int, hour: Int)] {
+        HeatmapModel.populatedCells(rows: rows)
+    }
+
+    /// Whole-grid VoiceOver label: one element instead of 168 unlabeled shapes.
+    private var summaryLabel: String {
+        HeatmapModel.accessibilitySummary(
+            rows: rows,
+            dayName: { weekdayLabel($0) },
+            hourName: { hourLabel($0) }
+        )
+    }
+
+    /// What the single grid element currently reads as its value — the cell the
+    /// adjustable cursor (or the mouse) is on.
+    private var cursorLabel: String {
+        if let hovered = hoveredCellLabel { return hovered }
+        let cells = populatedCells
+        guard !cells.isEmpty else { return "No dictations yet" }
+        let cell = cells[min(max(0, axCursor), cells.count - 1)]
+        guard let row = rows.first(where: { $0.weekday == cell.weekday }) else { return "" }
+        return tooltip(row: row, hour: cell.hour)
+    }
+
+    /// Moves the VoiceOver cursor one populated cell in `direction` and mirrors
+    /// it into the hover state, so the visible readout and the highlight ring
+    /// follow assistive technology exactly as they follow the mouse.
+    private func moveCursor(_ direction: AccessibilityAdjustmentDirection) {
+        let cells = populatedCells
+        guard !cells.isEmpty else { return }
+        let step = direction == .increment ? 1 : -1
+        axCursor = min(max(0, axCursor + step), cells.count - 1)
+        let cell = cells[axCursor]
+        hoveredWeekday = cell.weekday
+        hoveredHour = cell.hour
+    }
+
     /// Clears any stuck hover state. Per-cell `.onHover` misses its exit event
     /// when the content scrolls out from under a stationary cursor, so we also
     /// reset at the whole-heatmap boundary and when the view leaves the screen.
     private func clearHover() {
         guard hoveredWeekday != nil || hoveredHour != nil else { return }
-        withAnimation(.easeOut(duration: 0.08)) {
+        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.08)) {
             hoveredWeekday = nil
             hoveredHour = nil
         }
@@ -54,7 +96,7 @@ struct HeatmapView: View {
                 }
             }
             .frame(height: 13)
-            .animation(.easeOut(duration: 0.12), value: hoveredCellLabel)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: hoveredCellLabel)
 
             VStack(alignment: .leading, spacing: spacing) {
                 ForEach(Array(rows.enumerated()), id: \.element.id) { offset, row in
@@ -76,7 +118,7 @@ struct HeatmapView: View {
                                     }
                                 }
                                 .onHover { hovering in
-                                    withAnimation(.easeOut(duration: 0.08)) {
+                                    withAnimation(reduceMotion ? nil : .easeOut(duration: 0.08)) {
                                         if hovering {
                                             hoveredWeekday = row.weekday
                                             hoveredHour = hour
@@ -87,16 +129,31 @@ struct HeatmapView: View {
                                     }
                                 }
                                 .help(tooltip(row: row, hour: hour))
+                                // `.help` alone promotes each shape into an
+                                // unlabeled AX element; the grid speaks as one
+                                // summarized element instead (below).
+                                .accessibilityHidden(true)
                         }
                     }
                     .opacity(cellsAppeared ? 1 : 0)
-                    .offset(y: cellsAppeared ? 0 : 5)
-                    .animation(.spring(response: 0.4, dampingFraction: 0.85).delay(Double(offset) * 0.04),
-                               value: cellsAppeared)
+                    .offset(y: (cellsAppeared || reduceMotion) ? 0 : 5)
+                    // Decorative staggered cascade; Reduce Motion shows the grid at once.
+                    .animation(reduceMotion
+                        ? nil
+                        : .spring(response: 0.4, dampingFraction: 0.85).delay(Double(offset) * 0.04),
+                        value: cellsAppeared)
                 }
                 hourAxis
             }
             .onAppear { cellsAppeared = true }
+            // One element for the whole grid, carrying the summary. The
+            // adjustable action walks the populated cells so a non-mouse user
+            // reaches the same detail the hover readout shows.
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(summaryLabel)
+            .accessibilityValue(cursorLabel)
+            .accessibilityHint("Swipe up or down to step through the busiest hours.")
+            .accessibilityAdjustableAction(moveCursor)
 
             legend
         }
@@ -114,7 +171,7 @@ struct HeatmapView: View {
 
     private var hourAxis: some View {
         HStack(spacing: spacing) {
-            Color.clear.frame(width: labelWidth, height: 12)
+            Color.clear.frame(width: labelWidth, height: 12).accessibilityHidden(true)
             ForEach(0..<24, id: \.self) { hour in
                 if hour % 6 == 0 {
                     Text(hourLabel(hour))
@@ -123,7 +180,8 @@ struct HeatmapView: View {
                         .fixedSize()
                         .frame(width: cell, alignment: .leading)
                 } else {
-                    Color.clear.frame(width: cell)
+                    // Pure layout spacer — never an AX element.
+                    Color.clear.frame(width: cell).accessibilityHidden(true)
                 }
             }
         }
@@ -149,6 +207,9 @@ struct HeatmapView: View {
             }
             Text("More").font(.caption2).foregroundStyle(.tertiary)
         }
+        // Five bare swatches between two words say nothing on their own.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Colour key: pale for less activity, solid for more.")
     }
 
     // MARK: - Labels

@@ -36,7 +36,7 @@ struct ModelSetupView: View {
             case .loading, .notLoaded:
                 VStack(spacing: 8) {
                     ProgressView()
-                    Text("Loading speech model…")
+                    Text(transcriptionService.modelState.userFacingLabel)
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }
@@ -45,13 +45,14 @@ struct ModelSetupView: View {
                     .foregroundStyle(.green)
             case .failed(let message):
                 VStack(spacing: 8) {
-                    Label("Setup failed", systemImage: "exclamationmark.triangle.fill")
+                    Label(transcriptionService.modelState.userFacingLabel,
+                          systemImage: "exclamationmark.triangle.fill")
                         .foregroundStyle(.orange)
                     Text(message)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
-                    Button("Try Again") {
+                    Button("Try again") {
                         Task { await transcriptionService.warmUp() }
                     }
                 }
@@ -66,25 +67,32 @@ struct ModelSetupView: View {
     }
 }
 
-/// Compact model status row for Settings.
+/// Compact model status row for Settings. Renders as a `SettingRow` so it is
+/// the same row as everything else in the card it sits in — 34pt icon chip,
+/// branded status colors, identical padding — instead of a bare `Label` stack.
 struct ModelStatusRow: View {
     @ObservedObject var settings: Settings
     @ObservedObject var transcriptionService: ParakeetTranscriptionService
 
     var body: some View {
-        HStack {
-            Label {
-                Text("Speech model (\(settings.transcriptionModel.displayName))")
-            } icon: {
-                Image(systemName: iconName)
-                    .foregroundStyle(iconColor)
-            }
-            Spacer()
-            Text(transcriptionService.modelState.statusDescription)
-                .foregroundStyle(.secondary)
-            if case .failed = transcriptionService.modelState {
-                Button("Retry") {
-                    Task { await transcriptionService.warmUp() }
+        // Merge: A's SettingRow structure (same chip/padding/colors as every
+        // other row) + C's retry-verb unification. `statusDescription` is kept
+        // over the plain label because it carries the download percentage —
+        // this row is the ONLY progress feedback in Settings — and its wording
+        // is aligned with `userFacingLabel` in the service.
+        SettingRow(
+            icon: iconName,
+            title: "Speech model (\(settings.transcriptionModel.displayName))",
+            iconColor: iconColor
+        ) {
+            HStack(spacing: 10) {
+                Text(transcriptionService.modelState.statusDescription)
+                    .font(.system(size: Design.TypeScale.rowSubtitle))
+                    .foregroundStyle(Brand.ink3)
+                if case .failed = transcriptionService.modelState {
+                    Button("Try again") {
+                        Task { await transcriptionService.warmUp() }
+                    }
                 }
             }
         }
@@ -101,9 +109,9 @@ struct ModelStatusRow: View {
 
     private var iconColor: Color {
         switch transcriptionService.modelState {
-        case .ready: return .green
-        case .failed: return .orange
-        default: return .secondary
+        case .ready: return Brand.ready
+        case .failed: return Brand.danger
+        default: return Brand.ink4
         }
     }
 }

@@ -70,6 +70,7 @@ final class OnboardingLevelModel: ObservableObject {
 struct OnboardingView: View {
     @ObservedObject var transcriptionService: ParakeetTranscriptionService
     @ObservedObject var levelModel: OnboardingLevelModel
+    @ObservedObject var settings: Settings
     /// Shared app state. The try-it step watches `lastDictationAt` to confirm the
     /// practice text arrived by voice rather than the keyboard.
     @ObservedObject var appState: AppState
@@ -91,6 +92,12 @@ struct OnboardingView: View {
     @State private var pickedUseCases: Set<UseCase> = []
     @State private var tryItText = ""
     @State private var tryItSucceeded = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// Nil under Reduce Motion, so steps and confirmations cut instead of springing.
+    private func motion(_ animation: Animation) -> Animation? {
+        reduceMotion ? nil : animation
+    }
 
     private let permissionPoll = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
@@ -105,13 +112,15 @@ struct OnboardingView: View {
                 ZStack {
                     content
                         .id(step)
-                        .transition(.asymmetric(
-                            insertion: .move(edge: .trailing).combined(with: .opacity),
-                            removal: .move(edge: .leading).combined(with: .opacity)
-                        ))
+                        .transition(reduceMotion
+                            ? .opacity
+                            : .asymmetric(
+                                insertion: .move(edge: .trailing).combined(with: .opacity),
+                                removal: .move(edge: .leading).combined(with: .opacity)
+                            ))
                 }
                 .frame(maxHeight: .infinity)
-                .animation(.spring(response: 0.45, dampingFraction: 0.85), value: step)
+                .animation(motion(.spring(response: 0.45, dampingFraction: 0.85)), value: step)
 
                 ProgressDots(count: Self.stepCount, active: step)
             }
@@ -166,11 +175,11 @@ struct OnboardingView: View {
             Text("Welcome to Yappy")
                 .font(.largeTitle.bold())
                 .foregroundStyle(Brand.ink)
-            Text("Hold a hotkey, speak, and your words appear wherever your cursor is — transcribed entirely on this Mac. Let's get set up.")
+            Text("Hold a hotkey, speak, and your words appear wherever your cursor is — transcribed entirely on this Mac. Let’s get set up.")
                 .multilineTextAlignment(.center)
                 .foregroundStyle(Brand.ink3)
             Spacer(minLength: 8)
-            Button("Get Started") { step = 1 }
+            Button("Get started") { step = 1 }
                 .keyboardShortcut(.defaultAction)
                 .controlSize(.large)
         }
@@ -203,6 +212,8 @@ struct OnboardingView: View {
                     .padding(.vertical, 10)
                     .background(Color.black.opacity(0.45), in: Capsule())
                     .overlay(Capsule().strokeBorder(Color.white.opacity(0.08), lineWidth: 1))
+                    // Decoration: the caption below already says what it means.
+                    .accessibilityHidden(true)
                     Text("Say something — Yappy is listening.")
                         .font(.caption)
                         .foregroundStyle(Brand.ink4)
@@ -222,7 +233,7 @@ struct OnboardingView: View {
                     .controlSize(.large)
                 }
             } else {
-                Button("Allow Microphone") {
+                Button("Allow microphone") {
                     Task {
                         _ = await requestMicrophone()
                         micGranted = AudioRecorder.hasPermission
@@ -272,7 +283,7 @@ struct OnboardingView: View {
             Text("Your speech model")
                 .font(.title.bold())
                 .foregroundStyle(Brand.ink)
-            Text("Yappy transcribes with a neural model running on this Mac's Neural Engine — nothing is sent to a server.")
+            Text("Yappy transcribes with a neural model running on this Mac’s Neural Engine — nothing is sent to a server.")
                 .multilineTextAlignment(.center)
                 .foregroundStyle(Brand.ink3)
 
@@ -296,7 +307,7 @@ struct OnboardingView: View {
             Text("What will you use it for?")
                 .font(.title.bold())
                 .foregroundStyle(Brand.ink)
-            Text("We'll preset a matching Mode and seed your dictionary — change anything later.")
+            Text("We’ll preset a matching Mode and seed your dictionary — change anything later.")
                 .multilineTextAlignment(.center)
                 .foregroundStyle(Brand.ink3)
 
@@ -342,7 +353,7 @@ struct OnboardingView: View {
             if tryItSucceeded {
                 StepIcon(systemName: "checkmark.seal.fill", granted: true)
                     .transition(.scale(scale: 0.4).combined(with: .opacity))
-                Text("That's it — you're dictating")
+                Text("That’s it — you’re dictating")
                     .font(.title.bold())
                     .foregroundStyle(Brand.ink)
             } else {
@@ -391,11 +402,11 @@ struct OnboardingView: View {
         // can't pre-trigger it.
         .onChange(of: appState.lastDictationAt) {
             guard !tryItSucceeded else { return }
-            withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
+            withAnimation(motion(.spring(response: 0.4, dampingFraction: 0.7))) {
                 tryItSucceeded = true
             }
         }
-        .animation(.spring(response: 0.4, dampingFraction: 0.7), value: tryItSucceeded)
+        .animation(motion(.spring(response: 0.4, dampingFraction: 0.7)), value: tryItSucceeded)
     }
 
     /// The normal try-it content: the dictation prompt, the practice box, and the
@@ -404,7 +415,7 @@ struct OnboardingView: View {
     private var tryItPractice: some View {
         Group {
             Text(transcriptionService.modelState == .ready
-                 ? "Click into the box, hold **Right ⌘**, and say: “Yappy makes dictation feel like magic.”"
+                 ? "Click into the box, hold **\(settings.hotkeyOption.userFacingHint)**, and say: “Yappy makes dictation feel like magic.”"
                  : "The speech model is still getting ready — you can finish setup and try dictating in a minute.")
                 .multilineTextAlignment(.center)
                 .foregroundStyle(Brand.ink3)
@@ -450,7 +461,7 @@ struct OnboardingView: View {
                 Text("Microphone access is still off")
                     .font(.callout.weight(.semibold))
                     .foregroundStyle(Brand.danger)
-                Text("Yappy can't hear you until the microphone is on, so dictation won't do anything yet.")
+                Text("Yappy can’t hear you until the microphone is on, so dictation won’t do anything yet.")
                     .font(.callout)
                     .multilineTextAlignment(.center)
                     .foregroundStyle(Brand.ink3)
@@ -463,7 +474,7 @@ struct OnboardingView: View {
                 Text("Accessibility access is still off")
                     .font(.callout.weight(.semibold))
                     .foregroundStyle(Brand.danger)
-                Text("Yappy needs it to detect your hotkey and type text into other apps, so dictation can't land yet.")
+                Text("Yappy needs it to detect your hotkey and type text into other apps, so dictation can’t land yet.")
                     .font(.callout)
                     .multilineTextAlignment(.center)
                     .foregroundStyle(Brand.ink3)
@@ -487,7 +498,7 @@ struct OnboardingView: View {
             VStack(spacing: 10) {
                 VStack(spacing: 6) {
                     ProgressView(value: progress).frame(width: 240)
-                    Text("Downloading speech model (443 MB, one time)…")
+                    Text("Downloading speech model (\(transcriptionService.activeModel.downloadSizeDescription), one time)…")
                         .font(.caption).foregroundStyle(Brand.ink4)
                 }
                 // The one-time download is the natural moment to teach a few
@@ -499,13 +510,14 @@ struct OnboardingView: View {
         case .loading, .notLoaded:
             HStack(spacing: 8) {
                 ProgressView().controlSize(.small)
-                Text("Preparing speech model…").font(.caption).foregroundStyle(Brand.ink4)
+                Text(transcriptionService.modelState.userFacingLabel)
+                    .font(.caption).foregroundStyle(Brand.ink4)
             }
         case .failed(let message):
             VStack(spacing: 8) {
                 Text(message).font(.caption).foregroundStyle(Brand.danger)
                     .multilineTextAlignment(.center)
-                Button("Try Again") {
+                Button("Try again") {
                     Task { await transcriptionService.warmUp() }
                 }
                 .controlSize(.small)
@@ -592,6 +604,7 @@ private struct IconPulse: ViewModifier {
 private struct ProgressDots: View {
     let count: Int
     let active: Int
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         HStack(spacing: 6) {
@@ -603,7 +616,9 @@ private struct ProgressDots: View {
                     .frame(width: isActive ? 18 : 6, height: 6)
             }
         }
-        .animation(.spring(response: 0.4, dampingFraction: 0.8), value: active)
+        .animation(reduceMotion ? nil : .spring(response: 0.4, dampingFraction: 0.8), value: active)
+        // Seven dots restating the step the heading already names.
+        .accessibilityHidden(true)
     }
 }
 
@@ -611,6 +626,7 @@ private struct ProgressDots: View {
 /// selected chip is orange-tinted (`.chip.sel`); the rest are dim outlines.
 private struct UseCaseChips: View {
     @Binding var picked: Set<UseCase>
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         FlowLayout(spacing: 8) {
@@ -627,7 +643,7 @@ private struct UseCaseChips: View {
                 }
             }
         }
-        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: picked)
+        .animation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.8), value: picked)
     }
 }
 
@@ -698,32 +714,55 @@ private enum CommandDeck {
 /// the old separate "discovery" step that used to run right before try-it.
 private struct CommandMiniDeck: View {
     @State private var index = 0
+    @State private var paused = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// True whenever an assistive technology (VoiceOver, Switch Control, …) runs.
+    @Environment(\.accessibilityEnabled) private var accessibilityEnabled
     private let timer = Timer.publish(every: 5, on: .main, in: .common).autoconnect()
 
     private var card: CommandDeck.Card? {
         CommandDeck.cards.indices.contains(index) ? CommandDeck.cards[index] : nil
     }
 
+    /// Whether the deck may move on its own at all. It never may under Reduce
+    /// Motion, nor while an assistive technology is running: the combined
+    /// element below is what VoiceOver focuses, and swapping its text out from
+    /// under the user is the WCAG 2.2.2 failure this guards against.
+    private var canAutoRotate: Bool { !reduceMotion && !accessibilityEnabled }
+
+    private var autoRotates: Bool { canAutoRotate && !paused }
+
+    private func advance() {
+        guard !CommandDeck.cards.isEmpty else { return }
+        index = (index + 1) % CommandDeck.cards.count
+    }
+
     var body: some View {
-        Group {
-            if let card {
-                HStack(alignment: .top, spacing: 10) {
-                    iconTile(card.icon)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text("“\(card.phrase)”")
-                            .font(.system(size: 12.5, weight: .semibold))
-                            .foregroundStyle(Brand.ink)
-                        Text(card.effect)
-                            .font(.system(size: 10.5))
-                            .foregroundStyle(Brand.ink4)
-                            .lineLimit(2)
-                            .fixedSize(horizontal: false, vertical: true)
+        HStack(alignment: .top, spacing: 8) {
+            Group {
+                if let card {
+                    HStack(alignment: .top, spacing: 10) {
+                        iconTile(card.icon)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("“\(card.phrase)”")
+                                .font(.system(size: 12.5, weight: .semibold))
+                                .foregroundStyle(Brand.ink)
+                            Text(card.effect)
+                                .font(.system(size: 10.5))
+                                .foregroundStyle(Brand.ink4)
+                                .lineLimit(2)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                     }
-                    Spacer(minLength: 0)
+                    .id(card.id)
+                    .transition(.opacity)
+                    // Text only — the deck's controls sit outside this element,
+                    // so combining can never swallow a button.
+                    .accessibilityElement(children: .combine)
                 }
-                .id(card.id)
-                .transition(.opacity)
             }
+            Spacer(minLength: 0)
+            deckControls
         }
         .padding(9)
         .frame(width: 260, alignment: .leading)
@@ -733,12 +772,60 @@ private struct CommandMiniDeck: View {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(Color.white.opacity(0.05))
         )
-        .animation(.easeInOut(duration: 0.4), value: index)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.4), value: index)
         .onReceive(timer) { _ in
-            guard !CommandDeck.cards.isEmpty else { return }
-            index = (index + 1) % CommandDeck.cards.count
+            guard autoRotates else { return }
+            advance()
         }
-        .accessibilityElement(children: .combine)
+    }
+
+    /// Pause/resume (offered only when the deck would rotate on its own) plus a
+    /// manual step, so a paused — or never-started — deck is still browsable.
+    private var deckControls: some View {
+        VStack(spacing: 5) {
+            if canAutoRotate {
+                deckButton(
+                    symbol: paused ? "play.fill" : "pause.fill",
+                    label: paused ? "Play examples" : "Pause examples"
+                ) { paused.toggle() }
+            }
+            deckButton(symbol: "chevron.right", label: "Next example") {
+                paused = true
+                advance()
+            }
+        }
+    }
+
+    private func deckButton(symbol: String, label: String, action: @escaping () -> Void) -> some View {
+        DeckButton(symbol: symbol, label: label, action: action)
+    }
+
+    /// `.plain` suppresses the system focus ring, so a keyboard user tabbing
+    /// the deck couldn't see which tiny icon was focused — draw our own ring.
+    private struct DeckButton: View {
+        let symbol: String
+        let label: String
+        let action: () -> Void
+        @FocusState private var focused: Bool
+
+        var body: some View {
+            Button(action: action) {
+                Image(systemName: symbol)
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(Brand.ink3)
+                    .frame(width: 18, height: 18)
+                    .background(Circle().fill(Color.white.opacity(0.07)))
+                    .overlay(
+                        Circle()
+                            .strokeBorder(Color.accentColor, lineWidth: 1.5)
+                            .opacity(focused ? 1 : 0)
+                    )
+            }
+            .buttonStyle(.plain)
+            .focused($focused)
+            .help(label)
+            .accessibilityLabel(label)
+        }
     }
 
     /// The small icon tile, matching the rest of this screen's card language.

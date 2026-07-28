@@ -98,7 +98,7 @@ struct DictionaryTrainingView: View {
             }
 
             if lastTakeEmpty {
-                Text("Didn't catch that — try again, a little louder.")
+                Text("Didn’t catch that — try again, a little louder.")
                     .font(.caption).foregroundStyle(.orange)
             }
 

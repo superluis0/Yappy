@@ -13,13 +13,13 @@ enum StatFraming {
     private struct Tier { let floor: Int; let phrase: String }
 
     private static let wordTiers: [Tier] = [
-        Tier(floor: 1_000, phrase: "about a short story's worth"),
-        Tier(floor: 5_000, phrase: "a long article's worth"),
-        Tier(floor: 15_000, phrase: "a novella's worth"),
-        Tier(floor: 40_000, phrase: "a short novel's worth"),
-        Tier(floor: 100_000, phrase: "a full novel's worth"),
-        Tier(floor: 200_000, phrase: "a couple of novels' worth"),
-        Tier(floor: 350_000, phrase: "a trilogy's worth"),
+        Tier(floor: 1_000, phrase: "about a short story’s worth"),
+        Tier(floor: 5_000, phrase: "a long article’s worth"),
+        Tier(floor: 15_000, phrase: "a novella’s worth"),
+        Tier(floor: 40_000, phrase: "a short novel’s worth"),
+        Tier(floor: 100_000, phrase: "a full novel’s worth"),
+        Tier(floor: 200_000, phrase: "a couple of novels’ worth"),
+        Tier(floor: 350_000, phrase: "a trilogy’s worth"),
         Tier(floor: 600_000, phrase: "War and Peace, and then some")
     ]
 
@@ -41,7 +41,7 @@ enum StatFraming {
     /// still moves for someone who dictates for years.
     static func wordsMilestone(_ words: Int) -> String? {
         if words >= 1_000_000 {
-            return "about \(words / wordsPerNovel) novels' worth"
+            return "about \(words / wordsPerNovel) novels’ worth"
         }
         return highestPhrase(for: words, in: wordTiers)
     }

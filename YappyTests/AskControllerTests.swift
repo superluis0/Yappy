@@ -346,7 +346,7 @@ final class AskControllerTests: XCTestCase {
         XCTAssertEqual(controller.codexHealth, .authExpired)
         XCTAssertEqual(
             controller.run?.result,
-            "Codex session expired — run `codex` in Terminal, then try again."
+            "Codex session expired — run `codex login` in Terminal, then try again."
         )
     }
 
@@ -420,7 +420,10 @@ final class AskControllerTests: XCTestCase {
         await pushCodex(codex, event: .commandStarted(command: "rm -rf /"))
 
         await yieldUntil { controller.run?.status == .failed }
-        XCTAssertEqual(controller.run?.result, "Ask tried to use a blocked tool and was stopped.")
+        XCTAssertEqual(
+            controller.run?.result,
+            "Answers couldn’t complete this request because it requires an action that isn’t allowed. Try asking another way."
+        )
         XCTAssertEqual(codex.interruptCalls.count, 1)
         XCTAssertEqual(codex.interruptCalls[0].threadID, "t1")
         XCTAssertEqual(codex.interruptCalls[0].turnID, "turn1")
@@ -1037,7 +1040,10 @@ final class AskControllerTests: XCTestCase {
         await pushGrok(grok, event: .toolStarted(title: "Bash"))
 
         await yieldUntil { controller.run?.status == .failed }
-        XCTAssertEqual(controller.run?.result, "Ask tried to use a blocked tool and was stopped.")
+        XCTAssertEqual(
+            controller.run?.result,
+            "Answers couldn’t complete this request because it requires an action that isn’t allowed. Try asking another way."
+        )
         XCTAssertEqual(grok.cancelCount, 1)
     }
 
@@ -1154,7 +1160,7 @@ final class AskControllerTests: XCTestCase {
 
         controller.showSpeakFailureCaption()
 
-        XCTAssertEqual(controller.transientCaption, "Couldn't speak — check voice setup in Settings")
+        XCTAssertEqual(controller.transientCaption, "Couldn’t speak — check voice setup in Settings")
     }
 
     func testSpeakFailureCaptionExpiresAfterDuration() async {
@@ -1926,7 +1932,7 @@ final class AskControllerTests: XCTestCase {
         controller.speakCurrentAnswer()
 
         XCTAssertTrue(spoken.isEmpty, "a non-English answer must not be synthesized")
-        XCTAssertEqual(controller.transientCaption, "Answer isn't in English — reading skipped")
+        XCTAssertEqual(controller.transientCaption, "Answer isn’t in English — reading skipped")
     }
 
     func testAutoSpeakFullAnswerPathSkipsNonEnglishAnswerAndShowsCaption() async {
@@ -1953,7 +1959,7 @@ final class AskControllerTests: XCTestCase {
 
         XCTAssertEqual(streamed, 0)
         XCTAssertTrue(spoken.isEmpty, "a non-English answer must not auto-speak")
-        XCTAssertEqual(controller.transientCaption, "Answer isn't in English — reading skipped")
+        XCTAssertEqual(controller.transientCaption, "Answer isn’t in English — reading skipped")
     }
 
     func testGrokAutoSpeakSkipsStreamingForNonEnglishAnswerAndShowsCaption() async {
@@ -1978,7 +1984,7 @@ final class AskControllerTests: XCTestCase {
 
         XCTAssertEqual(streamed, 0, "a non-English run must never start streaming speech")
         XCTAssertTrue(fullSpoken.isEmpty)
-        XCTAssertEqual(controller.transientCaption, "Answer isn't in English — reading skipped")
+        XCTAssertEqual(controller.transientCaption, "Answer isn’t in English — reading skipped")
     }
 
     func testAutoSpeakStillFiresForEnglishAnswerWithLanguageGateInPlace() async {

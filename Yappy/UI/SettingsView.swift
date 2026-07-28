@@ -25,6 +25,14 @@ struct SettingsView: View {
     /// group's "See every phrase" link jump to the Commands tab.
     @ObservedObject var windowState: MainWindowState
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// Nil under Reduce Motion, so conditional row groups appear instantly
+    /// instead of sliding the page.
+    private func motion(_ animation: Animation) -> Animation? {
+        reduceMotion ? nil : animation
+    }
+
     @State private var microphoneGranted = AudioRecorder.hasPermission
     @State private var accessibilityGranted = AXIsProcessTrusted()
     /// Whether the collapsed "Voice commands & formatting" group is expanded.
@@ -58,7 +66,7 @@ struct SettingsView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 26) {
+            VStack(alignment: .leading, spacing: Design.Space.sectionGap) {
                 header
                 dictationSection
                 aiCleanupSection
@@ -68,11 +76,7 @@ struct SettingsView: View {
                 permissionsSection
                 askSection
             }
-            .frame(maxWidth: 640, alignment: .leading)
-            .frame(maxWidth: .infinity, alignment: .center)
-            .padding(.horizontal, 30)
-            .padding(.top, 26)
-            .padding(.bottom, 46)
+            .pageShell()
         }
         .scrollContentBackground(.hidden)
         .background(Color.clear)
@@ -140,9 +144,10 @@ struct SettingsView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text("Settings").font(.system(size: 24, weight: .bold)).foregroundStyle(Brand.ink)
+            Text("Settings").font(.system(size: Design.TypeScale.screenTitle, weight: .bold))
+                .foregroundStyle(Brand.ink)
             Text("Tune how Yappy listens, formats, and writes — all on device.")
-                .font(.system(size: 13.5)).foregroundStyle(Brand.ink3)
+                .font(.system(size: Design.TypeScale.screenSubtitle)).foregroundStyle(Brand.ink3)
         }
     }
 
@@ -213,20 +218,20 @@ struct SettingsView: View {
                     }
                 }
             } label: {
-                HStack(spacing: 13) {
-                    RoundedRectangle(cornerRadius: 9, style: .continuous)
-                        .fill(Color.white.opacity(0.06))
-                        .frame(width: 34, height: 34)
+                HStack(spacing: Design.Space.rowGap) {
+                    RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
+                        .fill(Design.Surface.raised)
+                        .frame(width: Design.Space.chipSize, height: Design.Space.chipSize)
                         .overlay(Image(systemName: "gearshape.2").font(.system(size: 15, weight: .medium))
                             .foregroundStyle(Brand.ink3))
-                        .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous)
-                            .strokeBorder(Color.white.opacity(0.06)))
+                        .overlay(RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
+                            .strokeBorder(Design.Surface.stroke))
                     Text("Voice commands & formatting")
-                        .font(.system(size: 14, weight: .medium)).foregroundStyle(Brand.ink)
+                        .font(.system(size: Design.TypeScale.rowTitle, weight: .medium)).foregroundStyle(Brand.ink)
                     Spacer(minLength: 0)
                 }
             }
-            .padding(.horizontal, 16).padding(.vertical, 12)
+            .padding(.horizontal, Design.Space.rowHorizontal).padding(.vertical, Design.Space.rowVertical)
             .tint(Brand.ink3)
             SettingToggle(icon: "wand.and.stars", title: "Voice Edit (experimental)",
                           subtitle: settings.hotkeyOption == .rightOptionHold
@@ -239,19 +244,19 @@ struct SettingsView: View {
     private var aiCleanupSection: some View {
         SettingsSection(icon: "sparkles", title: "AI cleanup") {
             SettingToggle(icon: "wand.and.stars", title: "Clean up transcripts",
-                          subtitle: "On-device polish for punctuation, casing, and phrasing. Runs with Apple Intelligence (macOS 26+); inserts the raw transcript if it isn’t available.",
+                          subtitle: "On-device cleanup for punctuation, casing, and phrasing. Runs with Apple Intelligence (macOS 26+); inserts the raw transcript if it isn’t available.",
                           isOn: $settings.cleanupEnabled)
             if settings.cleanupEnabled {
                 NestedSettingGroup {
                     SettingRow(icon: "slider.horizontal.3", title: "How much cleanup",
-                               subtitle: "Standard polishes lightly. Conservative only fixes punctuation, capitalization, and standalone fillers — no rewording.") {
+                               subtitle: "Standard makes light edits. Conservative only fixes punctuation, capitalization, and standalone fillers — no rewording.") {
                         Picker("", selection: $settings.cleanupIntensity) {
                             ForEach(CleanupIntensity.allCases) { Text($0.displayName).tag($0) }
                         }
                         .labelsHidden().fixedSize()
                     }
-                    SettingToggle(icon: "text.magnifyingglass", title: "Show polish caption",
-                                  subtitle: "After insert, briefly offer “use your exact words” when cleanup changed the text.",
+                    SettingToggle(icon: "text.magnifyingglass", title: "Show cleanup caption",
+                                  subtitle: "After insert, briefly name what cleanup changed — one click restores your exact words.",
                                   isOn: $settings.cleanupDiffCaptionEnabled)
                     SettingToggle(icon: "arrow.triangle.2.circlepath", title: "Adapt tone to the app",
                                   subtitle: "Match register to where you’re typing. Formal expands contractions and ends sentences with punctuation; Casual drops the trailing period on short messages; Verbatim skips cleanup.",
@@ -278,6 +283,11 @@ struct SettingsView: View {
                           subtitle: "High-confidence “scratch that” fixes become aliases immediately (click the pill to undo). Low-confidence ones stay as Dictionary suggestions.",
                           isOn: $settings.dictionaryAutoLearnEnabled)
         }
+        // A5: nested groups below these switches appear/disappear with them.
+        // Only the transition is animated — the toggles still write straight
+        // to `settings`.
+        .animation(motion(.easeOut(duration: 0.24)), value: settings.cleanupEnabled)
+        .animation(motion(.easeOut(duration: 0.24)), value: settings.contextAwareToneEnabled)
     }
 
     private var generalSection: some View {
@@ -297,8 +307,9 @@ struct SettingsView: View {
                 }
             }
             ModelStatusRow(settings: settings, transcriptionService: transcriptionService)
-                .padding(.horizontal, 16).padding(.vertical, 12)
         }
+        // A5: the Nemotron hint row appears with the model picker.
+        .animation(motion(.easeOut(duration: 0.24)), value: settings.transcriptionModel)
     }
 
     /// Ask (hold-Fn voice questions) — experimental, OFF by default. The only
@@ -403,6 +414,14 @@ struct SettingsView: View {
                 }
             }
         }
+        // A5: every nested Answers group is revealed by a switch or a picker
+        // above it — animate the reveal so the page doesn't jump.
+        .animation(motion(.easeOut(duration: 0.24)), value: settings.askEnabled)
+        .animation(motion(.easeOut(duration: 0.24)), value: settings.answersSpeakEnabled)
+        .animation(motion(.easeOut(duration: 0.24)), value: settings.askBackend)
+        .animation(motion(.easeOut(duration: 0.24)), value: settings.askHotkeyOption)
+        .animation(motion(.easeOut(duration: 0.24)), value: askCodexReadiness)
+        .animation(motion(.easeOut(duration: 0.24)), value: askGrokReadiness)
         // If only one backend is connected, quietly make it the active one so
         // enabling never selects a dead backend.
         .onChange(of: settings.askEnabled) { _, enabled in
@@ -471,7 +490,7 @@ struct SettingsView: View {
                 return (
                     Color.accentColor,
                     "\(effective == .codex ? "Codex" : "Grok") session expired",
-                    "Signed in session expired — run `\(effective.rawValue)` in Terminal to re-login."
+                    "Signed in session expired — run `\(effective.loginCommand)` in Terminal to re-login."
                 )
             }
             if askAnyBackendReady {
@@ -522,7 +541,7 @@ struct SettingsView: View {
 
         return SettingRow(icon: "circle.fill", title: title, subtitle: subtitle, iconColor: color) {
             if effectiveReadiness == .authExpired {
-                let command = effective.rawValue
+                let command = effective.loginCommand
                 Button(copiedLoginCommand ? "Copied" : "Copy “\(command)”") {
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(command, forType: .string)
@@ -574,7 +593,7 @@ struct SettingsView: View {
             }
         } label: {
             Image(systemName: isPreviewing ? "stop.fill" : "play.fill")
-                .font(.system(size: 10, weight: .semibold))
+                .font(.system(size: Design.TypeScale.micro, weight: .semibold))
                 .foregroundStyle(Color.accentColor)
                 .frame(width: 26, height: 26)
                 .background(Circle().fill(Color.accentColor.opacity(0.14)))
@@ -643,15 +662,15 @@ struct SettingsView: View {
             }
             if let historyStore {
                 SettingRow(icon: "trash", title: "Clear history now",
-                           subtitle: "Permanently deletes every stored dictation. This can’t be undone.",
+                           subtitle: "Permanently deletes every stored dictation. This can’t be undone. Your lifetime stats and activity heatmap are kept — they’re counts, not words.",
                            iconColor: Brand.danger) {
                     Button("Clear history") { confirmClearHistory = true }
                         .confirmationDialog(
-                            "Delete all \(historyStore.entries.count) dictations? This can't be undone.",
+                            "Delete all \(historyStore.entries.count) dictations? This can’t be undone.",
                             isPresented: $confirmClearHistory,
                             titleVisibility: .visible
                         ) {
-                            Button("Delete All", role: .destructive) {
+                            Button("Delete all", role: .destructive) {
                                 historyStore.clearAll()
                                 // Re-measure: the storage rows below would
                                 // otherwise keep showing the deleted history's
@@ -681,7 +700,7 @@ struct SettingsView: View {
                         isPresented: $confirmClearAnswersRuntime,
                         titleVisibility: .visible
                     ) {
-                        Button("Clear Runtime Data", role: .destructive) {
+                        Button("Clear runtime data", role: .destructive) {
                             askController.clearRuntimeAndHistory()
                             Task { await refreshStorageInventory() }
                         }
@@ -717,7 +736,7 @@ struct SettingsView: View {
         ) {
             if let total = storageTotalBytes {
                 Text(StorageInventory.formatted(total))
-                    .font(.system(size: 13))
+                    .font(.system(size: Design.TypeScale.rowSubtitle))
                     .foregroundStyle(Brand.ink3)
                     .monospacedDigit()
             } else {
@@ -754,7 +773,7 @@ struct SettingsView: View {
             iconColor: isPlaceholder ? Brand.ink4 : nil
         ) {
             Text(sizeText)
-                .font(.system(size: 13))
+                .font(.system(size: Design.TypeScale.rowSubtitle))
                 .foregroundStyle(sizeColor)
                 .monospacedDigit()
                 .opacity(isPlaceholder ? 0.55 : 1)
@@ -779,7 +798,7 @@ struct SettingsView: View {
         SettingsSection(icon: "arrow.down.circle", title: "Software update") {
             SettingRow(icon: "number.circle", title: "Current version") {
                 Text(updateChecker.currentVersionDisplay)
-                    .font(.system(size: 13)).foregroundStyle(Brand.ink3)
+                    .font(.system(size: Design.TypeScale.rowSubtitle)).foregroundStyle(Brand.ink3)
             }
             SettingRow(icon: "sparkles", title: "What’s new",
                        subtitle: "See the release notes for this version.") {
@@ -792,10 +811,12 @@ struct SettingsView: View {
                 HStack(spacing: 10) {
                     if let release = updateChecker.available {
                         Label("v\(release.version) ready", systemImage: "arrow.down.circle.fill")
-                            .font(.system(size: 12, weight: .medium)).foregroundStyle(Color.accentColor)
+                            .font(.system(size: Design.TypeScale.rowSubtitle, weight: .medium))
+                            .foregroundStyle(Color.accentColor)
                     } else if case .upToDate = updateChecker.lastCheckResult, !updateChecker.isChecking {
-                        Text("You're on the latest version")
-                            .font(.system(size: 12))
+                        // Merge: C's curly apostrophe + A's type token.
+                        Text("You’re on the latest version")
+                            .font(.system(size: Design.TypeScale.rowSubtitle))
                             .foregroundStyle(Brand.ink3)
                     }
                     Button {
@@ -882,29 +903,35 @@ private struct SettingsSection<Content: View>: View {
                 }
             } label: {
                 HStack(spacing: 9) {
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
                         .fill(Color.accentColor.opacity(0.18))
                         .frame(width: 23, height: 23)
-                        .overlay(Image(systemName: icon).font(.system(size: 12, weight: .semibold))
+                        .overlay(Image(systemName: icon)
+                            .font(.system(size: Design.TypeScale.rowSubtitle, weight: .semibold))
                             .foregroundStyle(Color.accentColor))
-                    Text(title).font(.system(size: 13, weight: .semibold)).foregroundStyle(Brand.ink2)
+                    Text(title).font(.system(size: Design.TypeScale.sectionTitle, weight: .semibold))
+                        .foregroundStyle(Brand.ink2)
                     Spacer()
                     Image(systemName: "chevron.down")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.system(size: Design.TypeScale.caption, weight: .semibold))
                         .foregroundStyle(Brand.ink4)
                         .rotationEffect(.degrees(expanded ? 0 : -90))
                 }
-                .padding(.horizontal, 4).padding(.bottom, 11)
+                .padding(.horizontal, Design.Space.sectionHeaderInset)
+                .padding(.vertical, 3)
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            // The header is a control, so it gets a hover + pressed state
+            // instead of reading as static text.
+            .buttonStyle(.hoverSurface(cornerRadius: Design.Radius.control))
+            .padding(.bottom, Design.Space.sectionHeaderGap - 3)
             .accessibilityLabel(title)
             .accessibilityHint(expanded ? "Expanded. Activate to collapse." : "Collapsed. Activate to expand.")
             .accessibilityAddTraits(expanded ? [.isSelected] : [])
 
             if expanded {
                 VStack(spacing: 0) { content() }
-                    .glassPanel(cornerRadius: 16)
+                    .glassPanel(cornerRadius: Design.Radius.card)
             }
         }
     }
@@ -912,7 +939,10 @@ private struct SettingsSection<Content: View>: View {
 
 /// One setting: an icon chip, a title with optional inline description, and a
 /// trailing control. The chip tints to the accent when the setting is `active`.
-private struct SettingRow<Trailing: View>: View {
+///
+/// Internal rather than file-private so `ModelStatusRow` — which renders inside a
+/// Settings card — is literally the same row instead of a lookalike.
+struct SettingRow<Trailing: View>: View {
     let icon: String
     let title: String
     var subtitle: String?
@@ -924,25 +954,26 @@ private struct SettingRow<Trailing: View>: View {
     private var chip: Color { iconColor ?? Color.accentColor }
 
     var body: some View {
-        HStack(spacing: 13) {
-            RoundedRectangle(cornerRadius: 9, style: .continuous)
-                .fill(highlighted ? chip.opacity(0.18) : Color.white.opacity(0.06))
-                .frame(width: 34, height: 34)
+        HStack(spacing: Design.Space.rowGap) {
+            RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
+                .fill(highlighted ? chip.opacity(0.18) : Design.Surface.raised)
+                .frame(width: Design.Space.chipSize, height: Design.Space.chipSize)
                 .overlay(Image(systemName: icon).font(.system(size: 15, weight: .medium))
                     .foregroundStyle(highlighted ? chip : Brand.ink3))
-                .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .strokeBorder(highlighted ? chip.opacity(0.25) : Color.white.opacity(0.06)))
+                .overlay(RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
+                    .strokeBorder(highlighted ? chip.opacity(0.25) : Design.Surface.stroke))
             VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.system(size: 14, weight: .medium)).foregroundStyle(Brand.ink)
+                Text(title).font(.system(size: Design.TypeScale.rowTitle, weight: .medium))
+                    .foregroundStyle(Brand.ink)
                 if let subtitle {
-                    Text(subtitle).font(.system(size: 12)).foregroundStyle(Brand.ink4)
+                    Text(subtitle).font(.system(size: Design.TypeScale.rowSubtitle)).foregroundStyle(Brand.ink4)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
             Spacer(minLength: 12)
             trailing()
         }
-        .padding(.horizontal, 16).padding(.vertical, 12)
+        .padding(.horizontal, Design.Space.rowHorizontal).padding(.vertical, Design.Space.rowVertical)
     }
 }
 
@@ -964,14 +995,8 @@ private struct SettingToggle: View {
     }
 }
 
-/// Hairline between rows, inset to start under the row's text (past the icon chip).
-private struct RowDivider: View {
-    var body: some View {
-        Rectangle().fill(Color.white.opacity(0.07)).frame(height: 1).padding(.leading, 63)
-    }
-}
 /// Indented container for dependent settings, with a left accent rail.
-/// Rows inside separate by their own padding; no RowDividers.
+/// Rows inside separate by their own padding; no dividers.
 private struct NestedSettingGroup<Content: View>: View {
     var nested: Bool = false
     @ViewBuilder var content: () -> Content
@@ -982,7 +1007,7 @@ private struct NestedSettingGroup<Content: View>: View {
         // not accent, so nested groups don't pile more orange onto the page.
         HStack(alignment: .top, spacing: 10) {
             RoundedRectangle(cornerRadius: 1, style: .continuous)
-                .fill(Color.white.opacity(0.11))
+                .fill(Design.Surface.strokeEmphasis)
                 .frame(width: 2)
                 .padding(.vertical, 6)
             VStack(alignment: .leading, spacing: 0) {
@@ -991,55 +1016,5 @@ private struct NestedSettingGroup<Content: View>: View {
         }
         .padding(.leading, nested ? 14 : 20)
         .padding(.vertical, 2)
-    }
-}
-
-/// A compact toggle chip for boolean settings in a chip row.
-private struct SettingChip: View {
-    let title: String
-    @Binding var isOn: Bool
-
-    var body: some View {
-        Button {
-            isOn.toggle()
-        } label: {
-            HStack(spacing: 6) {
-                Circle()
-                    .fill(isOn ? Color.accentColor : Color.white.opacity(0.2))
-                    .frame(width: 7, height: 7)
-                Text(title)
-                    .font(.system(size: 11.5, weight: .medium))
-                    .foregroundStyle(isOn ? Brand.ink2 : Brand.ink4)
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
-            .background(Color.white.opacity(0.07))
-            .cornerRadius(8)
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(title)
-        .accessibilityAddTraits(isOn ? [.isSelected] : [])
-    }
-}
-
-/// A wrapping row of SettingChips.
-private struct SettingChipRow: View {
-    let chips: [SettingChip]
-
-    init(_ chips: SettingChip...) {
-        self.chips = chips
-    }
-
-    var body: some View {
-        HStack(spacing: 7) {
-            ForEach(chips.indices, id: \.self) { i in
-                chips[i]
-                if i < chips.count - 1 {
-                    Spacer(minLength: 0)
-                }
-            }
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 9)
     }
 }

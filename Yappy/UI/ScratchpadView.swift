@@ -37,7 +37,7 @@ struct ScratchpadView: View {
     private var sidebar: some View {
         VStack(spacing: 0) {
             HStack {
-                Text("Notes").font(.headline)
+                Text("Scratchpad").font(.headline)
                 Spacer()
                 Button {
                     let note = store.create()

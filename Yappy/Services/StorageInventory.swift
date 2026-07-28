@@ -55,6 +55,12 @@ enum StorageInventory {
                 url: yappySupport.appendingPathComponent("history.stats.json")
             ),
             StorageLocation(
+                id: "dictation-heatmap",
+                title: "Activity heatmap",
+                detail: "Lifetime day-and-hour dictation counts — no words, no audio. Survives Clear History.",
+                url: yappySupport.appendingPathComponent("history.heatmap.json")
+            ),
+            StorageLocation(
                 id: "answer-history",
                 title: "Answer history",
                 detail: "Questions and completed Answers kept when answer history is enabled.",

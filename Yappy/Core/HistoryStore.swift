@@ -62,6 +62,17 @@ final class HistoryStore: ObservableObject {
     private(set) var totalWords = 0
     private(set) var totalDurationSeconds: Double = 0
 
+    /// Lifetime weekday×hour activity tally — the heatmap's data. Same
+    /// contract as the counters above: accumulates in `add` and survives
+    /// Clear All / deletes / pruning (its own sidecar, "history.heatmap.json").
+    /// Clearing history removes the words; it must never erase WHEN you dictate.
+    private(set) var heatmapTally = HeatmapTally()
+
+    /// Whether the lifetime tally has anything to draw — the heatmap card's
+    /// visibility gate (deliberately NOT entries-based, or Clear All would
+    /// hide the card it just failed to erase).
+    var hasHeatmapActivity: Bool { !heatmapTally.isEmpty }
+
     private struct LifetimeStats: Codable {
         var words: Int
         var durationSeconds: Double
@@ -87,6 +98,9 @@ final class HistoryStore: ObservableObject {
     /// "history.json"), so clearing the entries file can never take the
     /// lifetime stats with it.
     private let statsFileURL: URL
+    /// Sidecar for the lifetime heatmap tally ("history.heatmap.json"), for
+    /// the same reason.
+    private let heatmapFileURL: URL
     private let ioQueue = DispatchQueue(label: "com.yappy.historystore", qos: .utility)
     private var derivedRecomputeScheduled = false
     private static let encoder = JSONEncoder()
@@ -110,8 +124,12 @@ final class HistoryStore: ObservableObject {
         self.statsFileURL = self.fileURL
             .deletingPathExtension()
             .appendingPathExtension("stats.json")
+        self.heatmapFileURL = self.fileURL
+            .deletingPathExtension()
+            .appendingPathExtension("heatmap.json")
         loadFromDisk()
         loadLifetimeStats()
+        loadHeatmapTally()
         recomputeDerived()
     }
 
@@ -128,6 +146,8 @@ final class HistoryStore: ObservableObject {
         totalWords += entry.wordCount
         totalDurationSeconds += entry.durationSeconds
         persistLifetimeStats()
+        heatmapTally.record(date: entry.date, wordCount: entry.wordCount)
+        persistHeatmapTally()
         scheduleRecomputeDerived()
         persist()
     }
@@ -142,7 +162,8 @@ final class HistoryStore: ObservableObject {
     }
 
     /// Clears the conversation list only. Lifetime stats (words dictated, time
-    /// saved) are untouched — that's the point of the sidecar.
+    /// saved) AND the activity heatmap are untouched — that's the point of the
+    /// sidecars. Clearing removes your words, never the record of use.
     func clearAll() {
         entries.removeAll()
         recomputeDerived()
@@ -154,7 +175,9 @@ final class HistoryStore: ObservableObject {
     /// persist independently, so pruning or clearing entries can't shrink them.
     private func recomputeDerived() {
         cachedTopApps = Self.computeTopApps(entries)
-        cachedHeatmapRows = HeatmapModel.hourlyRows(entries: entries)
+        // The heatmap renders the LIFETIME tally, not the (clearable) entries —
+        // this is what makes Clear All keep the activity picture.
+        cachedHeatmapRows = HeatmapModel.rows(tally: heatmapTally)
         cachedPersonalRecords = PersonalRecords.compute(from: entries)
     }
 
@@ -350,6 +373,37 @@ final class HistoryStore: ObservableObject {
                 try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
             } catch {
                 VLog.store("failed to write lifetime stats: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    /// Loads the lifetime heatmap tally, seeding it for pre-sidecar installs
+    /// from whatever entries survive on disk — an existing user's picture
+    /// carries over exactly. (Cells the tally already has always win over a
+    /// re-seed: the entries file only shrinks, the tally never does.)
+    private func loadHeatmapTally() {
+        if let data = try? Data(contentsOf: heatmapFileURL),
+           let loaded = try? Self.decoder.decode(HeatmapTally.self, from: data) {
+            heatmapTally = loaded.normalized()
+            return
+        }
+        heatmapTally = HeatmapTally.seeded(from: entries)
+        // Write the seed back so the migration happens exactly once.
+        if !heatmapTally.isEmpty { persistHeatmapTally() }
+    }
+
+    private func persistHeatmapTally() {
+        let snapshot = heatmapTally
+        let url = heatmapFileURL
+        ioQueue.async {
+            do {
+                let data = try Self.encoder.encode(snapshot)
+                try data.write(to: url, options: .atomic)
+                // Counts only — no transcript content — but keep the family of
+                // history files uniformly owner-only.
+                try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+            } catch {
+                VLog.store("failed to write heatmap tally: \(error.localizedDescription)")
             }
         }
     }

@@ -17,6 +17,16 @@ enum HotkeyOption: String, CaseIterable, Codable {
     var displayName: String {
         return self.rawValue
     }
+
+    /// Compact name used in inline instructions.
+    var userFacingHint: String {
+        switch self {
+        case .rightCommandHold: return "Right ⌘"
+        case .rightCommandDoubleTap: return "Right ⌘ (double-tap)"
+        case .rightOptionHold: return "Right ⌥"
+        case .rightControlHold: return "Right ⌃"
+        }
+    }
 }
 
 /// Whether the chosen dictation key (`HotkeyOption`) must be HELD for the
@@ -30,8 +40,8 @@ enum HotkeyActivation: String, CaseIterable, Codable {
     /// Display name for UI presentation.
     var displayName: String {
         switch self {
-        case .holdToTalk: return "Hold to Talk"
-        case .doubleTapLock: return "Double-Tap Lock"
+        case .holdToTalk: return "Hold to talk"
+        case .doubleTapLock: return "Double-tap lock"
         }
     }
 
@@ -59,6 +69,14 @@ enum TranscriptionModel: String, CaseIterable, Codable {
         switch self {
         case .parakeet: return "Parakeet (English)"
         case .nemotron: return "Nemotron (Multilingual)"
+        }
+    }
+
+    /// Approximate one-time download size shown before the active model is ready.
+    var downloadSizeDescription: String {
+        switch self {
+        case .parakeet: return "443 MB"
+        case .nemotron: return "670 MB"
         }
     }
 }

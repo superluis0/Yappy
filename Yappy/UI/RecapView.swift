@@ -17,7 +17,7 @@ struct RecapView: View {
             ScrollView { card.padding(28) }
             Divider()
             HStack {
-                Button("Save Image…", action: exportImage)
+                Button("Save image…", action: exportImage)
                 Spacer()
                 Button("Done") { dismiss() }.keyboardShortcut(.defaultAction)
             }
@@ -32,7 +32,7 @@ struct RecapView: View {
         let recap = Recap(history: history)
         return VStack(alignment: .leading, spacing: 22) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Your Year in Voice")
+                Text("Your year in voice")
                     .font(.system(size: 28, weight: .bold, design: .rounded))
                 Text("The last 12 months, entirely on your Mac.")
                     .font(.callout).foregroundStyle(.secondary)

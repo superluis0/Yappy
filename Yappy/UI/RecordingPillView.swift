@@ -244,7 +244,9 @@ struct RecordingPillView: View {
         HStack(spacing: 7) {
             processingDots
             if appState.isPolishing {
-                Text("Polishing")
+                // Progressive verb, matching the old "Polishing" grammar — the
+                // pill narrates what is HAPPENING, not the feature's name.
+                Text("Cleaning up")
                     .font(.system(size: 10.5, weight: .medium))
                     .foregroundStyle(accent.opacity(0.9))
                     .fixedSize()

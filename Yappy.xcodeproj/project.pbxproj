@@ -22,6 +22,7 @@
 		B100005100000000000000A1 /* SpokenListFormatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200005100000000000000A1 /* SpokenListFormatter.swift */; };
 		B100000100000000000000A1 /* YappyApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200000100000000000000A1 /* YappyApp.swift */; };
 		B100000200000000000000A1 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200000200000000000000A1 /* AppDelegate.swift */; };
+		B10000C100000000000000A1 /* AppDelegate+MenuBarIcon.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000C100000000000000A1 /* AppDelegate+MenuBarIcon.swift */; };
 		B100000300000000000000A1 /* AudioRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200000300000000000000A1 /* AudioRecorder.swift */; };
 		B100000400000000000000A1 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200000400000000000000A1 /* AppState.swift */; };
 		B10000AE00000000000000A1 /* AskSources.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000AE00000000000000A1 /* AskSources.swift */; };
@@ -44,6 +45,7 @@
 		B100009B00000000000000A1 /* AskHotkeyStateMachine.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200009B00000000000000A1 /* AskHotkeyStateMachine.swift */; };
 		B100000500000000000000A1 /* Settings.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200000500000000000000A1 /* Settings.swift */; };
 		B100000600000000000000A1 /* Constants.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200000600000000000000A1 /* Constants.swift */; };
+		B10000C000000000000000A1 /* DesignTokens.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000C000000000000000A1 /* DesignTokens.swift */; };
 		B10000AO00000000000000A1 /* SharedUtilities.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000AO00000000000000A1 /* SharedUtilities.swift */; };
 		B10000AN00000000000000A1 /* ProcessLineReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000AN00000000000000A1 /* ProcessLineReader.swift */; };
 		B100000700000000000000A1 /* HistoryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200000700000000000000A1 /* HistoryStore.swift */; };
@@ -108,11 +110,13 @@
 		B100002A00000000000000A1 /* DictionaryStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200002A00000000000000A1 /* DictionaryStoreTests.swift */; };
 		B100002B00000000000000A1 /* WaveformBarsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200002B00000000000000A1 /* WaveformBarsView.swift */; };
 		B100002C00000000000000A1 /* EscapeInterceptor.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200002C00000000000000A1 /* EscapeInterceptor.swift */; };
+		EE00000100000000000000A1 /* CardShortcutInterceptor.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE00000200000000000000A1 /* CardShortcutInterceptor.swift */; };
 		B100002D00000000000000A1 /* HeatmapModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200002D00000000000000A1 /* HeatmapModel.swift */; };
 		B100002E00000000000000A1 /* HeatmapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200002E00000000000000A1 /* HeatmapView.swift */; };
 		B100002F00000000000000A1 /* IconCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200002F00000000000000A1 /* IconCache.swift */; };
 		B100003000000000000000A1 /* SoundPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200003000000000000000A1 /* SoundPlayer.swift */; };
 		B100003100000000000000A1 /* HeatmapModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200003100000000000000A1 /* HeatmapModelTests.swift */; };
+		EE00000300000000000000A1 /* CardShortcutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE00000400000000000000A1 /* CardShortcutTests.swift */; };
 		B100003500000000000000A1 /* SpeechDetectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200003500000000000000A1 /* SpeechDetectionTests.swift */; };
 		B100003700000000000000A1 /* SpokenNumberFormatterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200003700000000000000A1 /* SpokenNumberFormatterTests.swift */; };
 		B100003200000000000000A1 /* record-start.wav in Resources */ = {isa = PBXBuildFile; fileRef = B200003200000000000000A1 /* record-start.wav */; };
@@ -184,6 +188,7 @@
 		B200005100000000000000A1 /* SpokenListFormatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpokenListFormatter.swift; sourceTree = "<group>"; };
 		B200000100000000000000A1 /* YappyApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YappyApp.swift; sourceTree = "<group>"; };
 		B200000200000000000000A1 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		B20000C100000000000000A1 /* AppDelegate+MenuBarIcon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppDelegate+MenuBarIcon.swift"; sourceTree = "<group>"; };
 		B200000300000000000000A1 /* AudioRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioRecorder.swift; sourceTree = "<group>"; };
 		B200000400000000000000A1 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
 		B20000AE00000000000000A1 /* AskSources.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AskSources.swift; sourceTree = "<group>"; };
@@ -206,6 +211,7 @@
 		B200009B00000000000000A1 /* AskHotkeyStateMachine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AskHotkeyStateMachine.swift; sourceTree = "<group>"; };
 		B200000500000000000000A1 /* Settings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Settings.swift; sourceTree = "<group>"; };
 		B200000600000000000000A1 /* Constants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Constants.swift; sourceTree = "<group>"; };
+		B20000C000000000000000A1 /* DesignTokens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesignTokens.swift; sourceTree = "<group>"; };
 		B20000AO00000000000000A1 /* SharedUtilities.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedUtilities.swift; sourceTree = "<group>"; };
 		B20000AN00000000000000A1 /* ProcessLineReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcessLineReader.swift; sourceTree = "<group>"; };
 		B200000700000000000000A1 /* HistoryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryStore.swift; sourceTree = "<group>"; };
@@ -270,11 +276,13 @@
 		B200002A00000000000000A1 /* DictionaryStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictionaryStoreTests.swift; sourceTree = "<group>"; };
 		B200002B00000000000000A1 /* WaveformBarsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WaveformBarsView.swift; sourceTree = "<group>"; };
 		B200002C00000000000000A1 /* EscapeInterceptor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EscapeInterceptor.swift; sourceTree = "<group>"; };
+		EE00000200000000000000A1 /* CardShortcutInterceptor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CardShortcutInterceptor.swift; sourceTree = "<group>"; };
 		B200002D00000000000000A1 /* HeatmapModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeatmapModel.swift; sourceTree = "<group>"; };
 		B200002E00000000000000A1 /* HeatmapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeatmapView.swift; sourceTree = "<group>"; };
 		B200002F00000000000000A1 /* IconCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IconCache.swift; sourceTree = "<group>"; };
 		B200003000000000000000A1 /* SoundPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SoundPlayer.swift; sourceTree = "<group>"; };
 		B200003100000000000000A1 /* HeatmapModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeatmapModelTests.swift; sourceTree = "<group>"; };
+		EE00000400000000000000A1 /* CardShortcutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CardShortcutTests.swift; sourceTree = "<group>"; };
 		B200003500000000000000A1 /* SpeechDetectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechDetectionTests.swift; sourceTree = "<group>"; };
 		B200003700000000000000A1 /* SpokenNumberFormatterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpokenNumberFormatterTests.swift; sourceTree = "<group>"; };
 		B200003200000000000000A1 /* record-start.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = "record-start.wav"; sourceTree = "<group>"; };
@@ -384,6 +392,7 @@
 			children = (
 				B200000100000000000000A1 /* YappyApp.swift */,
 				B200000200000000000000A1 /* AppDelegate.swift */,
+				B20000C100000000000000A1 /* AppDelegate+MenuBarIcon.swift */,
 				B200000300000000000000A1 /* AudioRecorder.swift */,
 			);
 			path = App;
@@ -409,6 +418,7 @@
 				B200009B00000000000000A1 /* AskHotkeyStateMachine.swift */,
 				B200000500000000000000A1 /* Settings.swift */,
 				B200000600000000000000A1 /* Constants.swift */,
+				B20000C000000000000000A1 /* DesignTokens.swift */,
 				B20000AO00000000000000A1 /* SharedUtilities.swift */,
 				B200000700000000000000A1 /* HistoryStore.swift */,
 				B200002000000000000000A1 /* ShortcutStore.swift */,
@@ -461,6 +471,7 @@
 				B200004E00000000000000A1 /* DictionaryReplacer.swift */,
 				B200003B00000000000000A1 /* TranscriptPipeline.swift */,
 				B200002C00000000000000A1 /* EscapeInterceptor.swift */,
+				EE00000200000000000000A1 /* CardShortcutInterceptor.swift */,
 				B200003000000000000000A1 /* SoundPlayer.swift */,
 			);
 			path = Services;
@@ -533,6 +544,7 @@
 				B200002700000000000000A1 /* ShortcutStoreTests.swift */,
 				B200002A00000000000000A1 /* DictionaryStoreTests.swift */,
 				B200003100000000000000A1 /* HeatmapModelTests.swift */,
+				EE00000400000000000000A1 /* CardShortcutTests.swift */,
 				B200003500000000000000A1 /* SpeechDetectionTests.swift */,
 				B200003700000000000000A1 /* SpokenNumberFormatterTests.swift */,
 				B200003C00000000000000A1 /* FillerWordRemoverTests.swift */,
@@ -701,6 +713,7 @@
 				B100005100000000000000A1 /* SpokenListFormatter.swift in Sources */,
 				B100000100000000000000A1 /* YappyApp.swift in Sources */,
 				B100000200000000000000A1 /* AppDelegate.swift in Sources */,
+				B10000C100000000000000A1 /* AppDelegate+MenuBarIcon.swift in Sources */,
 				B100000300000000000000A1 /* AudioRecorder.swift in Sources */,
 				B100000400000000000000A1 /* AppState.swift in Sources */,
 				B10000AE00000000000000A1 /* AskSources.swift in Sources */,
@@ -719,6 +732,7 @@
 				B100009B00000000000000A1 /* AskHotkeyStateMachine.swift in Sources */,
 				B100000500000000000000A1 /* Settings.swift in Sources */,
 				B100000600000000000000A1 /* Constants.swift in Sources */,
+				B10000C000000000000000A1 /* DesignTokens.swift in Sources */,
 				B10000AO00000000000000A1 /* SharedUtilities.swift in Sources */,
 				B10000AN00000000000000A1 /* ProcessLineReader.swift in Sources */,
 				B100000700000000000000A1 /* HistoryStore.swift in Sources */,
@@ -773,6 +787,7 @@
 				B100004700000000000000A1 /* DictionaryTrainingView.swift in Sources */,
 				B100004B00000000000000A1 /* RecapView.swift in Sources */,
 				B100002C00000000000000A1 /* EscapeInterceptor.swift in Sources */,
+				EE00000100000000000000A1 /* CardShortcutInterceptor.swift in Sources */,
 				B100002F00000000000000A1 /* IconCache.swift in Sources */,
 				B100002D00000000000000A1 /* HeatmapModel.swift in Sources */,
 				B100002E00000000000000A1 /* HeatmapView.swift in Sources */,
@@ -821,6 +836,7 @@
 				B100002700000000000000A1 /* ShortcutStoreTests.swift in Sources */,
 				B100002A00000000000000A1 /* DictionaryStoreTests.swift in Sources */,
 				B100003100000000000000A1 /* HeatmapModelTests.swift in Sources */,
+				EE00000300000000000000A1 /* CardShortcutTests.swift in Sources */,
 				B100003500000000000000A1 /* SpeechDetectionTests.swift in Sources */,
 				B100003700000000000000A1 /* SpokenNumberFormatterTests.swift in Sources */,
 				B100003C00000000000000A1 /* FillerWordRemoverTests.swift in Sources */,
@@ -1004,7 +1020,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 3.1.0;
+				MARKETING_VERSION = 3.2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.yappy.app.debug;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -1036,7 +1052,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 3.1.0;
+				MARKETING_VERSION = 3.2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.yappy.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;

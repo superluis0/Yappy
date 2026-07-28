@@ -64,6 +64,13 @@ struct AskPillView: View {
             widestBlock = 0
             copied = false
         }
+        // The card lives in a nonactivating panel that never takes focus, so
+        // VoiceOver would otherwise never learn a run had moved on.
+        .onChange(of: controller.run?.status) { _, status in
+            if let announcement = status?.accessibilityAnnouncement {
+                AppState.announceForAccessibility(announcement)
+            }
+        }
         // Status/size morph is decorative; Reduce Motion keeps instant transitions.
         .animation(reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 0.85), value: controller.run?.status)
         .animation(reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 0.85), value: controller.run?.steps.count ?? 0)
@@ -98,6 +105,8 @@ struct AskPillView: View {
                 if run.status != .failed, run.status != .cancelled {
                     ListeningGlowRing(shape: shape(for: run), style: settings.listeningGlowStyle)
                         .transition(.opacity)
+                        // Decorative halo; the status announcements carry the meaning.
+                        .accessibilityHidden(true)
                 }
             }
             .shadow(color: .black.opacity(0.45), radius: 22, y: 9)
@@ -108,7 +117,11 @@ struct AskPillView: View {
             .simultaneousGesture(TapGesture().onEnded {
                 if !isCompact(run), run.status.isTerminal { controller.pinFromCardTap() }
             })
-            .onExitCommand { controller.abort() }
+            // NO .onExitCommand here: it needs the key window's responder chain,
+            // and this panel must never become key (see the trap documented at
+            // SelectionTransformPanelController.makePanel). Escape — and every
+            // other card shortcut — arrives through CardShortcutInterceptor's
+            // CGEvent tap instead, which needs no focus at all.
             .transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .bottom)))
     }
 
@@ -220,6 +233,7 @@ struct AskPillView: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Dismiss")
+            .accessibilityHint(CardShortcut.dismiss.spokenShortcut)
         }
         .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: controller.pillPinned)
     }
@@ -326,6 +340,7 @@ struct AskPillView: View {
                 .background(Capsule().fill(Color.white.opacity(0.07)))
             }
             .buttonStyle(.plain)
+            .accessibilityHint(CardShortcut.insert.spokenShortcut)
 
             Button {
                 NSPasteboard.general.clearContents()
@@ -345,10 +360,11 @@ struct AskPillView: View {
                 .background(Capsule().fill(Color.white.opacity(0.07)))
             }
             .buttonStyle(.plain)
+            .accessibilityHint(CardShortcut.copy.spokenShortcut)
 
             speakButton()
 
-            retryButton(title: "Ask again")
+            retryButton(title: "Try again")
             Spacer(minLength: 0)
             if let latency = run.latencySeconds, let label = run.modelLabel {
                 Text(String(format: "%.1fs · %@", latency, label))
@@ -402,6 +418,7 @@ struct AskPillView: View {
                 .background(Capsule().fill(Color.white.opacity(0.07)))
             }
             .buttonStyle(.plain)
+            .accessibilityHint(CardShortcut.speak.spokenShortcut)
         }
     }
 
@@ -428,6 +445,7 @@ struct AskPillView: View {
                 .background(Capsule().fill(Color.white.opacity(0.07)))
         }
         .buttonStyle(.plain)
+        .accessibilityHint(CardShortcut.retry.spokenShortcut)
     }
 
     private func workingBlock(_ run: AskRun) -> some View {
@@ -448,6 +466,9 @@ struct AskPillView: View {
                     textPrimary: textPrimary, textSecondary: textSecondary,
                     textTertiary: textTertiary
                 )
+                // Tokens land continuously; VoiceOver should re-read rather than
+                // assume the text it cached is still current.
+                .accessibilityAddTraits(.updatesFrequently)
             }
 
             HStack(spacing: 8) {
@@ -465,6 +486,7 @@ struct AskPillView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Stop answering")
+                .accessibilityHint(CardShortcut.stop.spokenShortcut)
             }
         }
     }
@@ -660,6 +682,7 @@ struct AskAnswerContent: View {
                     }
                     Divider().overlay(Color.white.opacity(0.12))
                         .gridCellUnsizedAxes(.horizontal)
+                        .accessibilityHidden(true)
                 }
                 ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
                     GridRow {

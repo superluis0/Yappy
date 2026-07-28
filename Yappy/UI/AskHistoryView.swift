@@ -14,6 +14,7 @@ import SwiftUI
 struct AskHistoryView: View {
     @ObservedObject var store: AskHistoryStore
     @ObservedObject var controller: AskController
+    @ObservedObject var settings: Settings
 
     @State private var query = ""
     @State private var backendFilter: String?
@@ -21,7 +22,7 @@ struct AskHistoryView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: Design.Space.sectionGap) {
                 header
 
                 if store.entries.isEmpty {
@@ -38,11 +39,7 @@ struct AskHistoryView: View {
                     }
                 }
             }
-            .frame(maxWidth: 720, alignment: .leading)
-            .frame(maxWidth: .infinity, alignment: .center)
-            .padding(.horizontal, 30)
-            .padding(.top, 26)
-            .padding(.bottom, 46)
+            .pageShell()
         }
         .scrollContentBackground(.hidden)
         .background(Color.clear)
@@ -51,7 +48,7 @@ struct AskHistoryView: View {
             isPresented: $showClearAllConfirm,
             titleVisibility: .visible
         ) {
-            Button("Clear All", role: .destructive) {
+            Button("Clear all", role: .destructive) {
                 store.clear()
                 controller.clearRuntimeAndHistory()
             }
@@ -74,9 +71,10 @@ struct AskHistoryView: View {
     private var header: some View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 3) {
-                Text("Answers").font(.system(size: 24, weight: .bold)).foregroundStyle(Brand.ink)
+                Text("Answers").font(.system(size: Design.TypeScale.screenTitle, weight: .bold))
+                    .foregroundStyle(Brand.ink)
                 Text("Answers you asked by voice. Stored on this Mac only.")
-                    .font(.system(size: 13.5)).foregroundStyle(Brand.ink3)
+                    .font(.system(size: Design.TypeScale.screenSubtitle)).foregroundStyle(Brand.ink3)
             }
             Spacer(minLength: 12)
             if !store.entries.isEmpty {
@@ -94,22 +92,22 @@ struct AskHistoryView: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.system(size: Design.TypeScale.rowSubtitle, weight: .semibold))
                     .foregroundStyle(Brand.ink4)
                 TextField("Search questions and answers", text: $query)
                     .textFieldStyle(.plain)
-                    .font(.system(size: 13))
+                    .font(.system(size: Design.TypeScale.sectionTitle))
                     .foregroundStyle(Brand.ink)
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
             .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(Color.white.opacity(0.08))
+                RoundedRectangle(cornerRadius: Design.Radius.inset, style: .continuous)
+                    .fill(Design.Surface.raised)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
+                RoundedRectangle(cornerRadius: Design.Radius.inset, style: .continuous)
+                    .strokeBorder(Design.Surface.strokeEmphasis, lineWidth: 1)
             )
 
             HStack(spacing: 8) {
@@ -135,10 +133,11 @@ struct AskHistoryView: View {
                         .foregroundStyle(Color.accentColor)
                     VStack(alignment: .leading, spacing: 2) {
                         Text("No answers yet")
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(.system(size: Design.TypeScale.rowTitle, weight: .semibold))
                             .foregroundStyle(Brand.ink2)
-                        Text("Hold your Ask key and ask out loud — completed answers land here.")
-                            .font(.system(size: 12.5))
+                        // Merge: C names the actual key + A's type token.
+                        Text("Hold \(settings.askHotkeyOption.shortName) and ask out loud — completed answers land here.")
+                            .font(.system(size: Design.TypeScale.rowSubtitle))
                             .foregroundStyle(Brand.ink3)
                     }
                     Spacer(minLength: 0)
@@ -148,10 +147,10 @@ struct AskHistoryView: View {
                     ForEach(Self.exampleQuestions, id: \.self) { question in
                         HStack(spacing: 8) {
                             Image(systemName: "text.quote")
-                                .font(.system(size: 10, weight: .medium))
+                                .font(.system(size: Design.TypeScale.micro, weight: .medium))
                                 .foregroundStyle(Brand.ink4)
                             Text(question)
-                                .font(.system(size: 12))
+                                .font(.system(size: Design.TypeScale.rowSubtitle))
                                 .foregroundStyle(Brand.ink4)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
@@ -159,8 +158,8 @@ struct AskHistoryView: View {
                         .padding(.vertical, 7)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .background(
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .fill(Color.white.opacity(0.05))
+                            RoundedRectangle(cornerRadius: Design.Radius.inset, style: .continuous)
+                                .fill(Design.Surface.raised)
                         )
                     }
                 }
@@ -174,19 +173,9 @@ struct AskHistoryView: View {
         "Give me the command to rebase onto main"
     ]
 
-    private var noMatchesState: some View {
-        GlassCard {
-            HStack(spacing: 10) {
-                Image(systemName: "line.3.horizontal.decrease.circle")
-                    .font(.system(size: 18, weight: .medium))
-                    .foregroundStyle(Brand.ink4)
-                Text("No matches")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(Brand.ink3)
-                Spacer(minLength: 0)
-            }
-        }
-    }
+    // Merge: C extracted the shared NoMatchesState (also used by Home and
+    // Commands) — one empty-search component instead of three.
+    private var noMatchesState: some View { NoMatchesState() }
 }
 
 private struct BackendFilterChip: View {
@@ -197,20 +186,20 @@ private struct BackendFilterChip: View {
     var body: some View {
         Button(action: action) {
             Text(title)
-                .font(.system(size: 11, weight: .semibold))
+                .font(.system(size: Design.TypeScale.caption, weight: .semibold))
                 .foregroundStyle(isSelected ? Color.white : Brand.ink3)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 5)
                 .background(
                     Capsule()
-                        .fill(isSelected ? Color.accentColor : Color.white.opacity(0.08))
+                        .fill(isSelected ? Color.accentColor : Design.Surface.raised)
                 )
                 .overlay(
                     Capsule()
-                        .strokeBorder(isSelected ? Color.accentColor.opacity(0.4) : Color.white.opacity(0.12))
+                        .strokeBorder(isSelected ? Color.accentColor.opacity(0.4) : Design.Surface.strokeEmphasis)
                 )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.pressCapsule)
         .accessibilityLabel(title)
         .accessibilityAddTraits(isSelected ? [.isSelected] : [])
     }
@@ -239,10 +228,10 @@ private struct AskHistoryRow: View {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 8) {
                     Text(entry.date.formatted(date: .abbreviated, time: .shortened))
-                        .font(.system(size: 11, design: .monospaced))
+                        .font(.system(size: Design.TypeScale.caption, design: .monospaced))
                         .foregroundStyle(Brand.ink4)
                     Text(entry.modelLabel ?? entry.backend)
-                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                        .font(.system(size: Design.TypeScale.micro, weight: .semibold, design: .monospaced))
                         .foregroundStyle(Color.accentColor)
                         .padding(.horizontal, 6).padding(.vertical, 2)
                         .background(Capsule().fill(Color.accentColor.opacity(0.14)))
@@ -298,7 +287,7 @@ private struct AskHistoryRow: View {
                     // real controls (Copy code, Load image) and links, and grouping
                     // with children: .ignore would erase them from the tree.
                     Text(entry.question)
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.system(size: Design.TypeScale.rowTitle, weight: .semibold))
                         .foregroundStyle(Brand.ink)
                         .textSelection(.enabled)
                         .fixedSize(horizontal: false, vertical: true)

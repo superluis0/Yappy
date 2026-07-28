@@ -6,6 +6,11 @@
 import AppKit
 import SwiftUI
 
+// User-facing copy style:
+// - Use sentence case except for product nouns.
+// - Use curly apostrophes.
+// - Omit trailing periods on labels; use periods on complete sentences.
+
 // MARK: - Main Window Content
 
 /// The main window's sidebar selection, hoisted out of `MainWindowView`'s own
@@ -139,6 +144,8 @@ struct MainWindowView: View {
                                center: .top, startRadius: 0, endRadius: 240)
             }
             .ignoresSafeArea()
+            // Decorative wash behind the sidebar.
+            .accessibilityHidden(true)
         }
     }
 
@@ -168,7 +175,7 @@ struct MainWindowView: View {
             ModesView(store: modeStore, settings: settings)
                 .accessibilityIdentifier("screen.modes")
         case .ask:
-            AskHistoryView(store: askController.history, controller: askController)
+            AskHistoryView(store: askController.history, controller: askController, settings: settings)
                 .accessibilityIdentifier("screen.answers")
         case .settings:
             SettingsView(settings: settings, transcriptionService: transcriptionService, updateChecker: updateChecker,
@@ -309,7 +316,7 @@ private struct UpdateBanner: View {
             Button("Later", action: onLater)
                 .buttonStyle(.bordered)
             Button(action: onUpdate) {
-                Label("Update Now", systemImage: "arrow.down.circle.fill")
+                Label("Update now", systemImage: "arrow.down.circle.fill")
             }
             .buttonStyle(.borderedProminent)
         }
@@ -346,7 +353,7 @@ private struct WhatsNewSheet: View {
                     .font(.system(size: 34, weight: .semibold))
                     .foregroundStyle(Color.accentColor)
                     .padding(.top, 28)
-                Text("What's New in Yappy \(entry.version)")
+                Text("What’s new in Yappy \(entry.version)")
                     .font(.title2.weight(.bold))
                 Text(entry.headline)
                     .font(.callout)
@@ -414,7 +421,7 @@ extension View {
     /// Applies the Liquid Glass material (macOS 26+) clipped to a rounded rect, with a
     /// graceful `.regularMaterial` + hairline fallback on macOS 14–25 (the app still
     /// supports them). Encapsulated so the glass API lives in exactly one place.
-    func glassPanel(cornerRadius: CGFloat = 16, tint: Color? = nil, interactive: Bool = false) -> some View {
+    func glassPanel(cornerRadius: CGFloat = Design.Radius.card, tint: Color? = nil, interactive: Bool = false) -> some View {
         modifier(GlassPanelModifier(cornerRadius: cornerRadius, tint: tint, interactive: interactive))
     }
 }
@@ -438,12 +445,12 @@ private struct GlassPanelModifier: ViewModifier {
         } else {
             content
                 .background(.regularMaterial, in: shape)
-                .overlay(shape.strokeBorder(Color.white.opacity(0.10), lineWidth: 1))
+                .overlay(shape.strokeBorder(Design.Surface.strokeEmphasis, lineWidth: 1))
         }
         #else
         content
             .background(.regularMaterial, in: shape)
-            .overlay(shape.strokeBorder(Color.white.opacity(0.10), lineWidth: 1))
+            .overlay(shape.strokeBorder(Design.Surface.strokeEmphasis, lineWidth: 1))
         #endif
     }
 
@@ -459,6 +466,39 @@ private struct GlassPanelModifier: ViewModifier {
     #endif
 }
 
+/// A visible focus treatment for controls whose style suppresses the system
+/// focus ring (`.buttonStyle(.plain)` does exactly that, and nearly every
+/// control here is plain). Deliberately narrow: the sidebar rows and each
+/// screen's primary action, not a general focus-management layer.
+struct PrimaryActionFocus: ViewModifier {
+    var cornerRadius: CGFloat = 8
+    @FocusState private var isFocused: Bool
+
+    func body(content: Content) -> some View {
+        // `.focused` only, never `.focusable()`: adding a focusable container
+        // around a Button changes the element AppKit reports (button -> group),
+        // which is exactly what the sidebar's UI smoke tests query for.
+        content
+            .focused($isFocused)
+            .overlay {
+                if isFocused {
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        .strokeBorder(Color.accentColor, lineWidth: 2)
+                        .padding(-3)
+                        // Decoration for the focus state the AX layer already reports.
+                        .accessibilityHidden(true)
+                }
+            }
+    }
+}
+
+extension View {
+    /// Draws an accent focus ring while this control holds keyboard focus.
+    func primaryActionFocus(cornerRadius: CGFloat = 8) -> some View {
+        modifier(PrimaryActionFocus(cornerRadius: cornerRadius))
+    }
+}
+
 /// Soft branded backdrop the glass surfaces refract — warm orange + cool blooms over
 /// near-black, so dark-glass-on-dark reads with depth instead of flat.
 struct GlassBackdrop: View {
@@ -471,6 +511,8 @@ struct GlassBackdrop: View {
             bloom(Color(red: 0.74, green: 0.35, blue: 1.0), .topTrailing, 0.10)
         }
         .ignoresSafeArea()
+        // Pure decoration: four colour blooms behind the glass, no meaning.
+        .accessibilityHidden(true)
     }
     private func bloom(_ color: Color, _ center: UnitPoint, _ opacity: Double) -> some View {
         RadialGradient(colors: [color.opacity(opacity), .clear], center: center, startRadius: 0, endRadius: 580)
@@ -480,9 +522,9 @@ struct GlassBackdrop: View {
 /// A rounded Liquid Glass card wrapping arbitrary content with standard padding —
 /// the shared building block for every tab's content groups.
 struct GlassCard<Content: View>: View {
-    var cornerRadius: CGFloat = 16
+    var cornerRadius: CGFloat = Design.Radius.card
     var tint: Color?
-    var padding: CGFloat = 16
+    var padding: CGFloat = Design.Space.cardPadding
     @ViewBuilder var content: () -> Content
 
     var body: some View {
@@ -500,13 +542,31 @@ struct SectionLabel: View {
 
     var body: some View {
         HStack(spacing: 9) {
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
+            RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
                 .fill(Color.accentColor.opacity(0.18))
                 .frame(width: 23, height: 23)
-                .overlay(Image(systemName: icon).font(.system(size: 12, weight: .semibold))
+                .overlay(Image(systemName: icon).font(.system(size: Design.TypeScale.rowSubtitle, weight: .semibold))
                     .foregroundStyle(Color.accentColor))
-            Text(title).font(.system(size: 13, weight: .semibold)).foregroundStyle(Brand.ink2)
+            Text(title).font(.system(size: Design.TypeScale.sectionTitle, weight: .semibold))
+                .foregroundStyle(Brand.ink2)
             Spacer(minLength: 0)
+        }
+    }
+}
+
+/// Shared filtered-empty state for searchable lists.
+struct NoMatchesState: View {
+    var body: some View {
+        GlassCard {
+            HStack(spacing: 10) {
+                Image(systemName: "line.3.horizontal.decrease.circle")
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundStyle(Brand.ink4)
+                Text("No matches")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Brand.ink3)
+                Spacer(minLength: 0)
+            }
         }
     }
 }
@@ -540,17 +600,19 @@ private struct SidebarNavRow: View {
     let isSelected: Bool
     let action: () -> Void
     @State private var hovering = false
+    @FocusState private var isFocused: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         Button(action: action) {
             HStack(spacing: 11) {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(isSelected ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(Color.white.opacity(0.06)))
+                RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
+                    .fill(isSelected ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(Design.Surface.raised))
                     .frame(width: 29, height: 29)
                     .overlay(Image(systemName: item.icon).font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(isSelected ? .white : Brand.ink3))
                     .shadow(color: isSelected ? Color.accentColor.opacity(0.45) : .clear, radius: 6, y: 2)
-                Text(item.rawValue).font(.system(size: 14.5, weight: .medium))
+                Text(item.rawValue).font(.system(size: Design.TypeScale.rowTitle, weight: .medium))
                     .foregroundStyle(isSelected ? Brand.ink : Brand.ink3)
                 Spacer(minLength: 0)
             }
@@ -561,16 +623,27 @@ private struct SidebarNavRow: View {
         .accessibilityIdentifier("sidebar.\(item.rawValue.lowercased())")
         .background {
             if isSelected {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                RoundedRectangle(cornerRadius: Design.Radius.inset, style: .continuous)
                     .fill(Color.accentColor.opacity(0.18))
-                    .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .strokeBorder(Color.white.opacity(0.14)))
+                    .overlay(RoundedRectangle(cornerRadius: Design.Radius.inset, style: .continuous)
+                        .strokeBorder(Design.Surface.strokeEmphasis))
             } else if hovering {
-                RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.white.opacity(0.05))
+                RoundedRectangle(cornerRadius: Design.Radius.inset, style: .continuous).fill(Design.Surface.hover)
             }
         }
         .onHover { hovering = $0 }
-        .animation(.easeOut(duration: 0.12), value: hovering)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: hovering)
+        // `.buttonStyle(.plain)` suppresses the system focus ring, so keyboard
+        // focus would otherwise be invisible on every sidebar row. `.focused`
+        // alone (no `.focusable()`) keeps the row an AX button.
+        .focused($isFocused)
+        .overlay {
+            if isFocused {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(Color.accentColor, lineWidth: 2)
+                    .accessibilityHidden(true)
+            }
+        }
         .accessibilityLabel(item.rawValue)
         .accessibilityAddTraits(isSelected ? [.isSelected] : [])
     }
@@ -586,13 +659,14 @@ private struct ModelStatusFooter: View {
                 .shadow(color: statusColor.opacity(0.7), radius: 4)
             VStack(alignment: .leading, spacing: 1) {
                 Text(settings.transcriptionModel.displayName)
-                    .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(Brand.ink2)
-                Text(statusText).font(.system(size: 11)).foregroundStyle(Brand.ink4)
+                    .font(.system(size: Design.TypeScale.rowSubtitle, weight: .semibold))
+                    .foregroundStyle(Brand.ink2)
+                Text(statusText).font(.system(size: Design.TypeScale.caption)).foregroundStyle(Brand.ink4)
             }
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 12).padding(.vertical, 11)
-        .glassPanel(cornerRadius: 14)
+        .glassPanel(cornerRadius: Design.Radius.card)
     }
     private var statusColor: Color {
         switch transcriptionService.modelState {
@@ -602,12 +676,11 @@ private struct ModelStatusFooter: View {
         }
     }
     private var statusText: String {
-        switch transcriptionService.modelState {
-        case .ready: return "Ready · Neural Engine"
-        case .loading: return "Loading model…"
-        case .downloading: return "Downloading…"
-        case .notLoaded: return "Idle"
-        case .failed: return "Needs attention"
+        // Keep the on-device-inference cue — this footer is the one piece of
+        // chrome that says WHERE transcription runs; "Ready" alone loses it.
+        if case .ready = transcriptionService.modelState {
+            return "Ready · Neural Engine"
         }
+        return transcriptionService.modelState.userFacingLabel
     }
 }

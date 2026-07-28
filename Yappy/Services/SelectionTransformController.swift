@@ -289,7 +289,7 @@ final class SelectionTransformController: ObservableObject {
         // A silent clip must not be transcribed into a hallucinated instruction —
         // say so and return to the retry state (same selection retained).
         guard hasSpeech(samples) else {
-            returnToRetry(caption: "Didn't catch that")
+            returnToRetry(caption: "Didn’t catch that")
             return
         }
 
@@ -435,7 +435,7 @@ final class SelectionTransformController: ObservableObject {
         guard let output,
               let cleaned = TransformEngine.sanitizeGenerative(output, original: original) else {
             endSession(to: .cancelled)
-            showTransientCaption("Couldn't transform that — try rephrasing",
+            showTransientCaption("Couldn’t transform that — try rephrasing",
                                  duration: Self.captionDuration)
             return
         }

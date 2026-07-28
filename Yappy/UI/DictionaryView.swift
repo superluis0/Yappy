@@ -16,6 +16,15 @@ struct DictionaryView: View {
     @State private var detailTerm: DictionaryTerm?
     @State private var pendingDeleteTerm: DictionaryTerm?
     @State private var deleteTimer: Timer?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// Nil under Reduce Motion, so the same call sites snap instead of springing.
+    private func motion(_ animation: Animation) -> Animation? {
+        reduceMotion ? nil : animation
+    }
+
+    /// How long Undo stays available after a delete — announced by the toast.
+    private var undoWindowSeconds: Int { 3 }
 
     private var visibleTerms: [DictionaryTerm] {
         store.terms.filter { pendingDeleteTerm?.id != $0.id }
@@ -24,13 +33,13 @@ struct DictionaryView: View {
     private func scheduleDeletion(_ term: DictionaryTerm) {
         if let pending = pendingDeleteTerm { store.remove(pending) }
         deleteTimer?.invalidate()
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+        withAnimation(motion(.spring(response: 0.35, dampingFraction: 0.8))) {
             pendingDeleteTerm = term
         }
-        deleteTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: false) { _ in
+        deleteTimer = Timer.scheduledTimer(withTimeInterval: TimeInterval(undoWindowSeconds), repeats: false) { _ in
             DispatchQueue.main.async {
                 if let t = self.pendingDeleteTerm { self.store.remove(t) }
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                withAnimation(self.motion(.spring(response: 0.35, dampingFraction: 0.8))) {
                     self.pendingDeleteTerm = nil
                 }
             }
@@ -39,7 +48,7 @@ struct DictionaryView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 26) {
+            VStack(alignment: .leading, spacing: Design.Space.sectionGap) {
                 header
                 enableSection
                 boostSection
@@ -50,26 +59,28 @@ struct DictionaryView: View {
                     termsSection
                 }
             }
-            .frame(maxWidth: 640, alignment: .leading)
-            .frame(maxWidth: .infinity, alignment: .center)
-            .padding(.horizontal, 30)
-            .padding(.top, 26)
-            .padding(.bottom, 46)
+            // A5: the Terms section appears/disappears with the toggle above it —
+            // animate the reveal so the page doesn't jump hundreds of points in
+            // one frame. Only the transition changes; the toggle still writes
+            // straight to `settings`. (Merge: B's animation + A's page shell,
+            // which replaced the hand-rolled padding block it was written over.)
+            .animation(motion(.easeOut(duration: 0.24)), value: settings.customDictionaryEnabled)
+            .pageShell()
         }
         .scrollContentBackground(.hidden)
         .background(Color.clear)
         .overlay(alignment: .bottom) {
             if pendingDeleteTerm != nil {
-                UndoToast(message: "Term deleted") {
+                UndoToast(message: "Term deleted", secondsRemaining: undoWindowSeconds) {
                     deleteTimer?.invalidate()
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                    withAnimation(motion(.spring(response: 0.35, dampingFraction: 0.8))) {
                         pendingDeleteTerm = nil
                     }
                 }
-                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
             }
         }
-        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: pendingDeleteTerm != nil)
+        .animation(motion(.spring(response: 0.35, dampingFraction: 0.8)), value: pendingDeleteTerm != nil)
         .sheet(item: $detailTerm) { term in
             TermDetailSheet(termID: term.id, store: store, transcriptionService: transcriptionService)
         }
@@ -80,10 +91,10 @@ struct DictionaryView: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 3) {
             Text("Dictionary")
-                .font(.system(size: 24, weight: .bold))
+                .font(.system(size: Design.TypeScale.screenTitle, weight: .bold))
                 .foregroundStyle(Brand.ink)
             Text("Add names, jargon, or acronyms Yappy keeps mishearing — recognition is biased toward these terms, fully on-device.")
-                .font(.system(size: 13.5))
+                .font(.system(size: Design.TypeScale.screenSubtitle))
                 .foregroundStyle(Brand.ink3)
         }
     }
@@ -93,17 +104,17 @@ struct DictionaryView: View {
     private var enableSection: some View {
         VStack(alignment: .leading, spacing: 0) {
             SectionLabel(icon: "character.book.closed", title: "Custom dictionary")
-                .padding(.horizontal, 4).padding(.bottom, 11)
+                .sectionHeader()
 
             GlassCard(padding: 0) {
                 VStack(spacing: 0) {
                     // Enable toggle row
-                    HStack(spacing: 13) {
-                        RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    HStack(spacing: Design.Space.rowGap) {
+                        RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
                             .fill(settings.customDictionaryEnabled
                                   ? Color.accentColor.opacity(0.18)
-                                  : Color.white.opacity(0.06))
-                            .frame(width: 34, height: 34)
+                                  : Design.Surface.raised)
+                            .frame(width: Design.Space.chipSize, height: Design.Space.chipSize)
                             .overlay(
                                 Image(systemName: "checkmark.circle")
                                     .font(.system(size: 15, weight: .medium))
@@ -111,17 +122,17 @@ struct DictionaryView: View {
                                                      ? Color.accentColor : Brand.ink3)
                             )
                             .overlay(
-                                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
                                     .strokeBorder(settings.customDictionaryEnabled
                                                   ? Color.accentColor.opacity(0.25)
-                                                  : Color.white.opacity(0.06))
+                                                  : Design.Surface.raised)
                             )
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Enable custom dictionary")
-                                .font(.system(size: 14, weight: .medium))
+                                .font(.system(size: Design.TypeScale.rowTitle, weight: .medium))
                                 .foregroundStyle(Brand.ink)
                             Text("Bias recognition toward your specific terms when active.")
-                                .font(.system(size: 12))
+                                .font(.system(size: Design.TypeScale.rowSubtitle))
                                 .foregroundStyle(Brand.ink4)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
@@ -132,15 +143,9 @@ struct DictionaryView: View {
                             .tint(.accentColor)
                             .accessibilityLabel("Enable custom dictionary")
                     }
-                    .padding(.horizontal, 16).padding(.vertical, 12)
+                    .padding(.horizontal, Design.Space.rowHorizontal).padding(.vertical, Design.Space.rowVertical)
 
                     if settings.customDictionaryEnabled {
-                        // Divider
-                        Rectangle()
-                            .fill(Color.white.opacity(0.07))
-                            .frame(height: 1)
-                            .padding(.leading, 63)
-
                         // Add-term row
                         HStack(spacing: 10) {
                             TextField("Add a term (e.g. Kubernetes, Anthropic)", text: $newTerm)
@@ -148,8 +153,9 @@ struct DictionaryView: View {
                                 .onSubmit(commit)
                             Button("Add", action: commit)
                                 .disabled(newTerm.trimmingCharacters(in: .whitespaces).isEmpty)
+                                .primaryActionFocus()
                         }
-                        .padding(.horizontal, 16).padding(.vertical, 12)
+                        .padding(.horizontal, Design.Space.rowHorizontal).padding(.vertical, Design.Space.rowVertical)
 
                         // Caption
                         Text("Add a term, then tap its microphone icon to type \u{201c}sounds like\u{201d} spellings or teach pronunciation by voice. Known mishearings are corrected back to your spelling — instantly, on-device.")
@@ -161,6 +167,8 @@ struct DictionaryView: View {
                 }
             }
         }
+        // A5: the add-term rows below the switch appear/disappear with it.
+        .animation(motion(.easeOut(duration: 0.24)), value: settings.customDictionaryEnabled)
     }
 
     // MARK: - Speech-model boosting section
@@ -168,16 +176,16 @@ struct DictionaryView: View {
     private var boostSection: some View {
         VStack(alignment: .leading, spacing: 0) {
             SectionLabel(icon: "waveform.and.magnifyingglass", title: "Speech model")
-                .padding(.horizontal, 4).padding(.bottom, 11)
+                .sectionHeader()
 
             GlassCard(padding: 0) {
                 VStack(spacing: 0) {
-                    HStack(spacing: 13) {
-                        RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    HStack(spacing: Design.Space.rowGap) {
+                        RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
                             .fill(settings.vocabularyBoostingEnabled
                                   ? Color.accentColor.opacity(0.18)
-                                  : Color.white.opacity(0.06))
-                            .frame(width: 34, height: 34)
+                                  : Design.Surface.raised)
+                            .frame(width: Design.Space.chipSize, height: Design.Space.chipSize)
                             .overlay(
                                 Image(systemName: "waveform.and.magnifyingglass")
                                     .font(.system(size: 15, weight: .medium))
@@ -185,17 +193,17 @@ struct DictionaryView: View {
                                                      ? Color.accentColor : Brand.ink3)
                             )
                             .overlay(
-                                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
                                     .strokeBorder(settings.vocabularyBoostingEnabled
                                                   ? Color.accentColor.opacity(0.25)
-                                                  : Color.white.opacity(0.06))
+                                                  : Design.Surface.raised)
                             )
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Boost my terms in the speech model")
-                                .font(.system(size: 14, weight: .medium))
+                                .font(.system(size: Design.TypeScale.rowTitle, weight: .medium))
                                 .foregroundStyle(Brand.ink)
                             Text("Makes recognition prefer your dictionary terms while dictating (Parakeet, English). Downloads a 98 MB helper model the first time.")
-                                .font(.system(size: 12))
+                                .font(.system(size: Design.TypeScale.rowSubtitle))
                                 .foregroundStyle(Brand.ink4)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
@@ -206,46 +214,42 @@ struct DictionaryView: View {
                             .tint(.accentColor)
                             .accessibilityLabel("Boost my terms in the speech model")
                     }
-                    .padding(.horizontal, 16).padding(.vertical, 12)
+                    .padding(.horizontal, Design.Space.rowHorizontal).padding(.vertical, Design.Space.rowVertical)
 
                     if settings.transcriptionModel == .nemotron {
-                        // Divider
-                        Rectangle()
-                            .fill(Color.white.opacity(0.07))
-                            .frame(height: 1)
-                            .padding(.leading, 63)
-
                         // Warning: boosting is a Parakeet-only feature and does
                         // nothing while Nemotron is the active model.
-                        HStack(spacing: 13) {
-                            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        HStack(spacing: Design.Space.rowGap) {
+                            RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
                                 .fill(Brand.danger.opacity(0.18))
-                                .frame(width: 34, height: 34)
+                                .frame(width: Design.Space.chipSize, height: Design.Space.chipSize)
                                 .overlay(
                                     Image(systemName: "exclamationmark.triangle.fill")
-                                        .font(.system(size: 14, weight: .medium))
+                                        .font(.system(size: Design.TypeScale.rowTitle, weight: .medium))
                                         .foregroundStyle(Brand.danger)
                                 )
                                 .overlay(
-                                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                    RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
                                         .strokeBorder(Brand.danger.opacity(0.25))
                                 )
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("Boost has no effect with Nemotron")
-                                    .font(.system(size: 14, weight: .medium))
+                                    .font(.system(size: Design.TypeScale.rowTitle, weight: .medium))
                                     .foregroundStyle(Brand.ink)
                                 Text("Term boosting works with the Parakeet (English) model. Switch models in Settings to use it.")
-                                    .font(.system(size: 12))
+                                    .font(.system(size: Design.TypeScale.rowSubtitle))
                                     .foregroundStyle(Brand.ink4)
                                     .fixedSize(horizontal: false, vertical: true)
                             }
                             Spacer(minLength: 12)
                         }
-                        .padding(.horizontal, 16).padding(.vertical, 12)
+                        .padding(.horizontal, Design.Space.rowHorizontal).padding(.vertical, Design.Space.rowVertical)
                     }
                 }
             }
         }
+        // A5: the Nemotron caveat row appears when the model picker changes.
+        .animation(motion(.easeOut(duration: 0.24)), value: settings.transcriptionModel)
     }
 
     // MARK: - Suggestions section (learn-from-corrections)
@@ -253,23 +257,17 @@ struct DictionaryView: View {
     private var suggestionsSection: some View {
         VStack(alignment: .leading, spacing: 0) {
             SectionLabel(icon: "sparkles", title: "Suggestions")
-                .padding(.horizontal, 4).padding(.bottom, 11)
+                .sectionHeader()
 
             GlassCard(padding: 0) {
                 VStack(spacing: 0) {
-                    ForEach(Array(store.suggestions.enumerated()), id: \.element.id) { index, suggestion in
-                        if index > 0 {
-                            Rectangle()
-                                .fill(Color.white.opacity(0.07))
-                                .frame(height: 1)
-                                .padding(.leading, 16)
-                        }
+                    ForEach(store.suggestions) { suggestion in
                         SuggestionRow(suggestion: suggestion) {
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                            withAnimation(motion(.spring(response: 0.35, dampingFraction: 0.85))) {
                                 store.acceptSuggestion(suggestion)
                             }
                         } onDismiss: {
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                            withAnimation(motion(.spring(response: 0.35, dampingFraction: 0.85))) {
                                 store.dismissSuggestion(suggestion)
                             }
                         }
@@ -290,7 +288,7 @@ struct DictionaryView: View {
     private var termsSection: some View {
         VStack(alignment: .leading, spacing: 0) {
             SectionLabel(icon: "textformat.abc", title: "Terms")
-                .padding(.horizontal, 4).padding(.bottom, 11)
+                .sectionHeader()
 
             Group {
                 if visibleTerms.isEmpty {
@@ -301,7 +299,7 @@ struct DictionaryView: View {
                         .transition(.opacity.combined(with: .scale(scale: 0.92, anchor: .center)))
                 }
             }
-            .animation(.spring(response: 0.45, dampingFraction: 0.85), value: visibleTerms.isEmpty)
+            .animation(motion(.spring(response: 0.45, dampingFraction: 0.85)), value: visibleTerms.isEmpty)
         }
     }
 
@@ -314,10 +312,10 @@ struct DictionaryView: View {
                     .font(.system(size: 32))
                     .foregroundStyle(Color.accentColor.opacity(0.5))
                 Text("No terms yet")
-                    .font(.system(size: 14, weight: .medium))
+                    .font(.system(size: Design.TypeScale.rowTitle, weight: .medium))
                     .foregroundStyle(Brand.ink3)
                 Text("Type a term above and tap Add to get started.")
-                    .font(.system(size: 12))
+                    .font(.system(size: Design.TypeScale.rowSubtitle))
                     .foregroundStyle(Brand.ink4)
             }
             .frame(maxWidth: .infinity)
@@ -330,13 +328,7 @@ struct DictionaryView: View {
     private var termsList: some View {
         GlassCard(padding: 0) {
             VStack(spacing: 0) {
-                ForEach(Array(visibleTerms.enumerated()), id: \.element.id) { index, term in
-                    if index > 0 {
-                        Rectangle()
-                            .fill(Color.white.opacity(0.07))
-                            .frame(height: 1)
-                            .padding(.leading, 63)
-                    }
+                ForEach(visibleTerms) { term in
                     TermRow(term: term) {
                         detailTerm = term
                     } onDelete: {
@@ -363,18 +355,18 @@ private struct TermRow: View {
     let onDelete: () -> Void
 
     var body: some View {
-        HStack(spacing: 13) {
+        HStack(spacing: Design.Space.rowGap) {
             // Icon chip
-            RoundedRectangle(cornerRadius: 9, style: .continuous)
+            RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
                 .fill(Color.accentColor.opacity(0.12))
-                .frame(width: 34, height: 34)
+                .frame(width: Design.Space.chipSize, height: Design.Space.chipSize)
                 .overlay(
                     Image(systemName: "textformat")
-                        .font(.system(size: 14, weight: .medium))
+                        .font(.system(size: Design.TypeScale.rowTitle, weight: .medium))
                         .foregroundStyle(Color.accentColor)
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
                         .strokeBorder(Color.accentColor.opacity(0.20))
                 )
 
@@ -382,20 +374,20 @@ private struct TermRow: View {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
                     Text(term.text)
-                        .font(.system(size: 14, weight: .medium))
+                        .font(.system(size: Design.TypeScale.rowTitle, weight: .medium))
                         .foregroundStyle(Brand.ink)
                         .lineLimit(1)
                     if term.isBuiltIn {
                         Text("built-in")
                             .font(.system(size: 9, weight: .medium))
                             .padding(.horizontal, 5).padding(.vertical, 2)
-                            .background(Color.white.opacity(0.08), in: Capsule())
+                            .background(Design.Surface.raised, in: Capsule())
                             .foregroundStyle(Brand.ink4)
                     }
                 }
                 if !term.allAliases.isEmpty {
                     Text("also hears: " + term.allAliases.joined(separator: ", "))
-                        .font(.system(size: 12))
+                        .font(.system(size: Design.TypeScale.rowSubtitle))
                         .foregroundStyle(Brand.ink3)
                         .lineLimit(1)
                 }
@@ -406,22 +398,24 @@ private struct TermRow: View {
             // Actions
             Button(action: onEdit) {
                 Image(systemName: "waveform.badge.mic")
-                    .font(.system(size: 14))
+                    .font(.system(size: Design.TypeScale.rowTitle))
                     .foregroundStyle(Brand.ink3)
+                    .frame(width: 26, height: 26)
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(.hoverSurface(cornerRadius: Design.Radius.control))
             .help("Edit aliases or teach pronunciation")
             .accessibilityLabel("Edit aliases or teach pronunciation for \(term.text)")
 
             Button(action: onDelete) {
                 Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 14))
+                    .font(.system(size: Design.TypeScale.rowTitle))
                     .foregroundStyle(Brand.ink4)
+                    .frame(width: 26, height: 26)
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(.hoverSurface(cornerRadius: Design.Radius.control))
             .accessibilityLabel("Delete \(term.text)")
         }
-        .padding(.horizontal, 16).padding(.vertical, 11)
+        .padding(.horizontal, Design.Space.rowHorizontal).padding(.vertical, 11)
     }
 }
 
@@ -436,28 +430,28 @@ private struct SuggestionRow: View {
     let onDismiss: () -> Void
 
     var body: some View {
-        HStack(spacing: 13) {
+        HStack(spacing: Design.Space.rowGap) {
             // Icon chip
-            RoundedRectangle(cornerRadius: 9, style: .continuous)
+            RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
                 .fill(Color.accentColor.opacity(0.12))
-                .frame(width: 34, height: 34)
+                .frame(width: Design.Space.chipSize, height: Design.Space.chipSize)
                 .overlay(
                     Image(systemName: "sparkles")
-                        .font(.system(size: 14, weight: .medium))
+                        .font(.system(size: Design.TypeScale.rowTitle, weight: .medium))
                         .foregroundStyle(Color.accentColor)
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
                         .strokeBorder(Color.accentColor.opacity(0.20))
                 )
 
             VStack(alignment: .leading, spacing: 3) {
                 Text("Heard \u{201c}\(suggestion.heard)\u{201d} — did you mean \u{201c}\(suggestion.corrected)\u{201d}?")
-                    .font(.system(size: 14, weight: .medium))
+                    .font(.system(size: Design.TypeScale.rowTitle, weight: .medium))
                     .foregroundStyle(Brand.ink)
                     .fixedSize(horizontal: false, vertical: true)
                 Text("Add it so Yappy corrects this next time.")
-                    .font(.system(size: 12))
+                    .font(.system(size: Design.TypeScale.rowSubtitle))
                     .foregroundStyle(Brand.ink4)
             }
 
@@ -470,14 +464,15 @@ private struct SuggestionRow: View {
 
             Button(action: onDismiss) {
                 Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 14))
+                    .font(.system(size: Design.TypeScale.rowTitle))
                     .foregroundStyle(Brand.ink4)
+                    .frame(width: 26, height: 26)
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(.hoverSurface(cornerRadius: Design.Radius.control))
             .help("Dismiss")
             .accessibilityLabel("Dismiss suggestion")
         }
-        .padding(.horizontal, 16).padding(.vertical, 11)
+        .padding(.horizontal, Design.Space.rowHorizontal).padding(.vertical, 11)
     }
 }
 

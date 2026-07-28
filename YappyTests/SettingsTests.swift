@@ -404,6 +404,16 @@ final class CommandCatalogTests: XCTestCase {
         }
     }
 
+    /// Display phrases that intentionally capitalize the pronoun "I" while their
+    /// parser keys stay lowercase (`VoiceEditCommand` matches lowercased input,
+    /// so display casing is free). EXACT matches only — a new entry with a
+    /// capital letter anywhere else must still fail this test, because a phrase
+    /// the lowercase parser tables can't match would ship as a dead command.
+    private static let displayCasedPhrases: Set<String> = [
+        "use what I said",
+        "use what I actually said",
+    ]
+
     func testEveryPhraseIsNonEmptyAndLowercaseComparable() {
         for section in CommandCatalog.sections {
             for entry in section.entries {
@@ -411,6 +421,7 @@ final class CommandCatalogTests: XCTestCase {
                 // Only SPOKEN phrases must match the parsers' lowercase input;
                 // physical actions ("Press Esc") are display labels.
                 guard entry.isSpoken else { continue }
+                if Self.displayCasedPhrases.contains(entry.phrase) { continue }
                 XCTAssertEqual(entry.phrase, entry.phrase.lowercased(),
                                 "\"\(entry.phrase)\" in \"\(section.title)\" isn't already lowercase")
             }

@@ -19,18 +19,18 @@ struct CommandsView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 22) {
+            VStack(alignment: .leading, spacing: Design.Space.sectionGap) {
                 header
                 searchField
-                ForEach(visibleSections, id: \.title) { section in
-                    sectionCard(section)
+                if filteredSections.isEmpty {
+                    NoMatchesState()
+                } else {
+                    ForEach(filteredSections, id: \.title) { section in
+                        sectionCard(section)
+                    }
                 }
             }
-            .frame(maxWidth: 640, alignment: .leading)
-            .frame(maxWidth: .infinity, alignment: .center)
-            .padding(.horizontal, 30)
-            .padding(.top, 26)
-            .padding(.bottom, 46)
+            .pageShell()
         }
         .scrollContentBackground(.hidden)
         .background(Color.clear)
@@ -41,10 +41,10 @@ struct CommandsView: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 3) {
             Text("Commands")
-                .font(.system(size: 24, weight: .bold))
+                .font(.system(size: Design.TypeScale.screenTitle, weight: .bold))
                 .foregroundStyle(Brand.ink)
             Text("Everything you can say while dictating — no memorizing required.")
-                .font(.system(size: 13.5))
+                .font(.system(size: Design.TypeScale.screenSubtitle))
                 .foregroundStyle(Brand.ink3)
         }
     }
@@ -67,6 +67,10 @@ struct CommandsView: View {
         }
     }
 
+    private var filteredSections: [CommandSection] {
+        visibleSections.compactMap(filtered)
+    }
+
     /// The section filtered down to entries matching the search text, or nil
     /// when nothing in it matches (so the section is omitted entirely).
     private func filtered(_ section: CommandSection) -> CommandSection? {
@@ -82,23 +86,22 @@ struct CommandsView: View {
 
     @ViewBuilder
     private func sectionCard(_ section: CommandSection) -> some View {
-        if let filtered = filtered(section) {
-            VStack(alignment: .leading, spacing: 11) {
-                HStack {
-                    SectionLabel(icon: section.icon, title: section.title)
-                    Spacer()
-                    if isEnabled(section) == false {
-                        offBadge
-                    }
+        // Merge: C moved filtering up into `filteredSections` (so an empty
+        // search shows NoMatchesState); A supplied the visual shell — unified
+        // section header, no in-card dividers.
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                SectionLabel(icon: section.icon, title: section.title)
+                Spacer()
+                if isEnabled(section) == false {
+                    offBadge
                 }
-                GlassCard {
-                    VStack(alignment: .leading, spacing: 0) {
-                        ForEach(Array(filtered.entries.enumerated()), id: \.offset) { index, entry in
-                            if index > 0 {
-                                Divider().overlay(Color.white.opacity(0.07))
-                            }
-                            entryRow(entry)
-                        }
+            }
+            .sectionHeader()
+            GlassCard {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(Array(section.entries.enumerated()), id: \.offset) { _, entry in
+                        entryRow(entry)
                     }
                 }
             }
@@ -117,13 +120,13 @@ struct CommandsView: View {
             windowState.select(.settings)
         } label: {
             Text("Off in Settings")
-                .font(.system(size: 10.5, weight: .semibold))
+                .font(.system(size: Design.TypeScale.micro, weight: .semibold))
                 .foregroundStyle(Brand.ink3)
                 .padding(.horizontal, 8).padding(.vertical, 3)
-                .background(Capsule().fill(Color.white.opacity(0.08)))
-                .overlay(Capsule().strokeBorder(Color.white.opacity(0.14)))
+                .background(Capsule().fill(Design.Surface.raised))
+                .overlay(Capsule().strokeBorder(Design.Surface.strokeEmphasis))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.pressCapsule)
         .help("Turn this on in Settings")
     }
 
@@ -134,29 +137,30 @@ struct CommandsView: View {
             // Spoken phrases wear the quoted chip; physical actions (hold the
             // hotkey, press Esc) render as plain labels so nobody says them.
             Text(entry.isSpoken ? "\u{201c}\(entry.phrase)\u{201d}" : entry.phrase)
-                .font(.system(size: 12, weight: .medium, design: entry.isSpoken ? .monospaced : .default))
+                .font(.system(size: Design.TypeScale.rowSubtitle, weight: .medium,
+                              design: entry.isSpoken ? .monospaced : .default))
                 .foregroundStyle(Brand.ink2)
                 .padding(.horizontal, 8).padding(.vertical, 4)
                 .background(
-                    entry.isSpoken ? Color.white.opacity(0.06) : Color.clear,
-                    in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    entry.isSpoken ? Design.Surface.raised : Color.clear,
+                    in: RoundedRectangle(cornerRadius: Design.Radius.control, style: .continuous)
                 )
                 .frame(minWidth: 170, alignment: .leading)
                 .fixedSize(horizontal: false, vertical: true)
             VStack(alignment: .leading, spacing: 2) {
                 Text(entry.effect)
-                    .font(.system(size: 12.5))
+                    .font(.system(size: Design.TypeScale.rowSubtitle))
                     .foregroundStyle(Brand.ink3)
                     .fixedSize(horizontal: false, vertical: true)
                 if let example = entry.example {
                     Text(example)
-                        .font(.system(size: 11))
+                        .font(.system(size: Design.TypeScale.caption))
                         .foregroundStyle(Brand.ink4)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 16).padding(.vertical, 10)
+        .padding(.horizontal, Design.Space.rowHorizontal).padding(.vertical, 10)
     }
 }

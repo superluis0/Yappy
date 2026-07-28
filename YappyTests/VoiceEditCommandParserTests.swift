@@ -758,7 +758,7 @@ final class SelectionTransformControllerTests: XCTestCase {
         transcriber.transcript = "this must never be read"
         controller.endListening()
 
-        XCTAssertEqual(controller.caption, "Didn't catch that")
+        XCTAssertEqual(controller.caption, "Didn’t catch that")
         XCTAssertNotEqual(controller.stage, .preview)
         XCTAssertEqual(transcriber.calls, 0, "a silent clip must not be transcribed")
 

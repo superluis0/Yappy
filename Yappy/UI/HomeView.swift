@@ -39,15 +39,19 @@ struct HomeView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 22) {
+            VStack(alignment: .leading, spacing: Design.Space.sectionGap) {
                 header
                 modelDownloadCard
                 timeSavedCard
                 gettingStartedCard
                 milestoneLine
                 statsGrid
-                if !history.entries.isEmpty {
+                // The heatmap draws from the LIFETIME tally, so it stays after
+                // Clear History; the other cards genuinely need entries.
+                if history.hasHeatmapActivity {
                     heatmapCard
+                }
+                if !history.entries.isEmpty {
                     topAppsCard
                     recordsCard
                     recapButton
@@ -56,11 +60,7 @@ struct HomeView: View {
                 privacyCard
                 historySection
             }
-            .frame(maxWidth: 640, alignment: .leading)
-            .frame(maxWidth: .infinity, alignment: .center)
-            .padding(.horizontal, 30)
-            .padding(.top, 26)
-            .padding(.bottom, 46)
+            .pageShell()
         }
         .scrollContentBackground(.hidden)
         .background(Color.clear)
@@ -72,22 +72,27 @@ struct HomeView: View {
         }
         .onAppear {
             guard !statsAppeared else { return }
-            withAnimation(.spring(response: 0.7, dampingFraction: 0.9).delay(0.1)) {
+            withAnimation(motion(.spring(response: 0.7, dampingFraction: 0.9).delay(0.1))) {
                 statsAppeared = true
             }
         }
         .overlay(alignment: .bottom) {
             if pendingDeleteEntry != nil {
-                UndoToast(message: "Dictation deleted") {
+                UndoToast(message: "Dictation deleted", secondsRemaining: undoWindowSeconds) {
                     deleteTimer?.invalidate()
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                    withAnimation(motion(.spring(response: 0.35, dampingFraction: 0.8))) {
                         pendingDeleteEntry = nil
                     }
                 }
-                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
             }
         }
-        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: pendingDeleteEntry != nil)
+        .animation(motion(.spring(response: 0.35, dampingFraction: 0.8)), value: pendingDeleteEntry != nil)
+    }
+
+    /// Nil under Reduce Motion, so the same call sites snap instead of springing.
+    private func motion(_ animation: Animation) -> Animation? {
+        reduceMotion ? nil : animation
     }
 
     /// Renders the value as 0 until `statsAppeared` flips, so `.numericText`
@@ -102,20 +107,12 @@ struct HomeView: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 3) {
             Text("Home")
-                .font(.system(size: 24, weight: .bold))
+                .font(.system(size: Design.TypeScale.screenTitle, weight: .bold))
                 .foregroundStyle(Brand.ink)
-            Text("Hold \(hotkeyHint) and start talking — your words appear wherever your cursor is.")
-                .font(.system(size: 13.5))
+            // Merge: C's shared derived hint + A's type token.
+            Text("Hold \(settings.hotkeyOption.userFacingHint) and start talking — your words appear wherever your cursor is.")
+                .font(.system(size: Design.TypeScale.screenSubtitle))
                 .foregroundStyle(Brand.ink3)
-        }
-    }
-
-    private var hotkeyHint: String {
-        switch settings.hotkeyOption {
-        case .rightCommandHold: return "Right ⌘"
-        case .rightCommandDoubleTap: return "Right ⌘ (double-tap)"
-        case .rightOptionHold: return "Right ⌥"
-        case .rightControlHold: return "Right ⌃"
         }
     }
 
@@ -137,7 +134,7 @@ struct HomeView: View {
                     VStack(alignment: .leading, spacing: 6) {
                         HStack {
                             Text("Downloading the speech model")
-                                .font(.system(size: 13, weight: .semibold))
+                                .font(.system(size: Design.TypeScale.sectionTitle, weight: .semibold))
                             Spacer()
                             if let progress {
                                 Text("\(Int(progress * 100))%")
@@ -151,8 +148,9 @@ struct HomeView: View {
                             ProgressView()
                                 .controlSize(.small)
                         }
-                        Text("One time, about 443 MB. Dictation lights up the moment it finishes.")
-                            .font(.system(size: 11))
+                        // Merge: C's per-model size + A's type token.
+                        Text("One time, about \(transcriptionService.activeModel.downloadSizeDescription). Dictation lights up the moment it finishes.")
+                            .font(.system(size: Design.TypeScale.caption))
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -162,27 +160,29 @@ struct HomeView: View {
                 HStack(spacing: 14) {
                     ProgressView()
                         .controlSize(.small)
-                    Text("Preparing the speech model…")
-                        .font(.system(size: 13, weight: .semibold))
+                    // Merge: C's single model-state vocabulary + A's type token.
+                    Text(transcriptionService.modelState.userFacingLabel)
+                        .font(.system(size: Design.TypeScale.sectionTitle, weight: .semibold))
                     Spacer()
                 }
             }
         case .failed(let message):
-            GlassCard(tint: Color.orange.opacity(0.14)) {
+            GlassCard(tint: Brand.danger.opacity(0.14)) {
                 HStack(spacing: 14) {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .font(.system(size: 20, weight: .semibold))
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(Brand.danger)
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Speech model setup failed")
-                            .font(.system(size: 13, weight: .semibold))
+                        // Merge: C's single model-state vocabulary + A's token.
+                        Text(transcriptionService.modelState.userFacingLabel)
+                            .font(.system(size: Design.TypeScale.sectionTitle, weight: .semibold))
                         Text(message)
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
+                            .font(.system(size: Design.TypeScale.caption))
+                            .foregroundStyle(Brand.ink4)
                             .lineLimit(2)
                     }
                     Spacer()
-                    Button("Try Again") {
+                    Button("Try again") {
                         Task { await transcriptionService.warmUp() }
                     }
                     .buttonStyle(.bordered)
@@ -201,7 +201,7 @@ struct HomeView: View {
             GlassCard(tint: Color.accentColor.opacity(0.14)) {
                 HStack(spacing: 16) {
                     ZStack {
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        RoundedRectangle(cornerRadius: Design.Radius.inset, style: .continuous)
                             .fill(Color.accentColor.opacity(0.18))
                             .frame(width: 48, height: 48)
                         Image(systemName: "clock.arrow.circlepath")
@@ -264,14 +264,15 @@ struct HomeView: View {
     private var gettingStartedCard: some View {
         let items = gettingStartedItems
         if !items.allSatisfy(\.done) {
-            VStack(alignment: .leading, spacing: 11) {
+            VStack(alignment: .leading, spacing: 0) {
                 SectionLabel(icon: "checklist", title: "Getting started")
+                    .sectionHeader()
                 GlassCard {
                     VStack(spacing: 0) {
-                        ForEach(Array(items.enumerated()), id: \.offset) { index, item in
-                            if index > 0 {
-                                Divider().overlay(Color.white.opacity(0.07))
-                            }
+                        // Merge note: A removed the in-card dividers outright;
+                        // B's .accessibilityHidden on them is moot — deletion
+                        // satisfies the same intent.
+                        ForEach(Array(items.enumerated()), id: \.offset) { _, item in
                             ChecklistRow(item: item, windowState: windowState)
                         }
                     }
@@ -309,7 +310,7 @@ struct HomeView: View {
     @ViewBuilder
     private var milestoneLine: some View {
         if let milestone = StatFraming.wordsMilestone(history.totalWords) {
-            Text("That's \(milestone).")
+            Text("That’s \(milestone).")
                 .font(.callout)
                 .foregroundStyle(Brand.ink3)
         }
@@ -318,8 +319,9 @@ struct HomeView: View {
     // MARK: - Heatmap
 
     private var heatmapCard: some View {
-        VStack(alignment: .leading, spacing: 11) {
+        VStack(alignment: .leading, spacing: 0) {
             SectionLabel(icon: "calendar", title: "When you dictate")
+                .sectionHeader()
             GlassCard {
                 HeatmapView(rows: history.cachedHeatmapRows)
             }
@@ -332,8 +334,9 @@ struct HomeView: View {
     private var recordsCard: some View {
         let r = history.personalRecords
         if r.hasAny {
-            VStack(alignment: .leading, spacing: 11) {
+            VStack(alignment: .leading, spacing: 0) {
                 SectionLabel(icon: "trophy", title: "Personal records")
+                    .sectionHeader()
                 GlassCard {
                     HStack(spacing: 20) {
                         if r.fastestWPM > 0 { recordItem("speedometer", "\(r.fastestWPM)", "Top WPM") }
@@ -361,7 +364,7 @@ struct HomeView: View {
 
     private var recapButton: some View {
         Button { showRecap = true } label: {
-            Label("Your Year in Voice", systemImage: "sparkles")
+            Label("Your year in voice", systemImage: "sparkles")
                 .font(.callout.weight(.medium))
                 .foregroundStyle(recapHover ? Color.accentColor : Brand.ink3)
                 .padding(.horizontal, 14)
@@ -379,8 +382,9 @@ struct HomeView: View {
                 .contentShape(Capsule())
         }
         .buttonStyle(.plain)
+        .primaryActionFocus(cornerRadius: 18)
         .onHover { hovering in
-            withAnimation(.easeOut(duration: 0.18)) { recapHover = hovering }
+            withAnimation(motion(.easeOut(duration: 0.18))) { recapHover = hovering }
             if hovering { NSCursor.pointingHand.push() } else { NSCursor.pop() }
         }
     }
@@ -388,8 +392,9 @@ struct HomeView: View {
     // MARK: - Privacy
 
     private var privacyCard: some View {
-        VStack(alignment: .leading, spacing: 11) {
+        VStack(alignment: .leading, spacing: 0) {
             SectionLabel(icon: "lock.shield", title: "Privacy")
+                .sectionHeader()
             GlassCard(tint: Brand.ready.opacity(0.10)) {
                 VStack(alignment: .leading, spacing: 8) {
                     // "never written to disk" would be an overclaim: read-aloud
@@ -425,8 +430,9 @@ struct HomeView: View {
     private var topAppsCard: some View {
         let apps = history.topApps(limit: 5)
         if !apps.isEmpty {
-            VStack(alignment: .leading, spacing: 11) {
+            VStack(alignment: .leading, spacing: 0) {
                 SectionLabel(icon: "chart.bar", title: "Top apps")
+                    .sectionHeader()
                 GlassCard {
                     let maxCount = apps.map(\.count).max() ?? 1
                     VStack(spacing: 10) {
@@ -500,13 +506,13 @@ struct HomeView: View {
             }
         }
         .frame(maxWidth: .infinity, minHeight: 96, alignment: .topLeading)
-        .padding(16)
-        .glassPanel(cornerRadius: 12)
+        .padding(Design.Space.cardPadding)
+        .glassPanel(cornerRadius: Design.Radius.card)
         .overlay(alignment: .leading) {
             Rectangle()
                 .fill(accent)
                 .frame(width: 3)
-                .clipShape(.rect(topLeadingRadius: 12, bottomLeadingRadius: 12,
+                .clipShape(.rect(topLeadingRadius: Design.Radius.card, bottomLeadingRadius: Design.Radius.card,
                                  bottomTrailingRadius: 0, topTrailingRadius: 0))
         }
     }
@@ -526,8 +532,9 @@ struct HomeView: View {
     @ViewBuilder
     private var suggestionsCard: some View {
         if !suggestions.isEmpty {
-            VStack(alignment: .leading, spacing: 11) {
+            VStack(alignment: .leading, spacing: 0) {
                 SectionLabel(icon: "wand.and.stars", title: "Suggestions")
+                    .sectionHeader()
                 GlassCard(tint: Color.accentColor.opacity(0.10)) {
                     VStack(alignment: .leading, spacing: 10) {
                         Text("You dictate these a lot — turn them into a shortcut you can speak.")
@@ -557,7 +564,8 @@ struct HomeView: View {
                             }
                             .padding(10)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 10))
+                            .background(Design.Surface.raised,
+                                        in: RoundedRectangle(cornerRadius: Design.Radius.inset, style: .continuous))
                         }
                     }
                 }
@@ -578,18 +586,22 @@ struct HomeView: View {
         }
     }
 
+    /// How long Undo stays available after a delete. Shared with the toast so the
+    /// announced window and the real timer can never drift apart.
+    private var undoWindowSeconds: Int { 3 }
+
     private func scheduleDeletion(_ entry: DictationEntry) {
         // Commit any already-pending delete before starting a new one.
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+        withAnimation(motion(.spring(response: 0.35, dampingFraction: 0.8))) {
             if let pending = pendingDeleteEntry { history.delete(pending) }
         }
         deleteTimer?.invalidate()
-        withAnimation(.easeOut(duration: 0.15)) {
+        withAnimation(motion(.easeOut(duration: 0.15))) {
             pendingDeleteEntry = entry
         }
-        deleteTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: false) { _ in
+        deleteTimer = Timer.scheduledTimer(withTimeInterval: TimeInterval(undoWindowSeconds), repeats: false) { _ in
             DispatchQueue.main.async {
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                withAnimation(self.motion(.spring(response: 0.35, dampingFraction: 0.8))) {
                     if let e = self.pendingDeleteEntry { self.history.delete(e) }
                     self.pendingDeleteEntry = nil
                 }
@@ -598,12 +610,12 @@ struct HomeView: View {
     }
 
     private var historySection: some View {
-        VStack(alignment: .leading, spacing: 11) {
+        VStack(alignment: .leading, spacing: 0) {
             HStack {
                 SectionLabel(icon: "clock", title: "Recent dictations")
                 Spacer()
                 if !history.entries.isEmpty {
-                    Button("Clear All", role: .destructive) {
+                    Button("Clear all", role: .destructive) {
                         deleteTimer?.invalidate()
                         pendingDeleteEntry = nil
                         history.clearAll()
@@ -611,6 +623,7 @@ struct HomeView: View {
                     .controlSize(.small)
                 }
             }
+            .sectionHeader()
 
             Group {
                 if visibleEntries.isEmpty {
@@ -622,16 +635,20 @@ struct HomeView: View {
                             .textFieldStyle(.roundedBorder)
                             .frame(maxWidth: 280)
 
-                        LazyVStack(spacing: 8) {
-                            ForEach(filteredEntries) { entry in
-                                historyRow(entry)
+                        if filteredEntries.isEmpty {
+                            NoMatchesState()
+                        } else {
+                            LazyVStack(spacing: 8) {
+                                ForEach(filteredEntries) { entry in
+                                    historyRow(entry)
+                                }
                             }
                         }
                     }
                     .transition(.opacity.combined(with: .scale(scale: 0.92, anchor: .center)))
                 }
             }
-            .animation(.spring(response: 0.45, dampingFraction: 0.85), value: visibleEntries.isEmpty)
+            .animation(motion(.spring(response: 0.45, dampingFraction: 0.85)), value: visibleEntries.isEmpty)
         }
     }
 
@@ -643,7 +660,7 @@ struct HomeView: View {
                     .foregroundStyle(Brand.ink4)
                 Text("No dictations yet")
                     .foregroundStyle(Brand.ink3)
-                Text("Hold \(hotkeyHint) anywhere and start speaking.")
+                Text("Hold \(settings.hotkeyOption.userFacingHint) anywhere and start speaking.")
                     .font(.caption)
                     .foregroundStyle(Brand.ink4)
             }
@@ -692,7 +709,7 @@ struct HomeView: View {
                 .accessibilityLabel(copiedEntryID == entry.id ? "Copied" : "Copy dictation")
                 .opacity(hoveredEntryID == entry.id || accessibilityEnabled ? 1 : 0)
                 .allowsHitTesting(hoveredEntryID == entry.id || accessibilityEnabled)
-                .animation(.easeOut(duration: 0.12), value: hoveredEntryID == entry.id)
+                .animation(motion(.easeOut(duration: 0.12)), value: hoveredEntryID == entry.id)
 
                 Button {
                     scheduleDeletion(entry)
@@ -704,7 +721,7 @@ struct HomeView: View {
                 .accessibilityLabel("Delete dictation")
                 .opacity(hoveredEntryID == entry.id || accessibilityEnabled ? 1 : 0)
                 .allowsHitTesting(hoveredEntryID == entry.id || accessibilityEnabled)
-                .animation(.easeOut(duration: 0.12), value: hoveredEntryID == entry.id)
+                .animation(motion(.easeOut(duration: 0.12)), value: hoveredEntryID == entry.id)
             }
             .font(.caption)
             .foregroundStyle(Brand.ink3)
@@ -715,10 +732,10 @@ struct HomeView: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .glassPanel(cornerRadius: 10)
+        .glassPanel(cornerRadius: Design.Radius.card)
         .opacity(pendingDeleteEntry?.id == entry.id ? 0.4 : 1)
         .grayscale(pendingDeleteEntry?.id == entry.id ? 0.4 : 0)
-        .animation(.easeOut(duration: 0.2), value: pendingDeleteEntry?.id == entry.id)
+        .animation(motion(.easeOut(duration: 0.2)), value: pendingDeleteEntry?.id == entry.id)
         .onHover { hovering in
             hoveredEntryID = hovering ? entry.id : nil
         }
@@ -767,7 +784,7 @@ struct HomeView: View {
         let expanded = revealedRawIDs.contains(entry.id)
         VStack(alignment: .leading, spacing: 6) {
             Button {
-                withAnimation(.easeOut(duration: 0.18)) {
+                withAnimation(motion(.easeOut(duration: 0.18))) {
                     if expanded { revealedRawIDs.remove(entry.id) } else { revealedRawIDs.insert(entry.id) }
                 }
             } label: {
@@ -871,18 +888,18 @@ private struct ChecklistRow: View {
             checklistMark
             HStack(spacing: 5) {
                 Text(item.title)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(size: Design.TypeScale.sectionTitle, weight: .semibold))
                     .foregroundStyle(item.done ? Brand.ink3 : Brand.ink)
                 if let subtitle = item.subtitle {
                     Text(subtitle)
-                        .font(.system(size: 12.5))
+                        .font(.system(size: Design.TypeScale.rowSubtitle))
                         .foregroundStyle(Brand.ink4)
                 }
             }
             Spacer(minLength: 0)
             if tappable {
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.system(size: Design.TypeScale.caption, weight: .semibold))
                     .foregroundStyle(hovering ? Brand.ink2 : Brand.ink4)
             }
         }
@@ -890,8 +907,8 @@ private struct ChecklistRow: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
         .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(tappable && hovering ? Color.white.opacity(0.05) : Color.clear)
+            RoundedRectangle(cornerRadius: Design.Radius.inset, style: .continuous)
+                .fill(tappable && hovering ? Design.Surface.hover : Color.clear)
         )
     }
 

@@ -26,6 +26,8 @@ enum AskBackend: String, CaseIterable, Identifiable, Sendable {
         case .grok: "Grok"
         }
     }
+
+    var loginCommand: String { "\(rawValue) login" }
 }
 
 enum AskBackendHealth: Equatable, Sendable {
@@ -640,7 +642,7 @@ final class AskController: ObservableObject {
 
     func showSpeakFailureCaption(duration: TimeInterval = 3) {
         transientCaptionTask?.cancel()
-        transientCaption = "Couldn't speak — check voice setup in Settings"
+        transientCaption = "Couldn’t speak — check voice setup in Settings"
         transientCaptionTask = Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(duration * 1_000_000_000))
             guard !Task.isCancelled else { return }
@@ -653,7 +655,7 @@ final class AskController: ObservableObject {
     /// unaffected, only the read-aloud is skipped. See `answerAppearsNonEnglish`.
     func showNonEnglishSkipCaption(duration: TimeInterval = 4) {
         transientCaptionTask?.cancel()
-        transientCaption = "Answer isn't in English — reading skipped"
+        transientCaption = "Answer isn’t in English — reading skipped"
         transientCaptionTask = Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(duration * 1_000_000_000))
             guard !Task.isCancelled else { return }
@@ -879,6 +881,16 @@ final class AskController: ObservableObject {
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         insertText(text)
         dismiss()
+    }
+
+    /// Copy the answer currently on the card. The voice-command path goes
+    /// through `performCardCommand`, which first has to restore the card a new
+    /// capture replaced; this acts on what is already on screen.
+    func copyAnswer() {
+        guard let r = run, r.status == .completed else { return }
+        let answer = r.result ?? r.answerText ?? ""
+        guard !answer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        copyText(answer)
     }
 
     func setSpeakingPhase(_ phase: AskSpeakingPhase) {
@@ -1120,7 +1132,7 @@ final class AskController: ObservableObject {
     }
 
     private func authGuidance(for backend: AskBackend) -> String {
-        "\(backendName(backend)) session expired — run `\(backend.rawValue)` in Terminal, then try again."
+        "\(backendName(backend)) session expired — run `\(backend.loginCommand)` in Terminal, then try again."
     }
 
     private func fallbackCaptionText(answering: AskBackend, failed: AskBackend) -> String {
@@ -1423,7 +1435,7 @@ final class AskController: ObservableObject {
             if let thread = r.codexThreadID, let turn = r.codexTurnID {
                 codexClient.interrupt(threadID: thread, turnID: turn)
             }
-            r.result = "Ask tried to use a blocked tool and was stopped."
+            r.result = "Answers couldn’t complete this request because it requires an action that isn’t allowed. Try asking another way."
             failRunningSteps(in: &r)
             try? r.transition(to: .failed)
             run = r
@@ -1438,7 +1450,7 @@ final class AskController: ObservableObject {
             if let thread = r.codexThreadID, let turn = r.codexTurnID {
                 codexClient.interrupt(threadID: thread, turnID: turn)
             }
-            r.result = "Ask tried to use a blocked tool and was stopped."
+            r.result = "Answers couldn’t complete this request because it requires an action that isn’t allowed. Try asking another way."
             failRunningSteps(in: &r)
             try? r.transition(to: .failed)
             run = r
@@ -1528,7 +1540,7 @@ final class AskController: ObservableObject {
             guard Self.isResearchTool(title) else {
                 VLog.grok("warning: blocked grok tool (\(title))")
                 grokClient.cancel()
-                r.result = "Ask tried to use a blocked tool and was stopped."
+                r.result = "Answers couldn’t complete this request because it requires an action that isn’t allowed. Try asking another way."
                 failRunningSteps(in: &r)
                 try? r.transition(to: .failed)
                 run = r

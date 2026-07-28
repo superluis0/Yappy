@@ -209,7 +209,7 @@ final class AppState: ObservableObject {
     /// this as an explicit transition makes the one-retry rule testable.
     func transitionRetryFailureToCopy() {
         guard failureRecoveryRetryRequested, failureRecoveryText != nil else { return }
-        failureMessage = "Couldn't insert — click to copy"
+        failureMessage = "Couldn’t insert — click to copy"
         failureRecoveryMode = .copy
         // The retry→copy handoff must be audible too, like every failure state.
         Self.announceForAccessibility(failureMessage ?? "")
@@ -288,7 +288,7 @@ final class AppState: ObservableObject {
         if let failureMessage { return failureMessage }
         if let infoMessage { return infoMessage }
         if isRecording { return "Recording" }
-        if isPolishing { return "Processing, polishing" }
+        if isPolishing { return "Processing, cleanup" }
         if isProcessing { return "Processing" }
         if isPreparing { return "Preparing" }
         return "Yappy"

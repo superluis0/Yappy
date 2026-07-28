@@ -33,6 +33,25 @@ public enum AskRunStatus: String, Codable, Equatable, Sendable {
             return false
         }
     }
+
+    /// What VoiceOver should say when a run enters this state, or nil when
+    /// nothing should be spoken. The card is a nonactivating panel that never
+    /// takes focus, so these announcements are the only way its progress reaches
+    /// a screen-reader user. `.completed` is nil on purpose: AskController
+    /// already announces "Answer ready" there, and two announcements for one
+    /// event talk over each other.
+    public var accessibilityAnnouncement: String? {
+        switch self {
+        case .idle, .completed: return nil
+        case .preparing: return "Getting ready"
+        case .listening: return "Listening"
+        case .transcribing: return "Transcribing"
+        case .thinking: return "Thinking"
+        case .working: return "Working on your answer"
+        case .failed: return "Answer failed"
+        case .cancelled: return "Answer cancelled"
+        }
+    }
 }
 
 public enum AskRunTransitionError: Error, Equatable, CustomStringConvertible, Sendable {

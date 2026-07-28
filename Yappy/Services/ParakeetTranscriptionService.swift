@@ -28,13 +28,32 @@ final class ParakeetTranscriptionService: ObservableObject {
         case ready
         case failed(String)
 
+        /// Canonical copy for presenting this state in the UI.
+        ///
+        /// `.notLoaded` deliberately reads as "preparing": every surface that
+        /// shows it (onboarding and setup spinners, the sidebar footer in the
+        /// instant before warm-up) is a moment where loading is imminent, and
+        /// "Model not loaded" under a spinner reads as an error.
+        var userFacingLabel: String {
+            switch self {
+            case .notLoaded: return "Preparing speech model…"
+            case .downloading: return "Downloading speech model…"
+            case .loading: return "Preparing speech model…"
+            case .ready: return "Ready"
+            case .failed: return "Speech model setup failed"
+            }
+        }
+
+        /// Detailed variant of `userFacingLabel` — same vocabulary, plus the
+        /// download percentage and the failure reason. Shown where detail is
+        /// wanted (the Settings model row); also the log wording.
         var statusDescription: String {
             switch self {
-            case .notLoaded: return "Model not loaded"
+            case .notLoaded: return "Preparing speech model…"
             case .downloading(let progress):
-                if let progress { return "Downloading model… \(Int(progress * 100))%" }
-                return "Downloading model…"
-            case .loading: return "Loading model…"
+                if let progress { return "Downloading speech model… \(Int(progress * 100))%" }
+                return "Downloading speech model…"
+            case .loading: return "Preparing speech model…"
             case .ready: return "Ready"
             case .failed(let message): return "Model failed: \(message)"
             }
@@ -742,7 +761,7 @@ final class ParakeetTranscriptionService: ObservableObject {
         var errorDescription: String? {
             switch self {
             case .modelNotReady:
-                return "The speech model isn't loaded yet. Check the model status in Yappy's settings."
+                return "The speech model isn’t loaded yet. Check the model status in Yappy’s settings."
             }
         }
     }

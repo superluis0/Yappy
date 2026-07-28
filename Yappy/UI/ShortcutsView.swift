@@ -11,6 +11,15 @@ struct ShortcutsView: View {
     @State private var showingEditor = false
     @State private var pendingDeleteShortcut: VoiceShortcut?
     @State private var deleteTimer: Timer?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// Nil under Reduce Motion, so the same call sites snap instead of springing.
+    private func motion(_ animation: Animation) -> Animation? {
+        reduceMotion ? nil : animation
+    }
+
+    /// How long Undo stays available after a delete — announced by the toast.
+    private var undoWindowSeconds: Int { 3 }
 
     private var visibleShortcuts: [VoiceShortcut] {
         store.shortcuts.filter { pendingDeleteShortcut?.id != $0.id }
@@ -19,13 +28,13 @@ struct ShortcutsView: View {
     private func scheduleDeletion(_ shortcut: VoiceShortcut) {
         if let pending = pendingDeleteShortcut { store.delete(pending) }
         deleteTimer?.invalidate()
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+        withAnimation(motion(.spring(response: 0.35, dampingFraction: 0.8))) {
             pendingDeleteShortcut = shortcut
         }
-        deleteTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: false) { _ in
+        deleteTimer = Timer.scheduledTimer(withTimeInterval: TimeInterval(undoWindowSeconds), repeats: false) { _ in
             DispatchQueue.main.async {
                 if let s = self.pendingDeleteShortcut { self.store.delete(s) }
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                withAnimation(self.motion(.spring(response: 0.35, dampingFraction: 0.8))) {
                     self.pendingDeleteShortcut = nil
                 }
             }
@@ -34,30 +43,26 @@ struct ShortcutsView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 26) {
+            VStack(alignment: .leading, spacing: Design.Space.sectionGap) {
                 header
                 shortcutsSection
             }
-            .frame(maxWidth: 640, alignment: .leading)
-            .frame(maxWidth: .infinity, alignment: .center)
-            .padding(.horizontal, 30)
-            .padding(.top, 26)
-            .padding(.bottom, 46)
+            .pageShell()
         }
         .scrollContentBackground(.hidden)
         .background(Color.clear)
         .overlay(alignment: .bottom) {
             if pendingDeleteShortcut != nil {
-                UndoToast(message: "Shortcut deleted") {
+                UndoToast(message: "Shortcut deleted", secondsRemaining: undoWindowSeconds) {
                     deleteTimer?.invalidate()
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                    withAnimation(motion(.spring(response: 0.35, dampingFraction: 0.8))) {
                         pendingDeleteShortcut = nil
                     }
                 }
-                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
             }
         }
-        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: pendingDeleteShortcut != nil)
+        .animation(motion(.spring(response: 0.35, dampingFraction: 0.8)), value: pendingDeleteShortcut != nil)
         .sheet(isPresented: $showingEditor) {
             ShortcutEditor(shortcut: editing) { result in
                 if store.shortcuts.contains(where: { $0.id == result.id }) {
@@ -75,10 +80,10 @@ struct ShortcutsView: View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 3) {
                 Text("Shortcuts")
-                    .font(.system(size: 24, weight: .bold))
+                    .font(.system(size: Design.TypeScale.screenTitle, weight: .bold))
                     .foregroundStyle(Brand.ink)
                 Text("Speak a cue and Yappy types the full text — signatures, links, boilerplate.")
-                    .font(.system(size: 13.5))
+                    .font(.system(size: Design.TypeScale.screenSubtitle))
                     .foregroundStyle(Brand.ink3)
             }
             Spacer()
@@ -88,6 +93,7 @@ struct ShortcutsView: View {
             } label: {
                 Label("New", systemImage: "plus")
             }
+            .primaryActionFocus()
         }
     }
 
@@ -98,8 +104,7 @@ struct ShortcutsView: View {
             HStack(spacing: 0) {
                 SectionLabel(icon: "bolt", title: "Shortcuts")
             }
-            .padding(.horizontal, 4)
-            .padding(.bottom, 11)
+            .sectionHeader()
 
             GlassCard(padding: 0) {
                 Group {
@@ -108,21 +113,15 @@ struct ShortcutsView: View {
                             .transition(.opacity.combined(with: .scale(scale: 0.92, anchor: .center)))
                     } else {
                         VStack(spacing: 0) {
-                            ForEach(Array(visibleShortcuts.enumerated()), id: \.element.id) { index, shortcut in
-                                if index > 0 {
-                                    Rectangle()
-                                        .fill(Color.white.opacity(0.07))
-                                        .frame(height: 1)
-                                        .padding(.leading, 16)
-                                }
+                            ForEach(visibleShortcuts) { shortcut in
                                 row(shortcut)
                             }
                         }
                         .transition(.opacity.combined(with: .scale(scale: 0.92, anchor: .center)))
                     }
                 }
-                .animation(.spring(response: 0.45, dampingFraction: 0.85), value: visibleShortcuts.isEmpty)
-                .animation(.spring(response: 0.45, dampingFraction: 0.85), value: visibleShortcuts.count)
+                .animation(motion(.spring(response: 0.45, dampingFraction: 0.85)), value: visibleShortcuts.isEmpty)
+                .animation(motion(.spring(response: 0.45, dampingFraction: 0.85)), value: visibleShortcuts.count)
             }
         }
     }
@@ -150,10 +149,10 @@ struct ShortcutsView: View {
         VStack(alignment: .leading, spacing: 14) {
             VStack(alignment: .leading, spacing: 3) {
                 Text("Try one of these")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.system(size: Design.TypeScale.rowTitle, weight: .semibold))
                     .foregroundStyle(Brand.ink)
                 Text("Example — tap Add, then edit to make it yours.")
-                    .font(.system(size: 12))
+                    .font(.system(size: Design.TypeScale.rowSubtitle))
                     .foregroundStyle(Brand.ink4)
             }
 
@@ -164,22 +163,22 @@ struct ShortcutsView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(16)
+        .padding(Design.Space.cardPadding)
     }
 
     private func exampleCard(_ example: VoiceShortcut) -> some View {
-        HStack(spacing: 13) {
+        HStack(spacing: Design.Space.rowGap) {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
                     Text(example.trigger)
-                        .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                        .font(.system(size: Design.TypeScale.sectionTitle, weight: .semibold, design: .monospaced))
                         .foregroundStyle(Brand.ink)
                     Image(systemName: "arrow.right")
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(Brand.ink4)
                 }
                 Text(example.expansion)
-                    .font(.system(size: 12))
+                    .font(.system(size: Design.TypeScale.rowSubtitle))
                     .foregroundStyle(Brand.ink3)
                     .lineLimit(2)
             }
@@ -198,30 +197,31 @@ struct ShortcutsView: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background(Design.Surface.raised,
+                    in: RoundedRectangle(cornerRadius: Design.Radius.inset, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .strokeBorder(Color.white.opacity(0.06))
+            RoundedRectangle(cornerRadius: Design.Radius.inset, style: .continuous)
+                .strokeBorder(Design.Surface.stroke)
         )
     }
 
     // MARK: - Shortcut row
 
     private func row(_ shortcut: VoiceShortcut) -> some View {
-        HStack(spacing: 13) {
+        HStack(spacing: Design.Space.rowGap) {
             // Icon chip
-            RoundedRectangle(cornerRadius: 9, style: .continuous)
-                .fill(shortcut.enabled ? Color.accentColor.opacity(0.18) : Color.white.opacity(0.06))
-                .frame(width: 34, height: 34)
+            RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
+                .fill(shortcut.enabled ? Color.accentColor.opacity(0.18) : Design.Surface.raised)
+                .frame(width: Design.Space.chipSize, height: Design.Space.chipSize)
                 .overlay(
                     Image(systemName: "bolt.fill")
                         .font(.system(size: 14, weight: .medium))
                         .foregroundStyle(shortcut.enabled ? Color.accentColor : Brand.ink4)
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
                         .strokeBorder(
-                            shortcut.enabled ? Color.accentColor.opacity(0.25) : Color.white.opacity(0.06)
+                            shortcut.enabled ? Color.accentColor.opacity(0.25) : Design.Surface.stroke
                         )
                 )
 
@@ -229,14 +229,14 @@ struct ShortcutsView: View {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
                     Text(shortcut.trigger)
-                        .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                        .font(.system(size: Design.TypeScale.sectionTitle, weight: .semibold, design: .monospaced))
                         .foregroundStyle(Brand.ink)
                     Image(systemName: "arrow.right")
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(Brand.ink4)
                 }
                 Text(shortcut.expansion)
-                    .font(.system(size: 12))
+                    .font(.system(size: Design.TypeScale.rowSubtitle))
                     .foregroundStyle(Brand.ink3)
                     .lineLimit(2)
             }
@@ -260,12 +260,13 @@ struct ShortcutsView: View {
                 showingEditor = true
             } label: {
                 Image(systemName: "pencil")
-                    .font(.system(size: 13, weight: .medium))
+                    .font(.system(size: Design.TypeScale.sectionTitle, weight: .medium))
                     .foregroundStyle(Brand.ink3)
                     .frame(width: 26, height: 26)
-                    .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                    .background(Design.Surface.raised,
+                                in: RoundedRectangle(cornerRadius: Design.Radius.control, style: .continuous))
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(.hoverSurface(cornerRadius: Design.Radius.control))
             .accessibilityLabel("Edit \(shortcut.trigger)")
 
             // Delete button
@@ -273,16 +274,17 @@ struct ShortcutsView: View {
                 scheduleDeletion(shortcut)
             } label: {
                 Image(systemName: "trash")
-                    .font(.system(size: 13, weight: .medium))
+                    .font(.system(size: Design.TypeScale.sectionTitle, weight: .medium))
                     .foregroundStyle(Brand.danger.opacity(0.8))
                     .frame(width: 26, height: 26)
-                    .background(Brand.danger.opacity(0.10), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                    .background(Brand.danger.opacity(0.10),
+                                in: RoundedRectangle(cornerRadius: Design.Radius.control, style: .continuous))
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(.hoverSurface(cornerRadius: Design.Radius.control))
             .accessibilityLabel("Delete \(shortcut.trigger)")
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .padding(.horizontal, Design.Space.rowHorizontal)
+        .padding(.vertical, Design.Space.rowVertical)
         .frame(maxWidth: .infinity, alignment: .leading)
         .opacity(shortcut.enabled ? 1 : 0.55)
     }

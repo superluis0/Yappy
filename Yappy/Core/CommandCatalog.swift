@@ -63,7 +63,7 @@ enum CommandCatalog {
                               effect: "Stops recording and inserts the cleaned-up text.",
                               isSpoken: false),
                 CommandEntry("Press Esc",
-                              effect: "Cancels the dictation before it lands — works while recording or while it's being polished.",
+                              effect: "Cancels the dictation before it lands — works while recording or during cleanup.",
                               isSpoken: false)
             ]
         ),
@@ -97,9 +97,9 @@ enum CommandCatalog {
             settingsKeyPath: \.spokenCommandsEnabled,
             entries: [
                 CommandEntry("new line",
-                              effect: "Inserts a line break (also \u{201c}next line\u{201d}, \u{201c}line break\u{201d}, \u{201c}insert line\u{201d})"),
+                              effect: "Inserts a line break (also \u{201c}next line\u{201d}, \u{201c}line break\u{201d}, \u{201c}insert line\u{201d})."),
                 CommandEntry("new paragraph",
-                              effect: "Inserts a paragraph break (also \u{201c}next paragraph\u{201d}, \u{201c}skip a line\u{201d})")
+                              effect: "Inserts a paragraph break (also \u{201c}next paragraph\u{201d}, \u{201c}skip a line\u{201d}).")
             ]
         ),
         CommandSection(
@@ -108,7 +108,7 @@ enum CommandCatalog {
             settingsKeyPath: \.numberFormattingEnabled,
             entries: [
                 CommandEntry("eleven point six",
-                              effect: "Spoken numbers become digits",
+                              effect: "Spoken numbers become digits.",
                               example: "→ \u{201c}11.6\u{201d}")
             ]
         ),
@@ -118,10 +118,10 @@ enum CommandCatalog {
             settingsKeyPath: \.numberedListsEnabled,
             entries: [
                 CommandEntry("one milk two eggs three bread",
-                              effect: "Three or more counted items become a numbered list",
+                              effect: "Three or more counted items become a numbered list.",
                               example: "→ \u{201c}1. Milk\n2. Eggs\n3. Bread\u{201d}"),
                 CommandEntry("bullet milk bullet eggs bullet bread",
-                              effect: "Two or more \u{201c}bullet\u{201d} items become a bulleted list",
+                              effect: "Two or more \u{201c}bullet\u{201d} items become a bulleted list.",
                               example: "→ \u{201c}- Milk\n- Eggs\n- Bread\u{201d}")
             ]
         ),
@@ -131,21 +131,21 @@ enum CommandCatalog {
             settingsKeyPath: \.voiceEditingEnabled,
             entries: [
                 CommandEntry("scratch that",
-                              effect: "Deletes your last dictation (also \u{201c}scratch this\u{201d}, \u{201c}delete that\u{201d}, \u{201c}delete this\u{201d}, \u{201c}remove that\u{201d})"),
+                              effect: "Deletes your last dictation (also \u{201c}scratch this\u{201d}, \u{201c}delete that\u{201d}, \u{201c}delete this\u{201d}, \u{201c}remove that\u{201d})."),
                 CommandEntry("delete the last word",
-                              effect: "Deletes just the last word (also \u{201c}delete last word\u{201d})"),
+                              effect: "Deletes just the last word (also \u{201c}delete last word\u{201d})."),
                 CommandEntry("delete the last sentence",
-                              effect: "Deletes the last sentence (also \u{201c}delete last sentence\u{201d})"),
+                              effect: "Deletes the last sentence (also \u{201c}delete last sentence\u{201d})."),
                 CommandEntry("delete the last line",
-                              effect: "Deletes the last line (also \u{201c}delete last line\u{201d})"),
+                              effect: "Deletes the last line (also \u{201c}delete last line\u{201d})."),
                 CommandEntry("capitalize that",
-                              effect: "Title-cases the last dictation (also \u{201c}cap that\u{201d}, \u{201c}capitalize this\u{201d}, \u{201c}cap this\u{201d})"),
+                              effect: "Title-cases the last dictation (also \u{201c}cap that\u{201d}, \u{201c}capitalize this\u{201d}, \u{201c}cap this\u{201d})."),
                 CommandEntry("all caps that",
-                              effect: "Uppercases the last dictation (also \u{201c}all caps this\u{201d}, \u{201c}uppercase that\u{201d}, \u{201c}make that uppercase\u{201d}, \u{201c}make that all caps\u{201d})"),
+                              effect: "Uppercases the last dictation (also \u{201c}all caps this\u{201d}, \u{201c}uppercase that\u{201d}, \u{201c}make that uppercase\u{201d}, \u{201c}make that all caps\u{201d})."),
                 CommandEntry("lowercase that",
-                              effect: "Lowercases the last dictation (also \u{201c}lowercase this\u{201d}, \u{201c}make that lowercase\u{201d})"),
-                CommandEntry("use what i said",
-                              effect: "Reverts to the pre-cleanup words (also \u{201c}use what i actually said\u{201d}, \u{201c}undo the cleanup\u{201d}, \u{201c}undo that cleanup\u{201d})")
+                              effect: "Lowercases the last dictation (also \u{201c}lowercase this\u{201d}, \u{201c}make that lowercase\u{201d})."),
+                CommandEntry("use what I said",
+                              effect: "Reverts to the pre-cleanup words (also \u{201c}use what I actually said\u{201d}, \u{201c}undo the cleanup\u{201d}, \u{201c}undo that cleanup\u{201d}).")
             ]
         ),
         CommandSection(
@@ -154,14 +154,14 @@ enum CommandCatalog {
             settingsKeyPath: \.voiceControlEnabled,
             entries: [
                 CommandEntry("switch to [mode] mode",
-                              effect: "Activates a Mode by name (also \u{201c}use [mode] mode\u{201d}, or just \u{201c}[mode] mode\u{201d})",
+                              effect: "Activates a Mode by name (also \u{201c}use [mode] mode\u{201d}, or just \u{201c}[mode] mode\u{201d}).",
                               example: "\u{201c}switch to writing mode\u{201d}"),
                 CommandEntry("auto mode",
-                              effect: "Returns to Auto mode (also \u{201c}switch to auto mode\u{201d}, \u{201c}use auto mode\u{201d})"),
+                              effect: "Returns to Auto mode (also \u{201c}switch to auto mode\u{201d}, \u{201c}use auto mode\u{201d})."),
                 CommandEntry("open scratchpad",
-                              effect: "Opens the floating scratchpad (also \u{201c}show scratchpad\u{201d}, \u{201c}open notes\u{201d}, \u{201c}show notes\u{201d})"),
+                              effect: "Opens the floating scratchpad (also \u{201c}show scratchpad\u{201d}, \u{201c}open notes\u{201d}, \u{201c}show notes\u{201d})."),
                 CommandEntry("new note",
-                              effect: "Starts a fresh scratchpad note (also \u{201c}new scratchpad note\u{201d}, \u{201c}create a note\u{201d}, \u{201c}create a new note\u{201d})")
+                              effect: "Starts a fresh scratchpad note (also \u{201c}new scratchpad note\u{201d}, \u{201c}create a note\u{201d}, \u{201c}create a new note\u{201d}).")
             ]
         ),
         CommandSection(
@@ -170,7 +170,7 @@ enum CommandCatalog {
             settingsKeyPath: nil,
             entries: [
                 CommandEntry("press enter",
-                              effect: "Sends Return after the dictation lands (also \u{201c}press return\u{201d}, \u{201c}hit enter\u{201d}, \u{201c}hit return\u{201d})")
+                              effect: "Sends Return after the dictation lands (also \u{201c}press return\u{201d}, \u{201c}hit enter\u{201d}, \u{201c}hit return\u{201d}).")
             ]
         ),
         CommandSection(
@@ -179,22 +179,22 @@ enum CommandCatalog {
             settingsKeyPath: \.askEnabled,
             entries: [
                 CommandEntry("copy that",
-                              effect: "Copies the answer to the clipboard (also \u{201c}copy it\u{201d}, \u{201c}copy the answer\u{201d})"),
+                              effect: "Copies the answer to the clipboard (also \u{201c}copy it\u{201d}, \u{201c}copy the answer\u{201d})."),
                 CommandEntry("insert that",
-                              effect: "Types the answer at your cursor (also \u{201c}insert it\u{201d}, \u{201c}insert the answer\u{201d}, \u{201c}type that\u{201d})"),
+                              effect: "Types the answer at your cursor (also \u{201c}insert it\u{201d}, \u{201c}insert the answer\u{201d}, \u{201c}type that\u{201d})."),
                 CommandEntry("pin that",
-                              effect: "Keeps the answer card open (also \u{201c}pin it\u{201d}, \u{201c}keep that\u{201d})"),
+                              effect: "Keeps the answer card open (also \u{201c}pin it\u{201d}, \u{201c}keep that\u{201d})."),
                 CommandEntry("dismiss",
-                              effect: "Closes the answer card (also \u{201c}close\u{201d}, \u{201c}dismiss that\u{201d}, \u{201c}close that\u{201d})"),
+                              effect: "Closes the answer card (also \u{201c}close\u{201d}, \u{201c}dismiss that\u{201d}, \u{201c}close that\u{201d})."),
                 CommandEntry("try again",
-                              effect: "Re-asks the question (also \u{201c}ask again\u{201d}, \u{201c}retry\u{201d})"),
+                              effect: "Re-asks the question (also \u{201c}ask again\u{201d}, \u{201c}retry\u{201d})."),
                 CommandEntry("read that",
-                              effect: "Reads the answer aloud (also \u{201c}read it\u{201d}, \u{201c}speak that\u{201d}, \u{201c}read that aloud\u{201d}, \u{201c}say it aloud\u{201d}, \u{201c}read the answer\u{201d})"),
+                              effect: "Reads the answer aloud (also \u{201c}read it\u{201d}, \u{201c}speak that\u{201d}, \u{201c}read that aloud\u{201d}, \u{201c}say it aloud\u{201d}, \u{201c}read the answer\u{201d})."),
                 CommandEntry("stop talking",
-                              effect: "Stops the read-aloud (also \u{201c}stop reading\u{201d}, \u{201c}stop speaking\u{201d})"),
+                              effect: "Stops the read-aloud (also \u{201c}stop reading\u{201d}, \u{201c}stop speaking\u{201d})."),
                 CommandEntry("think harder",
-                              effect: "Prefix that asks for a slower, more thorough answer (also \u{201c}think hard\u{201d})",
-                              example: "\u{201c}think harder, what's the fastest sort for this?\u{201d}")
+                              effect: "Prefix that asks for a slower, more thorough answer (also \u{201c}think hard\u{201d}).",
+                              example: "\u{201c}think harder, what’s the fastest sort for this?\u{201d}")
             ]
         )
     ]
